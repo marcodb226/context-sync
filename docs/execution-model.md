@@ -60,7 +60,7 @@ Phase A produces the ticket deliverable and the execution record needed for inde
 
 ### 4.3 Implementation Ticket Requirements
 
-1. **Coding guidelines compliance:** Before marking implementation complete, verify every change against [`docs/coding guidelines.md`](<coding%20guidelines.md>). Check: docstring format, type annotations, exception specificity, async patterns, Pydantic for cross-boundary models, logging, and security rules. Record the compliance check in the execution file.
+1. **Coding guidelines compliance:** Before marking implementation complete, verify every change against [`docs/coding-guidelines.md`](<coding-guidelines.md>). Check: docstring format, type annotations, exception specificity, async patterns, Pydantic for cross-boundary models, logging, and security rules. Record the compliance check in the execution file.
 2. **Non-waivable validation gate:** Before completion, run required validation commands (`ruff check`, `ruff format --check`, and ticket-appropriate test commands). If any command fails, stop and treat it as blocking. Do not mark the ticket complete while failures remain.
 3. **No baseline-failure waiver:** "Pre-existing" or "out-of-scope" validation failures do not permit completion. The session must either (a) fix the failing baseline in the same ticket, or (b) explicitly log a blocking prerequisite and stop without marking the ticket complete.
 

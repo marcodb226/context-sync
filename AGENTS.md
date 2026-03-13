@@ -6,7 +6,7 @@
 
 Before writing or modifying any code, read and follow:
 
-- `docs/coding guidelines.md` — formatting, type annotations, async patterns, exception handling, docstring format, testing, security rules.
+- `docs/coding-guidelines.md` — formatting, type annotations, async patterns, exception handling, docstring format, testing, security rules.
 - `docs/execution-model.md` — execution model for implementation-plan ticket work.
 
 ## Instruction file source of truth
@@ -44,7 +44,7 @@ If the change is not docs-only:
 
 Before marking any work performed under a named implementation-plan ticket as complete, verify:
 
-1. For non-docs-only changes, every rule in `docs/coding guidelines.md` has been checked against the changed code.
+1. For non-docs-only changes, every rule in `docs/coding-guidelines.md` has been checked against the changed code.
 2. For non-docs-only changes, `.venv/bin/ruff check` and `.venv/bin/ruff format --check` pass with no errors.
 3. For non-docs-only changes, all new and modified tests pass (`.venv/bin/python -m pytest tests/`).
 4. For work performed under a named implementation-plan ticket, the required artifact in `docs/execution/` is up to date.
