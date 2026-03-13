@@ -1,0 +1,11 @@
+{
+  "effortLevel": "high",
+  "defaultMode": "acceptEdits",
+  "sandbox": {
+    "enabled": true,
+    "autoAllowBashIfSandboxed": true,
+    "filesystem": {
+      "allowWrite": ["//tmp"]
+    }
+  }
+}

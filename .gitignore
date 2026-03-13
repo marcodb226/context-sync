@@ -1,0 +1,13 @@
+.venv/
+.vscode/
+.pytest_cache/
+__pycache__/
+/site/
+/dist/
+*.egg-info/
+docs/pub/reference/generated/
+
+# Ignore test data with secrets
+scripts/harness_env.sh
+scripts/.harness_env.sh
+scripts/.linear_client_oauth*.json
