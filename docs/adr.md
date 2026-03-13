@@ -2,8 +2,7 @@
 
 > **Status**: Draft
 > **Date**: 2026-03-13
-> **Context**: Extracted from [cr-adr.md](cr-adr.md) to separate tool-level decisions from framework-level decisions. This document seeds the `linear-context-sync` project alongside [tool-design.md](tool-design.md) and [cr-tool-problem-statement.md](cr-tool-problem-statement.md).
-
+> **Context**: Forked from the agent-control-plane repo
 ---
 
 ## 1. Traversal Model

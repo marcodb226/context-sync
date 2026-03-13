@@ -2,7 +2,7 @@
 
 > **Status**: Draft
 > **Date**: 2026-03-13
-> **Prerequisites**: [cr-adr.md](cr-adr.md), [cr-design.md](cr-design.md)
+> **Context**: Forked from the agent-control-plane repo
 
 ---
 
@@ -368,57 +368,3 @@ Published as a private wheel (same distribution mechanism as `linear-client` —
 
 ---
 
-## 8. Open Design Questions
-
-### DQ-1: Batch `updated_at` Query
-
-For delta sync, the tool needs to check whether each existing file's ticket has changed. Fetching each ticket individually to read `updated_at` is O(N) API calls, which defeats the purpose of delta sync for large context directories.
-
-**Options**:
-- (a) Use a single GraphQL query with an `id: { in: [...] }` filter to fetch `updated_at` for all tracked tickets in one call. This requires the query to return only the `updated_at` field (lightweight).
-- (b) Use the Linear `issues` connection with a `updatedAt: { gte: <oldest_last_synced_at> }` filter to find all tickets updated since the oldest sync time, then intersect with the tracked set.
-- (c) Accept O(N) calls for now; optimize in a later version.
-
-**Recommendation**: Option (a) is the best balance of efficiency and simplicity. It requires one GraphQL call per delta check, regardless of how many tickets changed. This may need to go through `linear-client`'s GraphQL services layer if the domain layer doesn't support batch ID lookups.
-
-### DQ-2: Comment Handling for Large Threads
-
-Some tickets accumulate many comments (50+). Including all comments in every sync could make files very large and slow to parse.
-
-**Options**:
-- (a) Always include all comments. Simplest; files are self-contained.
-- (b) Include only comments since the last sync (delta comments). Requires maintaining a comment watermark.
-- (c) Include a configurable maximum number of comments (e.g., last 50). Older comments are truncated with a "N earlier comments omitted" note.
-- (d) Store comments in a separate file per ticket (e.g., `ACP-123.comments.md`).
-
-**Recommendation**: Option (a) for the first version. Most tickets in a well-managed project have fewer than 20 comments. If large threads become a practical problem, option (c) is the least-disruptive optimization.
-
-### DQ-3: ~~Relation Type Semantics in Frontmatter~~ (Resolved)
-
-Resolved by the per-dimension traversal model in F1. Relations are normalized to the canonical dimension set (`blocks`, `is_blocked_by`, `parent`, `child`, `relates_to`, `ticket_ref`). Each relation in frontmatter includes its dimension. The normalization logic builds on the agent loop's existing `extract_blockers` function (see [linear-integration.md Section 2.5](../../design/linear-integration.md)) and extends it to cover all dimension types.
-
-### DQ-4: Tool Name
-
-Proposed: `linear-context-sync`. Alternatives:
-- `linear-ticket-dump`
-- `linear-context-materializer`
-- `lcs` (short alias)
-
-The name should be concise, descriptive, and available as a package name.
-
-### DQ-5: Python Version
-
-The tool should target the same Python version as the agent control plane (3.13+) to avoid compatibility issues. However, if standalone human use on older Python is desired, a lower floor (3.11+) could be considered.
-
-**Recommendation**: Python 3.13+ to match the ecosystem. The tool is installed in the same virtualenv as the control plane; version divergence adds no value.
-
-### DQ-6: Concurrent Fetch Strategy
-
-When traversing a graph of 100+ tickets, sequential fetching is slow. The tool should fetch tickets concurrently, but must respect Linear's rate limits.
-
-**Options**:
-- (a) Use `asyncio.gather` with a semaphore to limit concurrency (e.g., 10 concurrent fetches).
-- (b) Use `asyncio.TaskGroup` (Python 3.11+) with the same semaphore pattern.
-- (c) Rely on `linear-client`'s internal rate limiting and issue all fetches concurrently.
-
-**Recommendation**: Option (b) with a configurable concurrency limit (default: 10). `TaskGroup` provides better error handling than `gather`. The semaphore prevents overwhelming the API even if `linear-client`'s rate limiting is permissive.

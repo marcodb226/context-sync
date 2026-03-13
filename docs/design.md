@@ -2,7 +2,7 @@
 
 > **Status**: Draft
 > **Date**: 2026-03-13
-> **Context**: Extracted from [cr-design.md](cr-design.md) to separate tool-level design from framework-level design. This document seeds the `linear-context-sync` project alongside [tool-adr.md](tool-adr.md) and [cr-tool-problem-statement.md](cr-tool-problem-statement.md).
+> **Context**: Forked from the agent-control-plane repo
 
 ---
 
