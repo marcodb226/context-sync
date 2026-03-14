@@ -251,6 +251,9 @@ refresh()
   ├─ Batch-query Linear for per-ticket updated_at values via `linear-client`
   ├─ Treat issue-level updated_at as the freshness cursor for the v1
   │   base ticket snapshot (metadata, description, comments)
+  ├─ Before treating this design as correct, validate that issue-level
+  │   updated_at advances when any of those v1-persisted fields change,
+  │   especially when comments are added or edited
   │
   ├─ For each reachable ticket where updated_at > last_synced_at
   │   │  or where no local file exists:

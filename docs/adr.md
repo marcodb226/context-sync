@@ -290,7 +290,9 @@ The manifest records snapshot-pass metadata so humans and callers can see when t
 
 Stronger whole-snapshot atomic commit semantics, where an interrupted run would not leave a partially applied directory update behind, are explicitly deferred to [FW-3](<future-work.md#fw-3-whole-snapshot-atomic-commit>).
 
-Freshness is determined from information stored in the files themselves. Each ticket file carries `last_synced_at`, and the remote source of truth carries `updated_at`.
+Freshness is determined from information stored in the files themselves. Each ticket file carries `last_synced_at`, and the remote source of truth carries issue-level `updated_at`.
+
+For the first release, the base ticket snapshot that `refresh` is responsible for keeping current consists of the persisted ticket metadata, description, and full comment history stored in the main ticket file. Richer activity or history timelines are outside that v1 refresh contract and remain deferred to [FW-5](<future-work.md#fw-5-ticket-history-and-sectioned-ticket-artifacts>).
 
 On refresh:
 
@@ -303,6 +305,8 @@ On refresh:
 This approach avoids a separate state store and supports efficient incremental refreshes. The steady-state goal is a lightweight refresh path that scales primarily with changed tickets rather than the full size of the context directory, aside from the bounded metadata work required to determine freshness. In other words, the common case should be "check many, fully re-fetch few."
 
 The refresh path uses a batched GraphQL freshness query via `linear-client` rather than one remote call per ticket. The query should include each tracked reachable ticket with its own `updated_at` value, so refresh can compare remote freshness markers against local `last_synced_at` values and then fully re-fetch only the changed or newly discovered tickets. This batch-by-ticket `updated_at` check is the default refresh mechanism, not an optional optimization.
+
+This refresh decision carries one explicit validation requirement before implementation is considered correct: confirm that issue-level `updated_at` advances for every v1-persisted field the main ticket file depends on, especially when comments are added or edited. If that validation fails for any part of the v1 snapshot contract, the refresh design must be revised before low-level design proceeds; a plain issue-level `updated_at` check would not be sufficient.
 
 The tool also supports a diff mode that compares the current context directory against live Linear data without modifying local files. Diff mode exists for both human debugging and pre-refresh validation.
 
@@ -345,19 +349,6 @@ For many intended callers, the snapshot lives in git-managed files, which gives 
 ---
 
 ## 9. Open Questions
-
-### TQ-8: Change Detection Granularity
-
-The refresh strategy currently assumes issue-level `updated_at` is the right freshness cursor, but the ADR does not yet spell out the exact v1 persistence contract that cursor must cover.
-
-Questions to answer:
-
-- For v1, which persisted fields are materially part of the base ticket snapshot and must therefore be refreshed whenever they change?
-- Does Linear's issue-level `updated_at` advance for all of those v1 fields, including the full comment history stored in the main ticket file?
-- If not, what additional per-ticket cursors or field-specific freshness checks are required before implementation?
-- Which local fields count as materially changed for diff reporting in v1?
-
-The first release intentionally keeps this scope narrow: the main ticket file includes ticket metadata, description, and full comment history, while richer activity or history timelines remain out of scope and are deferred to [FW-5](<future-work.md#fw-5-ticket-history-and-sectioned-ticket-artifacts>). This is still a low-level-design blocker because it determines whether the lightweight refresh model is actually correct for the persisted v1 snapshot.
 
 ### TQ-9: File-Normalization and Diff-Stability Rules
 
