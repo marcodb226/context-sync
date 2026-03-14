@@ -17,3 +17,16 @@ Potential follow-on improvements:
 - add observability around comment volume so the tool can surface when this becomes a real operational issue.
 
 This item should be revisited after first-release usage data shows whether comment-heavy tickets materially affect refresh cost, file size, or human usability.
+
+## FW-2: Attachment Content Handling
+
+The first release stores attachment metadata and URLs in ticket files but does not inline or download attachment contents. That keeps the sync tool read-only, predictable, and simpler to ship, but it leaves useful attachment content outside the local snapshot.
+
+Potential follow-on improvements:
+
+- inline text-based attachment content when it is safe and useful;
+- store selected attachment contents as adjacent local files while preserving source URLs in frontmatter;
+- add type-specific handling for images or other rich media;
+- define size, type, and safety limits so attachment handling does not bloat snapshots or introduce surprising network cost.
+
+This item should be revisited after first-release usage clarifies whether attachment content is a meaningful gap for agent workflows or human debugging.

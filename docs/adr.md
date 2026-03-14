@@ -139,6 +139,8 @@ The body stores the ticket description in Markdown followed by a chronological c
 
 For the first release, each ticket file includes the full comment history returned by Linear. This keeps the snapshot self-contained and keeps refresh logic simple. If comment volume later proves to be a material performance or file-size problem, follow-on optimizations are tracked in [FW-1](<future-work.md#fw-1-comment-storage-optimizations>).
 
+For the first release, attachment handling is metadata-only. Ticket files include attachment metadata and URLs, but do not inline or download attachment contents. Richer handling for text attachments, images, and other file types is deferred and tracked in [FW-2](<future-work.md#fw-2-attachment-content-handling>).
+
 Every file includes `format_version`. When the file format changes, the tool increments the version and re-syncs old files rather than depending on implicit compatibility.
 
 ---
@@ -281,10 +283,6 @@ These guarantees are part of the architecture because callers need them to trust
 ---
 
 ## 9. Open Questions
-
-### TQ-1: Attachment Content Inlining
-
-The first version stores attachment metadata and URLs but not attachment contents. Text attachments and images may justify richer handling later, but that should be treated as a separate capability.
 
 ### TQ-2: Tool Name
 
