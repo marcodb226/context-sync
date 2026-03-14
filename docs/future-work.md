@@ -44,3 +44,17 @@ Potential follow-on improvements:
 - add resumable cleanup logic after interrupted runs.
 
 This item should be revisited if interrupted runs become a real operational problem or if non-git callers become a meaningful share of tool usage.
+
+## FW-4: Historical Ticket Alias Import
+
+The first release stores stable ticket UUIDs plus locally observed issue-key aliases in the manifest so agents can resolve old and new references offline. That works well once `context-sync` has seen a rename, but it does not reconstruct alias history that predates the tool's tracking of a ticket.
+
+If the Linear API exposes authoritative historical aliases or rename history for tickets, the tool should ingest that data and merge it into the local manifest alias table.
+
+Potential follow-on improvements:
+
+- backfill historical issue keys for already tracked tickets during `sync` and `refresh`;
+- distinguish API-authoritative aliases from locally observed aliases in the manifest;
+- expose alias provenance in debug output when a reference resolves through an old key.
+
+This item should be revisited if offline resolution of pre-existing ticket references becomes important for agent workflows or for migration from older documentation sets.

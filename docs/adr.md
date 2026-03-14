@@ -107,15 +107,16 @@ Cycle safety is mandatory: once a ticket has been visited during a sync run, it 
 
 ## 2. Persistence Format
 
-The tool writes one Markdown file per ticket, named `<ticket-identifier>.md`, with YAML frontmatter for structured metadata.
+The tool writes one Markdown file per ticket, named `<current-ticket-key>.md`, with YAML frontmatter for structured metadata.
 
-Markdown is the chosen persistence format because it is human-readable, agent-readable, and diff-friendly in git. The ticket identifier as the filename gives natural deduplication and constant-time lookup.
+Markdown is the chosen persistence format because it is human-readable, agent-readable, and diff-friendly in git. The current ticket key as the filename keeps files easy for humans and agents to browse directly, while stable deduplication and issue-key-change handling rely on the ticket's immutable Linear UUID stored in frontmatter and in the context manifest.
 
 Minimum frontmatter includes:
 
 ```yaml
 ---
-ticket_id: "ACP-123"
+ticket_uuid: "9c9e3d7a-7e1c-4f22-9db4-2d640fb4bb20"
+ticket_key: "ACP-123"
 title: "Implement polling loop"
 status: "In Progress"
 assignee: "developer-bot"
@@ -128,11 +129,11 @@ updated_at: "2026-03-13T09:15:00Z"
 last_synced_at: "2026-03-13T10:00:00Z"
 format_version: 1
 root: false
-parent_ticket: "ACP-100"
+parent_ticket_key: "ACP-100"
 relations:
   - type: "is_blocked_by"
     dimension: "blocks"
-    ticket: "ACP-120"
+    ticket_key: "ACP-120"
 attachments:
   - name: "design-spec.pdf"
     url: "https://linear.app/..."
@@ -147,6 +148,12 @@ For the first release, attachment handling is metadata-only. Ticket files includ
 
 Every file includes `format_version`. When the file format changes, the tool increments the version and re-syncs old files rather than depending on implicit compatibility.
 
+Stable ticket identity is based on the immutable Linear issue UUID, not on the human-facing issue key. The current issue key remains part of the file format because it is what humans and surrounding docs naturally reference, but it is treated as a presentation alias rather than the authoritative identity.
+
+If a tracked ticket's issue key changes, the tool renames the local file to the current key, updates the manifest's UUID-to-path mapping, and preserves the previous key as a locally known alias. This covers the documented case where a Linear issue moves to another team in the same workspace and receives a new issue ID. Agents should therefore resolve ticket references through the manifest rather than by depending on Linear URL redirects or by scanning file contents.
+
+This alias guarantee is intentionally bounded in the first release: offline resolution is guaranteed only for issue-key changes observed after the tool starts tracking a given ticket. If the Linear API later exposes authoritative historical aliases for a ticket, the tool should ingest them as well; that enhancement is deferred to [FW-4](<future-work.md#fw-4-historical-ticket-alias-import>).
+
 ### 2.1 Context Manifest and Non-Ticket Files
 
 Each `context_dir` also contains a small manifest file, `.context-sync.yml`, that stores directory-level metadata that should not require opening ticket files to discover.
@@ -154,13 +161,14 @@ Each `context_dir` also contains a small manifest file, `.context-sync.yml`, tha
 For the first release, the manifest is the authoritative source for:
 
 - the workspace identity bound to the directory, including a stable workspace ID and a human-readable workspace slug;
-- the current root-ticket set;
+- the current root-ticket set, keyed by stable ticket UUID;
+- ticket identity lookup metadata, including UUID-to-current-key and path mappings plus known key aliases back to UUID;
 - the context-level format version;
 - snapshot-pass metadata, including the last completed snapshot mode and timestamps for when that pass started and completed.
 
 This manifest is how the tool knows whether an `add` request belongs to the workspace already tracked by the directory. If the caller supplies a Linear URL, the tool may use the URL's workspace slug as an early preflight check, but the authoritative validation is still the fetched ticket's workspace identity compared against the manifest's workspace identity.
 
-No separate secondary index file is introduced in the first release. The manifest already solves the two directory-level lookup problems that matter most in v1: "which workspace is this?" and "which tickets are roots?" Ticket files still retain their own `root` flag for local readability, but the manifest is the authoritative root-set source for refresh and add flows.
+No separate secondary index file is introduced in the first release. The manifest already solves the directory-level lookup problems that matter most in v1: "which workspace is this?", "which tickets are roots?", and "which locally tracked ticket does this key or alias refer to?" Ticket files still retain their own `root` flag for local readability, but the manifest is the authoritative root-set and ticket-identity source for refresh, add, and remove-root flows.
 
 The only other required non-ticket file is a transient lock file, `.context-sync.lock`, used to enforce the single-writer rule for mutating operations.
 
@@ -335,18 +343,6 @@ For many intended callers, the snapshot lives in git-managed files, which gives 
 ---
 
 ## 9. Open Questions
-
-### TQ-6: Ticket Identity and Rename Semantics
-
-The file format uses the human-facing ticket identifier in filenames, but the ADR does not yet resolve how identity behaves if that identifier changes.
-
-Questions to answer:
-
-- Should the filename be based on the stable Linear UUID, the human-facing issue key, or both?
-- If the issue key changes, does the tool rename the file, create an alias, or keep the old filename?
-- Which identifier is authoritative for deduplication and refresh?
-
-This needs an answer before low-level design because it affects directory layout, parser behavior, and migration logic.
 
 ### TQ-8: Change Detection Granularity
 

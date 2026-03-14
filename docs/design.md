@@ -65,6 +65,8 @@ result = await syncer.remove_root(ticket_ref="ACP-999")
 result = await syncer.diff()
 ```
 
+Caller-facing inputs continue to use familiar issue keys or Linear issue URLs for ergonomics. Internally, once a ticket is resolved, the stable Linear UUID becomes the authoritative identity used for deduplication, root membership, and issue-key-change handling.
+
 Traversal semantics and interface rationale live in [adr.md](<adr.md>).
 
 ---
@@ -112,12 +114,18 @@ The manifest is the authoritative directory-level metadata file. It stores:
 
 - the context format version;
 - the bound Linear workspace identity, including stable workspace ID and workspace slug;
-- the current root-ticket set.
+- the current root-ticket set, keyed by stable ticket UUID;
+- a ticket lookup table that maps stable ticket UUIDs to current issue keys and current file paths;
+- a key-alias table that maps locally known current and previous issue keys back to stable ticket UUIDs;
 - snapshot-pass metadata, including the last completed snapshot mode and timestamps for the most recent completed pass.
 
-This design keeps v1 simple. We do not introduce a separate general-purpose index file for roots or ticket lookup. The manifest already answers the two important directory-level questions quickly: which workspace does this snapshot belong to, and which tickets are roots?
+This design keeps v1 simple. We do not introduce a separate general-purpose index file beyond the manifest. The manifest already answers the important directory-level questions quickly: which workspace does this snapshot belong to, which tickets are roots, and which locally tracked ticket does a current or previously observed issue key refer to?
 
 Because the manifest is authoritative for roots, deleting a ticket file by hand is not a supported way to remove a root. If the ticket remains in the manifest root set, a later refresh may recreate the file.
+
+Ticket files remain named by the current human-facing issue key for readability. The stable Linear UUID is the authoritative identity used for deduplication, root membership, and issue-key-change handling. When the tool observes that a tracked ticket's current issue key changed, it renames the local file and preserves the previous key in the manifest alias table so local agents can still resolve old references offline. That includes the documented case where a Linear issue is moved to another team in the same workspace and receives a new issue ID.
+
+That offline alias support is intentionally bounded in v1. The tool can preserve issue-key-change history only from the point it starts tracking a ticket unless the API itself exposes older aliases; importing such historical aliases is deferred to [FW-4](<future-work.md#fw-4-historical-ticket-alias-import>).
 
 ---
 
@@ -128,15 +136,15 @@ Because the manifest is authoritative for roots, deleting a ticket file by hand 
 ```python
 @dataclass
 class SyncResult:
-    created: list[str]       # ticket IDs of newly created files
-    updated: list[str]       # ticket IDs of files that were refreshed
-    unchanged: list[str]     # ticket IDs of files that were fresh (skipped)
-    removed: list[str]       # ticket IDs of derived files pruned (no longer reachable from any root)
+    created: list[str]       # current issue keys of newly created files
+    updated: list[str]       # current issue keys of files that were refreshed
+    unchanged: list[str]     # current issue keys of files that were fresh (skipped)
+    removed: list[str]       # current issue keys of derived files pruned
     errors: list[SyncError]  # tickets that could not be fetched
 
 @dataclass
 class SyncError:
-    ticket_id: str
+    ticket_id: str           # current issue key for reporting
     error_type: str          # e.g., "not_found", "permission_denied", "api_error"
     message: str
     retriable: bool
@@ -147,7 +155,7 @@ class SyncError:
 ```python
 @dataclass
 class DiffEntry:
-    ticket_id: str
+    ticket_id: str            # current issue key for reporting
     status: str               # "current", "stale", "missing_locally", "missing_remotely"
     changed_fields: list[str]  # e.g., ["status", "comments"] — empty if current
 
@@ -202,7 +210,7 @@ sync(root_ticket_id, max_tickets, dimensions)
   ├─ Load or initialize `.context-sync.yml`
   ├─ Fetch root ticket from Linear
   ├─ Verify that the root ticket belongs to the configured workspace
-  ├─ Add root to the manifest root set if needed
+  ├─ Add root UUID to the manifest root set if needed
   ├─ Load the full root set from the manifest
   ├─ Recompute the reachable graph from all roots
   │
@@ -217,6 +225,9 @@ sync(root_ticket_id, max_tickets, dimensions)
   │   └─ Continue until queue empty or cap reached
   │
   ├─ For each fetched ticket:
+  │   ├─ Update manifest UUID/current-key/path mappings
+  │   ├─ Preserve any superseded issue key as a manifest alias
+  │   ├─ Rename the local file if the current issue key changed
   │   └─ Rewrite the ticket file regardless of local freshness
   │
   ├─ Prune derived tickets no longer reachable
@@ -233,8 +244,8 @@ sync(root_ticket_id, max_tickets, dimensions)
 refresh()
   │
   ├─ Acquire exclusive writer lock for context_dir
-  ├─ Read frontmatter from all tracked files in context_dir
   ├─ Load and validate `.context-sync.yml`
+  ├─ Read frontmatter from all tracked files in context_dir
   ├─ Load the full root set from the manifest
   ├─ Recompute the reachable graph from all roots
   ├─ Batch-query Linear for per-ticket updated_at values via `linear-client`
@@ -242,6 +253,9 @@ refresh()
   ├─ For each reachable ticket where updated_at > last_synced_at
   │   │  or where no local file exists:
   │   ├─ Re-fetch full ticket data
+  │   ├─ Update manifest UUID/current-key/path mappings
+  │   ├─ Preserve any superseded issue key as a manifest alias
+  │   ├─ Rename the local file if the current issue key changed
   │   └─ Rewrite file
   │
   ├─ Prune derived tickets no longer reachable
@@ -262,11 +276,12 @@ add(ticket_ref)
   ├─ Acquire exclusive writer lock for context_dir
   ├─ Load or initialize `.context-sync.yml`
   ├─ Normalize ticket_ref (issue key or Linear issue URL)
+  ├─ Attempt local resolution through the manifest alias table
   ├─ If ticket_ref is a URL and its workspace slug mismatches the manifest:
   │   └─ fail fast
-  ├─ Fetch the referenced ticket from Linear
+  ├─ Fetch the referenced ticket from Linear if local alias lookup is insufficient
   ├─ Verify that the ticket workspace matches the manifest workspace
-  ├─ Add the ticket to the manifest root set
+  ├─ Add the ticket UUID to the manifest root set
   ├─ Execute the whole-snapshot refresh steps under the same writer lock
   ├─ Release writer lock
   │
@@ -280,8 +295,8 @@ diff()
   │
   ├─ Check for active writer lock on context_dir
   ├─ If a writer is active: fail fast with a clear message
-  ├─ Read frontmatter from all tracked files in context_dir
   ├─ Load and validate `.context-sync.yml`
+  ├─ Read frontmatter from all tracked files in context_dir
   ├─ Fetch current state from Linear for each tracked ticket
   │
   ├─ For each ticket:
@@ -300,9 +315,9 @@ remove_root(ticket_ref)
   ├─ Acquire exclusive writer lock for context_dir
   ├─ Load and validate `.context-sync.yml`
   ├─ Normalize ticket_ref (issue key or Linear issue URL)
-  ├─ Resolve the referenced ticket identity
-  ├─ Verify that the ticket is currently in the manifest root set
-  ├─ Remove the ticket from the manifest root set
+  ├─ Resolve the referenced ticket UUID through the manifest alias table
+  ├─ Verify that the ticket UUID is currently in the manifest root set
+  ├─ Remove the ticket UUID from the manifest root set
   ├─ Execute the whole-snapshot refresh steps under the same writer lock
   ├─ Release writer lock
   │
