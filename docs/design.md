@@ -188,7 +188,7 @@ refresh()
   ├─ Read frontmatter from all tracked files in context_dir
   ├─ Load the full root set
   ├─ Recompute the reachable graph from all roots
-  ├─ Batch-query Linear for updated_at values (single GraphQL call, see [TQ-1](<adr.md#tq-1-batch-updated_at-query>) in [adr.md](<adr.md>))
+  ├─ Batch-query Linear for per-ticket updated_at values via `linear-client`
   │
   ├─ For each reachable ticket where updated_at > last_synced_at
   │   │  or where no local file exists:

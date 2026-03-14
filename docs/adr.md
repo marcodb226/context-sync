@@ -241,7 +241,7 @@ On refresh:
 
 This approach avoids a separate state store and supports efficient incremental refreshes. The steady-state goal is a lightweight refresh path that scales primarily with changed tickets rather than the full size of the context directory, aside from the bounded metadata work required to determine freshness. In other words, the common case should be "check many, fully re-fetch few."
 
-The preferred implementation is a batched `updated_at` query rather than one remote call per ticket. That batching detail remains an open implementation question in [TQ-1](#tq-1-batch-updated_at-query).
+The refresh path uses a batched GraphQL freshness query via `linear-client` rather than one remote call per ticket. The query should include each tracked reachable ticket with its own `updated_at` value, so refresh can compare remote freshness markers against local `last_synced_at` values and then fully re-fetch only the changed or newly discovered tickets. This batch-by-ticket `updated_at` check is the default refresh mechanism, not an optional optimization.
 
 The tool also supports a diff mode that compares the current context directory against live Linear data without modifying local files. Diff mode exists for both human debugging and pre-refresh validation.
 
@@ -279,18 +279,6 @@ These guarantees are part of the architecture because callers need them to trust
 ---
 
 ## 9. Open Questions
-
-### TQ-1: Batch `updated_at` Query
-
-Delta refresh needs an efficient way to check freshness for many tracked tickets.
-
-Options:
-
-- one GraphQL query using an `id in [...]` filter to fetch `updated_at` for all tracked tickets;
-- a broader `updatedAt >= ...` query intersected with the tracked set;
-- per-ticket lookups for the initial version, with optimization deferred.
-
-Recommendation: prefer the batched ID-based query if it can be exposed cleanly through `linear-client`.
 
 ### TQ-2: Comment Handling for Large Threads
 
