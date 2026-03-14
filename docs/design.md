@@ -37,18 +37,11 @@ class ContextSyncer:
     async def add(
         self,
         ticket_id: str,
-        depth: int = 1,
     ) -> SyncResult: ...
 
-    async def refresh(
-        self,
-        tickets: list[str] | None = None,
-    ) -> SyncResult: ...
+    async def refresh(self) -> SyncResult: ...
 
-    async def diff(
-        self,
-        tickets: list[str] | None = None,
-    ) -> DiffResult: ...
+    async def diff(self) -> DiffResult: ...
 
 # Initial sync: dump the root ticket plus its reachable neighborhood
 result = await syncer.sync(root_ticket_id="ACP-123", max_tickets=200)
@@ -56,11 +49,9 @@ result = await syncer.sync(root_ticket_id="ACP-123", max_tickets=200)
 # Delta refresh: update stale files in place
 result = await syncer.refresh()
 
-# Targeted refresh before a sensitive write operation
-result = await syncer.refresh(tickets=["ACP-123"])
-
-# Expand with a newly discovered ticket and pin it as a new root
-result = await syncer.add(ticket_id="ACP-999", depth=2)
+# Expand with a newly discovered ticket by adding it as a root,
+# then run whole-snapshot refresh semantics across all roots
+result = await syncer.add(ticket_id="ACP-999")
 
 # Compare local files to Linear without modifying anything
 result = await syncer.diff()
@@ -83,11 +74,8 @@ linear-context-sync sync ACP-123 --max-tickets 200 --context-dir linear-context 
 # Delta refresh all
 linear-context-sync refresh --context-dir linear-context
 
-# Targeted refresh
-linear-context-sync refresh --tickets ACP-123,ACP-120 --context-dir linear-context
-
-# Expand with a newly discovered root
-linear-context-sync add ACP-999 --depth 2 --context-dir linear-context
+# Expand with a newly discovered root, then refresh the whole snapshot
+linear-context-sync add ACP-999 --context-dir linear-context
 
 # Diff against Linear's live state
 linear-context-sync diff --context-dir linear-context --json
@@ -170,7 +158,9 @@ The tool does **not** manage its own Linear authentication.
 sync(root_ticket_id, max_tickets, dimensions)
   │
   ├─ Fetch root ticket from Linear
-  ├─ Mark root at depth 0
+  ├─ Add root to the tracked root set if needed
+  ├─ Load any existing roots from the context directory
+  ├─ Recompute the reachable graph from all roots
   │
   ├─ BFS loop:
   │   ├─ Dequeue ticket at depth N
@@ -183,9 +173,7 @@ sync(root_ticket_id, max_tickets, dimensions)
   │   └─ Continue until queue empty or cap reached
   │
   ├─ For each fetched ticket:
-  │   ├─ If file exists and fresh (updated_at <= last_synced_at): skip
-  │   ├─ If file exists and stale: rewrite
-  │   └─ If no file: write new
+  │   └─ Rewrite the ticket file regardless of local freshness
   │
   ├─ Prune derived tickets no longer reachable
   │
@@ -195,34 +183,32 @@ sync(root_ticket_id, max_tickets, dimensions)
 ### 6.2 Refresh Flow
 
 ```
-refresh(tickets=None)
+refresh()
   │
-  ├─ If tickets specified: scope = those tickets
-  │  Else: scope = all files in context_dir
-  │
-  ├─ Read frontmatter from each file in scope
+  ├─ Read frontmatter from all tracked files in context_dir
+  ├─ Load the full root set
+  ├─ Recompute the reachable graph from all roots
   ├─ Batch-query Linear for updated_at values (single GraphQL call, see [TQ-1](<adr.md#tq-1-batch-updated_at-query>) in [adr.md](<adr.md>))
   │
-  ├─ For each ticket where updated_at > last_synced_at:
+  ├─ For each reachable ticket where updated_at > last_synced_at
+  │   │  or where no local file exists:
   │   ├─ Re-fetch full ticket data
   │   └─ Rewrite file
   │
-  ├─ Recompute reachable graph from all roots
   ├─ Prune derived tickets no longer reachable
   │
   └─ Return SyncResult
 ```
 
+Adding a new root to an existing context directory should use this same whole-snapshot refresh flow after recording the new root. The design intentionally avoids root-local refresh because overlapping root graphs would otherwise produce mixed-time snapshots.
+
 ### 6.3 Diff Flow
 
 ```
-diff(tickets=None)
+diff()
   │
-  ├─ If tickets specified: scope = those tickets
-  │  Else: scope = all files in context_dir
-  │
-  ├─ Read frontmatter from each file in scope
-  ├─ Fetch current state from Linear for each ticket
+  ├─ Read frontmatter from all tracked files in context_dir
+  ├─ Fetch current state from Linear for each tracked ticket
   │
   ├─ For each ticket:
   │   ├─ Compare local fields vs remote fields

@@ -15,6 +15,7 @@ This ADR turns the needs described in [problem-statement.md](<problem-statement.
 - support bounded graph traversal beyond a single hop;
 - allow the set of root tickets to grow over time instead of treating the initial root as the only durable anchor;
 - support lightweight refresh behavior where unchanged tickets avoid a full re-fetch and only changed tickets incur full materialization work;
+- distinguish clearly between full sync, incremental refresh, and diff-only inspection so callers know which operations mutate the snapshot and at what scope;
 - remain reusable outside the agent control plane;
 - remain read-only with respect to Linear.
 
@@ -81,6 +82,8 @@ Every ticket in the context directory is classified as either root or derived.
 - Derived tickets enter the directory because they were discovered during traversal from at least one root.
 
 The root set is intentionally mutable over the lifetime of a context directory. The tool must support expanding the pool of roots when a caller discovers an additional ticket that should remain part of the long-lived working set. Once added, that ticket participates in future traversal, refresh, and pruning decisions as a first-class root.
+
+Root expansion must not be implemented as a partial rebuild of only the newly added root's local subgraph when a snapshot already exists. If a new root overlaps the graph of an existing root, rebuilding only the new root's neighborhood would refresh the overlap at time `T` while leaving non-overlapping portions of the old snapshot at time `T-1`, producing a mixed-time checkpoint. Root-set mutation therefore has to be paired with a whole-snapshot operation, not a root-local rebuild.
 
 Traversal depth is always measured from a root. A derived ticket's effective depth is the shortest distance from any root. Whether its outgoing edges are followed depends on the configured depth of each edge's dimension relative to that effective depth.
 
@@ -187,7 +190,44 @@ Package layout and implementation flow details belong in [design.md](<design.md>
 
 ---
 
-## 5. Refresh and Diff Strategy
+## 5. Operating Modes
+
+The tool has three persisted operating modes: `sync`, `refresh`, and `diff`.
+
+### 5.1 `sync`: Full-Snapshot Rebuild
+
+`sync` is the full rebuild mode. It starts from the full current root set, bootstrapping that root set if needed, traverses the reachable graph, and performs a fresh pull for every reachable ticket.
+
+In `sync` mode:
+
+- the tool rewrites reachable ticket files regardless of whether local metadata suggests they were already fresh;
+- the tool uses all currently tracked roots as starting points, not just the most recently added root;
+- the tool prunes derived tickets that are no longer reachable from the recomputed root set.
+
+`sync` exists for initial materialization, format migrations, explicit rebuild requests, and any situation where replacing the snapshot wholesale is preferable to incremental optimization.
+
+### 5.2 `refresh`: Incremental Whole-Snapshot Update
+
+`refresh` is the lightweight whole-snapshot mode. It also starts from the full current root set, but it uses snapshot metadata to avoid a full re-fetch when a ticket has not changed.
+
+In `refresh` mode:
+
+- the tool recomputes reachability from the full root set;
+- it checks freshness across the whole tracked snapshot;
+- it fully re-fetches only tickets that changed remotely or are newly discovered;
+- it prunes derived tickets that are no longer reachable.
+
+The first version should treat `refresh` as a whole-snapshot operation, not a root-local or ticket-local refresh mode. Partial refresh of only one root's neighborhood risks creating a mixed-time snapshot when roots overlap.
+
+Adding a root to an existing context directory should therefore use `refresh` semantics by default: mutate the root set first, then run a whole-snapshot incremental update from all roots. Root addition is not a separate snapshot-construction mode.
+
+### 5.3 `diff`: Non-Mutating Drift Inspection
+
+`diff` compares the current local snapshot to live Linear state without modifying files. It exists to let humans and automation see what moved since the current checkpoint before deciding whether to run `refresh` or `sync`.
+
+---
+
+## 6. Refresh and Diff Strategy
 
 Freshness is determined from information stored in the files themselves. Each ticket file carries `last_synced_at`, and the remote source of truth carries `updated_at`.
 
@@ -207,7 +247,7 @@ The tool also supports a diff mode that compares the current context directory a
 
 ---
 
-## 6. Failure Model
+## 7. Failure Model
 
 Linked-ticket failures are reported per ticket rather than failing the entire run. The tool should return partial results whenever it can do so safely.
 
@@ -223,7 +263,7 @@ Result types should therefore carry explicit created, updated, unchanged, remove
 
 ---
 
-## 7. Operating Guarantees
+## 8. Operating Guarantees
 
 The tool makes the following guarantees:
 
@@ -238,7 +278,7 @@ These guarantees are part of the architecture because callers need them to trust
 
 ---
 
-## 8. Open Questions
+## 9. Open Questions
 
 ### TQ-1: Batch `updated_at` Query
 
@@ -392,3 +432,15 @@ Questions to answer:
 - What minimum provenance should be available outside debug mode?
 
 This matters because debugging and trustworthiness are core reasons the tool exists.
+
+### TQ-15: Do We Need a Separate Targeted Read Path?
+
+The problem statement includes pre-write validation as an important workflow, but this ADR now leans toward making `refresh` a whole-snapshot operation in order to preserve checkpoint coherence.
+
+Questions to answer:
+
+- If a caller wants a very cheap "check just this one ticket before writing" operation, should that exist outside the persisted snapshot modes?
+- If so, should it be exposed as a transient library helper rather than as `refresh`?
+- How do we prevent callers from confusing a targeted transient read with a coherent snapshot update?
+
+This matters because it affects both API shape and how strictly we preserve whole-snapshot semantics.

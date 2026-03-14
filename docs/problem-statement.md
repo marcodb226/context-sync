@@ -40,10 +40,15 @@ A satisfactory solution should:
 - preserve that context as a local artifact that both agents and humans can inspect directly;
 - support bounded traversal beyond a single hop so nearby dependency structure is available when the work depends on it;
 - allow callers to expand the pool of root tickets over time instead of treating the first requested ticket as the only durable anchor;
+- provide a full-sync mode that rebuilds the reachable snapshot from the full root set and rewrites the tracked ticket files from a fresh pull;
 - make refresh incremental so restart, resume, and targeted validation do not begin from zero every time;
 - provide a lightweight refresh path that updates local context by fetching only what changed since the previous snapshot;
+- apply whole-set refresh semantics when the root pool changes, rather than rebuilding only the newly added root's local subgraph;
+- provide a diff mode that shows how Linear has moved relative to the current local snapshot without mutating files;
 - be reusable outside the control plane rather than being hardwired into one caller;
 - remain read-only with respect to Linear.
+
+As the root set grows over time, the tool also needs clear mode boundaries. If a caller adds a new root `B` and rebuilds only `B`'s neighborhood, any tickets shared between `B` and an existing root `A` could be refreshed at time `T`, while the portion of `A`'s neighborhood reachable only from `A` still reflects time `T-1`. The solution therefore needs operating modes that preserve a coherent whole-snapshot story rather than encouraging root-local rebuild behavior when roots overlap.
 
 The exact traversal model, persistence format, interface shape, and refresh semantics are design decisions documented in [adr.md](<adr.md>) and [design.md](<design.md>).
 
