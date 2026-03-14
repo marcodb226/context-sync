@@ -11,7 +11,7 @@
 The primary interface is an async Python class that receives an authenticated `Linear` client and a target directory:
 
 ```python
-from linear_context_sync import ContextSyncer
+from context_sync import ContextSyncer
 
 syncer = ContextSyncer(
     linear=linear_client_instance,  # reuse the caller's authenticated client
@@ -67,18 +67,18 @@ For human use and shell invocation:
 
 ```bash
 # Initial sync
-linear-context-sync sync ACP-123 --max-tickets 200 --context-dir linear-context \
+context-sync sync ACP-123 --max-tickets 200 --context-dir linear-context \
   --depth-blocks 3 --depth-is-blocked-by 2 --depth-parent 2 \
   --depth-child 2 --depth-relates-to 1 --depth-ticket-ref 1
 
 # Delta refresh all
-linear-context-sync refresh --context-dir linear-context
+context-sync refresh --context-dir linear-context
 
 # Expand with a newly discovered root, then refresh the whole snapshot
-linear-context-sync add ACP-999 --context-dir linear-context
+context-sync add ACP-999 --context-dir linear-context
 
 # Diff against Linear's live state
-linear-context-sync diff --context-dir linear-context --json
+context-sync diff --context-dir linear-context --json
 ```
 
 The CLI is a thin wrapper over the async library API, using `asyncio.run()` as the entry point. All logic lives in the library layer.

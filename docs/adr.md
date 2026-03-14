@@ -188,6 +188,8 @@ This separation keeps concerns clear:
 - the context-sync tool owns graph traversal, local persistence, and snapshot management;
 - the agent control plane consumes the tool instead of embedding its materialization logic.
 
+The public tool name is `context-sync`. The name intentionally omits `linear` even though the first release is Linear-only, because the underlying snapshot/materialization pattern may later prove useful for adjacent artifact types such as pull requests. The neutral name leaves room for that evolution without changing the current scope of this ADR.
+
 The tool should be distributed the same way as other private internal Python packages, as a private wheel that consumers can install into their own environments.
 
 Package layout and implementation flow details belong in [design.md](<design.md>).
@@ -283,10 +285,6 @@ These guarantees are part of the architecture because callers need them to trust
 ---
 
 ## 9. Open Questions
-
-### TQ-2: Tool Name
-
-Proposed name: `linear-context-sync`.
 
 ### TQ-3: Concurrent Fetch Strategy
 
