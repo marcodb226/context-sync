@@ -115,28 +115,28 @@ Minimum frontmatter includes:
 
 ```yaml
 ---
-ticket_uuid: "9c9e3d7a-7e1c-4f22-9db4-2d640fb4bb20"
-ticket_key: "ACP-123"
-title: "Implement polling loop"
-status: "In Progress"
 assignee: "developer-bot"
-creator: "architect-bot"
-labels:
-  - "Type / Task"
-priority: 2
-created_at: "2026-03-10T14:30:00Z"
-updated_at: "2026-03-13T09:15:00Z"
-last_synced_at: "2026-03-13T10:00:00Z"
-format_version: 1
-root: false
-parent_ticket_key: "ACP-100"
-relations:
-  - type: "is_blocked_by"
-    dimension: "blocks"
-    ticket_key: "ACP-120"
 attachments:
   - name: "design-spec.pdf"
     url: "https://linear.app/..."
+created_at: "2026-03-10T14:30:00Z"
+creator: "architect-bot"
+format_version: 1
+labels:
+  - "Type / Task"
+last_synced_at: "2026-03-13T10:00:00Z"
+parent_ticket_key: "ACP-100"
+priority: 2
+relations:
+  - dimension: "blocks"
+    ticket_key: "ACP-120"
+    type: "is_blocked_by"
+root: false
+status: "In Progress"
+ticket_key: "ACP-123"
+ticket_uuid: "9c9e3d7a-7e1c-4f22-9db4-2d640fb4bb20"
+title: "Implement polling loop"
+updated_at: "2026-03-13T09:15:00Z"
 ---
 ```
 
@@ -173,6 +173,30 @@ This manifest is how the tool knows whether an `add` request belongs to the work
 No separate secondary index file is introduced in the first release. The manifest already solves the directory-level lookup problems that matter most in v1: "which workspace is this?", "which tickets are roots?", and "which locally tracked ticket does this key or alias refer to?" Ticket files still retain their own `root` flag for local readability, but the manifest is the authoritative root-set and ticket-identity source for refresh, add, and remove-root flows.
 
 The only other required non-ticket file is a transient lock file, `.context-sync.lock`, used to enforce the single-writer rule for mutating operations.
+
+### 2.2 Normalization and Rendered Body Structure
+
+Deterministic serialization is part of the architectural contract. Re-running `sync` or `refresh` without upstream changes must not rewrite files merely because the serializer chose a different but equivalent ordering or empty-field representation.
+
+For the first release, the normalization contract is:
+
+- YAML mapping keys are emitted in lexicographic order at each nesting level; list element order is controlled separately by the collection-specific rules below;
+- timestamps are serialized in canonical UTC RFC3339 form using `Z`, preserving fractional seconds only when the source value includes them;
+- optional scalar fields are omitted when absent, and empty collections are omitted rather than emitted as empty lists;
+- labels are always rendered as one deterministic display string: `<group> / <label>` when a label group is present, otherwise just `<label>`; labels are sorted lexicographically by that full rendered string;
+- relations are sorted deterministically by dimension, relation type, and target identity; when a stable target UUID is available internally it should drive the sort, even though the file renders the current readable ticket key;
+- attachments are sorted deterministically by stable URL, then by name as a tie-breaker.
+
+The body is also normalized. The tool writes one description section and one comments section in a fixed order. The comments section is rendered as comment threads rather than as a flat list.
+
+For comment rendering:
+
+- top-level comment threads are ordered newest-first by thread activity;
+- within a thread, the parent comment appears first and nested replies are embedded directly under that parent rather than flattened into the global order;
+- replies within a sibling set are rendered in chronological order so the local conversation remains readable;
+- the thread-level `resolved` flag is rendered with the thread metadata and is also available in the machine-readable thread marker.
+
+Section and comment boundaries must be machine-identifiable without requiring the tool to parse arbitrary user Markdown. The rendered body therefore uses namespaced HTML comment markers around machine-owned sections and comment/thread blocks. Only exact `context-sync:` markers emitted by the serializer count as structure; enclosed Markdown content is treated as opaque payload and is not recursively parsed for more structure.
 
 ---
 
@@ -349,18 +373,6 @@ For many intended callers, the snapshot lives in git-managed files, which gives 
 ---
 
 ## 9. Open Questions
-
-### TQ-9: File-Normalization and Diff-Stability Rules
-
-The ADR chooses Markdown plus frontmatter, but it does not yet define normalization rules for stable output.
-
-Questions to answer:
-
-- What ordering rules apply to labels, relations, and attachments?
-- How are timestamps formatted canonically?
-- How are empty fields represented so repeated syncs do not churn files unnecessarily?
-
-This matters because idempotency depends on deterministic serialization, not just correct data.
 
 ### TQ-10: Missing or Inaccessible Remote Tickets
 

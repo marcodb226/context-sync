@@ -127,6 +127,41 @@ Ticket files remain named by the current human-facing issue key for readability.
 
 That offline alias support is intentionally bounded in v1. The tool can preserve issue-key-change history only from the point it starts tracking a ticket unless the API itself exposes older aliases; importing such historical aliases is deferred to [FW-4](<future-work.md#fw-4-historical-ticket-alias-import>).
 
+### 2.2 Ticket File Rendering
+
+Ticket files are rendered deterministically. YAML mapping keys are emitted in lexicographic order at each nesting level, optional empty values are omitted, and timestamps are normalized to UTC RFC3339 with `Z`. List element order follows the specific normalization rules for that collection type.
+
+Labels are rendered as a single display string. If a label group exists, the stored string is `<group> / <label>`; otherwise it is just `<label>`. Labels are sorted lexicographically by that full rendered string.
+
+The body has a fixed section order:
+
+1. description
+2. comments
+
+The comments section is rendered as threads, not as a flat chronological list. Top-level threads are ordered newest-first by thread activity. Within each thread, the parent comment is rendered first and replies are nested directly under that parent. Replies within a sibling set are rendered in chronological order so the local conversation reads naturally. The thread-level `resolved` flag belongs with the rendered thread metadata and with the machine-readable thread marker.
+
+Machine-readable boundaries use namespaced HTML comment markers, while human-readable headings remain in the Markdown for direct browsing. A representative shape is:
+
+```markdown
+<!-- context-sync:section id=description-<ticket_uuid> start -->
+## Description
+...description markdown...
+<!-- context-sync:section id=description-<ticket_uuid> end -->
+
+<!-- context-sync:section id=comments-<ticket_uuid> start -->
+## Comments
+<!-- context-sync:thread id=<root_comment_id> resolved=false start -->
+### Thread by Alice at 2026-03-13T09:15:00Z
+...root comment markdown...
+<!-- context-sync:comment id=<reply_comment_id> parent=<root_comment_id> start -->
+...reply markdown...
+<!-- context-sync:comment id=<reply_comment_id> end -->
+<!-- context-sync:thread id=<root_comment_id> end -->
+<!-- context-sync:section id=comments-<ticket_uuid> end -->
+```
+
+Parsers should recognize only exact `context-sync:` markers emitted by the serializer. The Markdown inside those boundaries is opaque content and must not be recursively parsed for additional structure.
+
 ---
 
 ## 3. Return Contracts
