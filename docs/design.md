@@ -14,35 +14,59 @@ The primary interface is an async Python class that receives an authenticated `L
 from linear_context_sync import ContextSyncer
 
 syncer = ContextSyncer(
-    linear=linear_client_instance,   # reuse the caller's authenticated client
+    linear=linear_client_instance,  # reuse the caller's authenticated client
     context_dir=Path("/work/repo/linear-context"),
+    dimensions={
+        "blocks": 3,
+        "is_blocked_by": 2,
+        "parent": 2,
+        "child": 2,
+        "relates_to": 1,
+        "ticket_ref": 1,
+    },
 )
 
-# Initial sync: dump ticket + graph neighborhood
-result = await syncer.sync(
-    root_ticket_id="ACP-123",
-    depth=3,
-    max_tickets=200,
-)
-# result: SyncResult(created=["ACP-123", "ACP-120", ...], updated=[], unchanged=[], errors=[])
+class ContextSyncer:
+    async def sync(
+        self,
+        root_ticket_id: str,
+        max_tickets: int = 200,
+        dimensions: dict[str, int] | None = None,
+    ) -> SyncResult: ...
 
-# Delta refresh: update stale files
+    async def add(
+        self,
+        ticket_id: str,
+        depth: int = 1,
+    ) -> SyncResult: ...
+
+    async def refresh(
+        self,
+        tickets: list[str] | None = None,
+    ) -> SyncResult: ...
+
+    async def diff(
+        self,
+        tickets: list[str] | None = None,
+    ) -> DiffResult: ...
+
+# Initial sync: dump the root ticket plus its reachable neighborhood
+result = await syncer.sync(root_ticket_id="ACP-123", max_tickets=200)
+
+# Delta refresh: update stale files in place
 result = await syncer.refresh()
-# Checks all files in context_dir, updates those where updated_at > last_synced_at
 
-# Targeted refresh: refresh specific ticket(s) before a write operation
+# Targeted refresh before a sensitive write operation
 result = await syncer.refresh(tickets=["ACP-123"])
 
-# Expand: add new tickets discovered during execution
-result = await syncer.sync(
-    root_ticket_id="ACP-999",
-    depth=2,
-    max_tickets=50,
-)
-# Skips tickets already present and fresh
+# Expand with a newly discovered ticket and pin it as a new root
+result = await syncer.add(ticket_id="ACP-999", depth=2)
+
+# Compare local files to Linear without modifying anything
+result = await syncer.diff()
 ```
 
-See [cr-tool-problem-statement.md](cr-tool-problem-statement.md) F6 for the full method signatures and dimension configuration.
+Traversal semantics and interface rationale live in [adr.md](<adr.md>).
 
 ---
 
@@ -52,7 +76,9 @@ For human use and shell invocation:
 
 ```bash
 # Initial sync
-linear-context-sync sync ACP-123 --depth 3 --max-tickets 200 --context-dir linear-context
+linear-context-sync sync ACP-123 --max-tickets 200 --context-dir linear-context \
+  --depth-blocks 3 --depth-is-blocked-by 2 --depth-parent 2 \
+  --depth-child 2 --depth-relates-to 1 --depth-ticket-ref 1
 
 # Delta refresh all
 linear-context-sync refresh --context-dir linear-context
@@ -60,11 +86,8 @@ linear-context-sync refresh --context-dir linear-context
 # Targeted refresh
 linear-context-sync refresh --tickets ACP-123,ACP-120 --context-dir linear-context
 
-# Expand with new root
-linear-context-sync sync ACP-999 --depth 2 --context-dir linear-context
-
-# Dry run (show what would change)
-linear-context-sync sync ACP-123 --depth 3 --dry-run
+# Expand with a newly discovered root
+linear-context-sync add ACP-999 --depth 2 --context-dir linear-context
 
 # Diff against Linear's live state
 linear-context-sync diff --context-dir linear-context --json
@@ -178,7 +201,7 @@ refresh(tickets=None)
   │  Else: scope = all files in context_dir
   │
   ├─ Read frontmatter from each file in scope
-  ├─ Batch-query Linear for updated_at values (single GraphQL call, see TQ-1 in tool-adr.md)
+  ├─ Batch-query Linear for updated_at values (single GraphQL call, see [TQ-1](<adr.md#tq-1-batch-updated_at-query>) in [adr.md](<adr.md>))
   │
   ├─ For each ticket where updated_at > last_synced_at:
   │   ├─ Re-fetch full ticket data
