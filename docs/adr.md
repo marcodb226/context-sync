@@ -233,7 +233,7 @@ The library receives an authenticated `Linear` client instance from the caller i
 
 The CLI is a convenience layer over the library API. It is responsible for reading configuration and constructing its own authenticated client using the same environment and credential model used by [`docs/design/linear-client.md`](<design/linear-client.md>).
 
-Detailed method signatures and return types belong in [design.md](<design.md>), not in the problem statement.
+Detailed method signatures and return types belong in [`docs/design/0-top-level-design.md`](<design/0-top-level-design.md>), not in the problem statement.
 
 ---
 
@@ -255,7 +255,7 @@ A `context_dir` is scoped to exactly one Linear workspace in the first release. 
 
 The tool should be distributed the same way as other private internal Python packages, as a private wheel that consumers can install into their own environments.
 
-Package layout and implementation flow details belong in [design.md](<design.md>).
+Package layout and implementation flow details belong in [`docs/design/0-top-level-design.md`](<design/0-top-level-design.md>).
 
 ---
 

@@ -6,8 +6,8 @@
 
 Before writing or modifying any code, read and follow:
 
-- `docs/coding-guidelines.md` — formatting, type annotations, async patterns, exception handling, docstring format, testing, security rules.
-- `docs/execution-model.md` — execution model for implementation-plan ticket work.
+- `docs/policies/coding-guidelines.md` — formatting, type annotations, async patterns, exception handling, docstring format, testing, security rules.
+- `docs/policies/execution-model.md` — execution model for implementation-plan ticket work.
 
 ## Instruction file source of truth
 
@@ -44,26 +44,26 @@ If the change is not docs-only:
 
 Before marking any work performed under a named implementation-plan ticket as complete, verify:
 
-1. For non-docs-only changes, every rule in `docs/coding-guidelines.md` has been checked against the changed code.
+1. For non-docs-only changes, every rule in `docs/policies/coding-guidelines.md` has been checked against the changed code.
 2. For non-docs-only changes, `.venv/bin/ruff check` and `.venv/bin/ruff format --check` pass with no errors.
 3. For non-docs-only changes, all new and modified tests pass (`.venv/bin/python -m pytest tests/`).
 4. For work performed under a named implementation-plan ticket, the required artifact in `docs/execution/` is up to date.
 
 ## Execution artifact scope
 
-- `docs/execution/` is reserved for work performed under named tickets from repository implementation plans that adopt `docs/execution-model.md`, and for ticket-linked review/follow-up artifacts defined by that execution model.
+- `docs/execution/` is reserved for work performed under named tickets from repository implementation plans that adopt `docs/policies/execution-model.md`, and for ticket-linked review/follow-up artifacts defined by that execution model.
 - Do not create or update `docs/execution/` for ad hoc conversational requests, repository maintenance, or direct edits to planning, design, or instruction documents unless the work is explicitly tied to a named ticket or the user explicitly requests an execution artifact.
 - Editing `docs/implementation-plan.md`, `agent-instructions.md`, `AGENTS.md`, or `CLAUDE.md` is not, by itself, an implementation-plan ticket and must not trigger a new `docs/execution/` artifact unless a named ticket explicitly requires that edit.
 
 ## Ticket review requests
 
 Requests to review a named implementation-plan ticket (for example, `review M1-2` or `review M1-D3`) are treated as
-Phase B review work under `docs/execution-model.md`.
+Phase B review work under `docs/policies/execution-model.md`.
 
 For those requests, the agent must:
 
 - create or update the matching review artifact at `docs/execution/<ticket>-review.md`
-- follow the required review-file format from `docs/execution-model.md`
+- follow the required review-file format from `docs/policies/execution-model.md`
 - treat the repository review artifact as mandatory, not optional
 
 If the user also asks for chat-only feedback or says not to edit files, that conflicts with the

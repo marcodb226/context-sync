@@ -50,7 +50,7 @@ A satisfactory solution should:
 
 As the root set grows over time, the tool also needs clear mode boundaries. If a caller adds a new root `B` and rebuilds only `B`'s neighborhood, any tickets shared between `B` and an existing root `A` could be refreshed at time `T`, while the portion of `A`'s neighborhood reachable only from `A` still reflects time `T-1`. The solution therefore needs operating modes that preserve a coherent whole-snapshot story rather than encouraging root-local rebuild behavior when roots overlap.
 
-The exact traversal model, persistence format, interface shape, and refresh semantics are design decisions documented in [adr.md](<adr.md>) and [design.md](<design.md>).
+The exact traversal model, persistence format, interface shape, and refresh semantics are design decisions documented in [adr.md](<adr.md>) and [`docs/design/0-top-level-design.md`](<design/0-top-level-design.md>).
 
 ## Boundaries
 

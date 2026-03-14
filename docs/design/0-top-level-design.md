@@ -67,7 +67,7 @@ result = await syncer.diff()
 
 Caller-facing inputs continue to use familiar issue keys or Linear issue URLs for ergonomics. Internally, once a ticket is resolved, the stable Linear UUID becomes the authoritative identity used for deduplication, root membership, and issue-key-change handling.
 
-Traversal semantics and interface rationale live in [adr.md](<adr.md>).
+Traversal semantics and interface rationale live in [docs/adr.md](<../adr.md>).
 
 ---
 
@@ -125,7 +125,7 @@ Because the manifest is authoritative for roots, deleting a ticket file by hand 
 
 Ticket files remain named by the current human-facing issue key for readability. The stable Linear UUID is the authoritative identity used for deduplication, root membership, and issue-key-change handling. When the tool observes that a tracked ticket's current issue key changed, it renames the local file and preserves the previous key in the manifest alias table so local agents can still resolve old references offline. The concrete documented reason for this today is that a Linear issue can move to another team in the same workspace and receive a new issue ID. More generally, the implementation should treat any upstream reassignment of the human-facing issue key the same way.
 
-That offline alias support is intentionally bounded in v1. The tool can preserve issue-key-change history only from the point it starts tracking a ticket unless the API itself exposes older aliases; importing such historical aliases is deferred to [FW-4](<future-work.md#fw-4-historical-ticket-alias-import>).
+That offline alias support is intentionally bounded in v1. The tool can preserve issue-key-change history only from the point it starts tracking a ticket unless the API itself exposes older aliases; importing such historical aliases is deferred to [FW-4](<../future-work.md#fw-4-historical-ticket-alias-import>).
 
 ### 2.2 Ticket File Rendering
 
@@ -308,7 +308,7 @@ refresh()
 
 Adding a new root to an existing context directory should use this same whole-snapshot refresh flow after recording the new root. The design intentionally avoids root-local refresh because overlapping root graphs would otherwise produce mixed-time snapshots.
 
-The first release does not treat a richer activity or history timeline as part of this base refresh contract. If that data is added later, it may need its own persistence shape and freshness semantics as described in [FW-5](<future-work.md#fw-5-ticket-history-and-sectioned-ticket-artifacts>).
+The first release does not treat a richer activity or history timeline as part of this base refresh contract. If that data is added later, it may need its own persistence shape and freshness semantics as described in [FW-5](<../future-work.md#fw-5-ticket-history-and-sectioned-ticket-artifacts>).
 
 ### 6.3 Add Flow
 
