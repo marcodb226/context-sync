@@ -39,6 +39,11 @@ class ContextSyncer:
         ticket_ref: str,
     ) -> SyncResult: ...
 
+    async def remove_root(
+        self,
+        ticket_ref: str,
+    ) -> SyncResult: ...
+
     async def refresh(self) -> SyncResult: ...
 
     async def diff(self) -> DiffResult: ...
@@ -52,6 +57,9 @@ result = await syncer.refresh()
 # Expand with a newly discovered ticket by issue key or Linear URL,
 # then run whole-snapshot refresh semantics across all roots
 result = await syncer.add(ticket_ref="ACP-999")
+
+# Remove a root, then run whole-snapshot refresh semantics across all roots
+result = await syncer.remove_root(ticket_ref="ACP-999")
 
 # Compare local files to Linear without modifying anything
 result = await syncer.diff()
@@ -76,6 +84,9 @@ context-sync refresh --context-dir linear-context
 
 # Expand with a newly discovered root, then refresh the whole snapshot
 context-sync add ACP-999 --context-dir linear-context
+
+# Remove a root, then refresh the whole snapshot
+context-sync remove-root ACP-999 --context-dir linear-context
 
 # Diff against Linear's live state
 context-sync diff --context-dir linear-context --json
@@ -104,6 +115,8 @@ The manifest is the authoritative directory-level metadata file. It stores:
 - the current root-ticket set.
 
 This design keeps v1 simple. We do not introduce a separate general-purpose index file for roots or ticket lookup. The manifest already answers the two important directory-level questions quickly: which workspace does this snapshot belong to, and which tickets are roots?
+
+Because the manifest is authoritative for roots, deleting a ticket file by hand is not a supported way to remove a root. If the ticket remains in the manifest root set, a later refresh may recreate the file.
 
 ---
 
@@ -158,6 +171,7 @@ Errors are handled per-ticket. The tool never raises for a single linked-ticket 
 | Context directory already locked by a writer | Fail fast with a clear error; do not wait indefinitely |
 | Root ticket belongs to a different workspace than the current snapshot | Raise before mutating the context directory |
 | `add` is given a Linear URL whose workspace slug clearly mismatches the manifest | Fail fast before the full refresh flow |
+| `remove-root` targets a ticket that is not in the manifest root set | Fail fast with a clear error |
 | File write permission error | Raise exception |
 
 The caller (agent loop or human) decides how to handle the `SyncResult`:
@@ -272,6 +286,23 @@ diff()
   │   └─ Record changed fields if stale
   │
   └─ Return DiffResult (no files modified)
+```
+
+### 6.5 Remove-Root Flow
+
+```
+remove_root(ticket_ref)
+  │
+  ├─ Acquire exclusive writer lock for context_dir
+  ├─ Load and validate `.context-sync.yml`
+  ├─ Normalize ticket_ref (issue key or Linear issue URL)
+  ├─ Resolve the referenced ticket identity
+  ├─ Verify that the ticket is currently in the manifest root set
+  ├─ Remove the ticket from the manifest root set
+  ├─ Execute the whole-snapshot refresh steps under the same writer lock
+  ├─ Release writer lock
+  │
+  └─ Return SyncResult
 ```
 
 ---

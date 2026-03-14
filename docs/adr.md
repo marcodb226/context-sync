@@ -85,6 +85,10 @@ The root set is intentionally mutable over the lifetime of a context directory. 
 
 Root expansion must not be implemented as a partial rebuild of only the newly added root's local subgraph when a snapshot already exists. If a new root overlaps the graph of an existing root, rebuilding only the new root's neighborhood would refresh the overlap at time `T` while leaving non-overlapping portions of the old snapshot at time `T-1`, producing a mixed-time checkpoint. Root-set mutation therefore has to be paired with a whole-snapshot operation, not a root-local rebuild.
 
+Root removal is also supported explicitly. The first release supports a minimal `remove-root` operation that removes a ticket from the manifest root set and then immediately runs the normal whole-snapshot refresh flow under the same writer lock. If that ticket is still reachable from another root, it remains in the snapshot as a derived ticket. If it is no longer reachable, the next refresh prunes it naturally.
+
+Deleting a ticket file by hand is not a supported way to remove a root. The manifest is the authoritative root-set source, so a manual file deletion alone does not remove the root from the tracked snapshot. A later refresh may simply recreate the file.
+
 Traversal depth is always measured from a root. A derived ticket's effective depth is the shortest distance from any root. Whether its outgoing edges are followed depends on the configured depth of each edge's dimension relative to that effective depth.
 
 On sync or refresh, the reachable graph is recomputed from all current roots using the active dimension configuration:
@@ -311,18 +315,6 @@ These guarantees are part of the architecture because callers need them to trust
 ---
 
 ## 9. Open Questions
-
-### TQ-4: Root-Set Removal and Demotion Semantics
-
-The ADR now decides that the root pool can expand over time, but it does not yet define how roots leave that pool.
-
-Questions to answer:
-
-- Should the tool support an explicit "remove root" or "demote root" operation?
-- If so, is removal immediate, or only effective on the next refresh?
-- How should the tool protect against accidentally removing a root that is still operationally important?
-
-This matters before low-level design because root lifecycle affects frontmatter, CLI shape, pruning behavior, and result reporting.
 
 ### TQ-5: Snapshot Consistency Contract
 
