@@ -113,6 +113,7 @@ The manifest is the authoritative directory-level metadata file. It stores:
 - the context format version;
 - the bound Linear workspace identity, including stable workspace ID and workspace slug;
 - the current root-ticket set.
+- snapshot-pass metadata, including the last completed snapshot mode and timestamps for the most recent completed pass.
 
 This design keeps v1 simple. We do not introduce a separate general-purpose index file for roots or ticket lookup. The manifest already answers the two important directory-level questions quickly: which workspace does this snapshot belong to, and which tickets are roots?
 
@@ -172,6 +173,7 @@ Errors are handled per-ticket. The tool never raises for a single linked-ticket 
 | Root ticket belongs to a different workspace than the current snapshot | Raise before mutating the context directory |
 | `add` is given a Linear URL whose workspace slug clearly mismatches the manifest | Fail fast before the full refresh flow |
 | `remove-root` targets a ticket that is not in the manifest root set | Fail fast with a clear error |
+| Process interrupted mid-run | No partial file writes, but the directory may still contain a partially applied snapshot update |
 | File write permission error | Raise exception |
 
 The caller (agent loop or human) decides how to handle the `SyncResult`:
@@ -218,6 +220,7 @@ sync(root_ticket_id, max_tickets, dimensions)
   │   └─ Rewrite the ticket file regardless of local freshness
   │
   ├─ Prune derived tickets no longer reachable
+  ├─ Update completed snapshot metadata in `.context-sync.yml`
   │
   ├─ Release writer lock
   │
@@ -242,6 +245,7 @@ refresh()
   │   └─ Rewrite file
   │
   ├─ Prune derived tickets no longer reachable
+  ├─ Update completed snapshot metadata in `.context-sync.yml`
   │
   ├─ Release writer lock
   │
@@ -304,6 +308,8 @@ remove_root(ticket_ref)
   │
   └─ Return SyncResult
 ```
+
+The first release does not guarantee whole-directory atomic commit for these flows. If a process is interrupted mid-run, the directory may contain a mix of files from the previous snapshot and the current in-progress pass, even though no individual file is left partially written.
 
 ---
 

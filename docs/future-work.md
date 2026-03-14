@@ -30,3 +30,17 @@ Potential follow-on improvements:
 - define size, type, and safety limits so attachment handling does not bloat snapshots or introduce surprising network cost.
 
 This item should be revisited after first-release usage clarifies whether attachment content is a meaningful gap for agent workflows or human debugging.
+
+## FW-3: Whole-Snapshot Atomic Commit
+
+The first release guarantees atomic file writes but not atomic whole-directory snapshot commit. If a `sync`, `refresh`, `add`, or `remove-root` run is interrupted partway through, the directory may contain a mix of files from the previous snapshot and the in-progress pass.
+
+Many expected callers will run the tool over git-managed files, which provides a practical recovery path by reverting to the previous committed state. That mitigation helps, but it is not a substitute for stronger tool-level correctness because `context-sync` may also be used outside a git repository.
+
+Potential follow-on improvements:
+
+- write the next snapshot into a staging directory and switch it into place only after the full pass succeeds;
+- maintain manifest-level generation or commit markers so readers can distinguish a completed snapshot from an interrupted pass;
+- add resumable cleanup logic after interrupted runs.
+
+This item should be revisited if interrupted runs become a real operational problem or if non-git callers become a meaningful share of tool usage.

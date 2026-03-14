@@ -155,7 +155,8 @@ For the first release, the manifest is the authoritative source for:
 
 - the workspace identity bound to the directory, including a stable workspace ID and a human-readable workspace slug;
 - the current root-ticket set;
-- the context-level format version.
+- the context-level format version;
+- snapshot-pass metadata, including the last completed snapshot mode and timestamps for when that pass started and completed.
 
 This manifest is how the tool knows whether an `add` request belongs to the workspace already tracked by the directory. If the caller supplies a Linear URL, the tool may use the URL's workspace slug as an early preflight check, but the authoritative validation is still the fetched ticket's workspace identity compared against the manifest's workspace identity.
 
@@ -263,6 +264,22 @@ Adding a root to an existing context directory should therefore use `refresh` se
 
 ## 6. Refresh and Diff Strategy
 
+### 6.1 Snapshot Consistency Contract
+
+The first release guarantees a bounded-skew snapshot, not a transactional one.
+
+That means:
+
+- each `sync` or `refresh` run operates on one root set and one traversal configuration;
+- all files written by that run come from the same rebuild or refresh pass;
+- the snapshot may still reflect upstream changes that happened while the pass was in progress, because the tool does not have a true transactional read boundary from Linear.
+
+The coherence boundary is therefore the local pass, not a single upstream instant in time. The tool should describe the result as a snapshot assembled during one pass, not as an exact capture of one global timestamp.
+
+The manifest records snapshot-pass metadata so humans and callers can see when the current snapshot was assembled and by which mode.
+
+Stronger whole-snapshot atomic commit semantics, where an interrupted run would not leave a partially applied directory update behind, are explicitly deferred to [FW-3](<future-work.md#fw-3-whole-snapshot-atomic-commit>).
+
 Freshness is determined from information stored in the files themselves. Each ticket file carries `last_synced_at`, and the remote source of truth carries `updated_at`.
 
 On refresh:
@@ -306,27 +323,18 @@ The tool makes the following guarantees:
 - Mutating modes (`sync`, `refresh`, and root-set changes such as `add`) take an exclusive lock on the context directory. Two writers are not allowed to operate on the same directory concurrently.
 - `diff` does not run against a context directory while a writer lock is held; it should fail fast rather than inspect a directory whose snapshot may be changing underneath it.
 - File writes are atomic so a crash does not leave a partially written ticket file behind.
+- A failed or interrupted run may still leave the directory partially updated at the snapshot level in the first release. The tool does not yet guarantee whole-directory atomic commit; stronger semantics are deferred to [FW-3](<future-work.md#fw-3-whole-snapshot-atomic-commit>).
 - Re-running sync or refresh without upstream changes should not rewrite files.
 - Traversal is always bounded by configured depths plus the ticket cap.
 - Rate-limit handling is delegated to `linear-client`; the tool should not introduce a separate, conflicting rate limiter unless experience shows the library layer is insufficient.
 
 These guarantees are part of the architecture because callers need them to trust the local snapshot as an operational input.
 
+For many intended callers, the snapshot lives in git-managed files, which gives the caller a practical recovery path after an interrupted run by reverting to the previous committed state. That mitigation is useful, but it is not the correctness contract of the tool itself. `context-sync` may also be used outside a git repository, so stronger no-half-sync semantics remain architecturally relevant even if they are deferred.
+
 ---
 
 ## 9. Open Questions
-
-### TQ-5: Snapshot Consistency Contract
-
-The problem statement calls out inconsistency in the current runtime fetch model, but the ADR does not yet define the consistency guarantee of the new tool.
-
-Questions to answer:
-
-- Is the target guarantee best-effort freshness, a bounded-skew snapshot, or something stronger?
-- Can Linear provide enough metadata to approximate a stable read boundary, or must the tool document that snapshots are assembled over time?
-- How should the tool surface that guarantee to callers and humans reading the files?
-
-This matters because it changes both refresh logic and user expectations about what "snapshot" means.
 
 ### TQ-6: Ticket Identity and Rename Semantics
 
