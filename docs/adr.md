@@ -161,6 +161,10 @@ This is a deliberate architectural choice, not just an implementation convenienc
 
 All library entry points that can trigger remote or file I/O should be async functions, and the implementation should avoid introducing blocking I/O in the core sync path. The CLI may bridge into that async API with `asyncio.run()`, but synchronous wrappers are not the primary design center.
 
+Within a single invocation, concurrent ticket fetches use `asyncio.TaskGroup` with a configurable semaphore limit. This gives the tool bounded parallelism without giving up structured concurrency. The concurrency limit is a per-process control, not a global scheduler.
+
+The tool does not attempt cross-process rate-limit coordination. Separate invocations targeting different context directories may still contend on shared upstream Linear limits; that is acceptable in the first release. `linear-client` remains responsible for retry and backoff behavior, while `context-sync` is responsible only for its own per-process concurrency and for surfacing rate-limit effects clearly enough that operators can understand slowdowns.
+
 ### 3.2 Interface Model
 
 The tool exposes two interfaces:
@@ -189,6 +193,10 @@ This separation keeps concerns clear:
 - the agent control plane consumes the tool instead of embedding its materialization logic.
 
 The public tool name is `context-sync`. The name intentionally omits `linear` even though the first release is Linear-only, because the underlying snapshot/materialization pattern may later prove useful for adjacent artifact types such as pull requests. The neutral name leaves room for that evolution without changing the current scope of this ADR.
+
+Each invocation operates on exactly one `context_dir`. The tool does not own routing across multiple context directories; higher-level callers decide which workspace snapshot lives in which directory and invoke the tool with the appropriate path.
+
+A `context_dir` is scoped to exactly one Linear workspace in the first release. Tickets from multiple teams in that workspace are allowed in the same snapshot and the same run. Mixed-workspace roots are rejected. This boundary is intentionally set at the workspace level rather than the team level because ticket relationships may legitimately cross team boundaries within one workspace, and splitting by team would risk cutting across the real issue graph for little architectural benefit.
 
 The tool should be distributed the same way as other private internal Python packages, as a private wheel that consumers can install into their own environments.
 
@@ -275,6 +283,8 @@ The tool makes the following guarantees:
 
 - It is read-only with respect to Linear.
 - It never writes outside the configured context directory.
+- Mutating modes (`sync`, `refresh`, and root-set changes such as `add`) take an exclusive lock on the context directory. Two writers are not allowed to operate on the same directory concurrently.
+- `diff` does not run against a context directory while a writer lock is held; it should fail fast rather than inspect a directory whose snapshot may be changing underneath it.
 - File writes are atomic so a crash does not leave a partially written ticket file behind.
 - Re-running sync or refresh without upstream changes should not rewrite files.
 - Traversal is always bounded by configured depths plus the ticket cap.
@@ -285,18 +295,6 @@ These guarantees are part of the architecture because callers need them to trust
 ---
 
 ## 9. Open Questions
-
-### TQ-3: Concurrent Fetch Strategy
-
-The tool needs bounded concurrency for ticket fetches.
-
-Options:
-
-- `asyncio.gather` with a semaphore;
-- `asyncio.TaskGroup` with a semaphore;
-- no explicit concurrency control beyond whatever `linear-client` already does internally.
-
-Recommendation: prefer `TaskGroup` with a configurable semaphore limit.
 
 ### TQ-4: Root-Set Removal and Demotion Semantics
 
@@ -334,18 +332,6 @@ Questions to answer:
 
 This needs an answer before low-level design because it affects directory layout, parser behavior, and migration logic.
 
-### TQ-7: Concurrency and Locking for the Context Directory
-
-The ADR defines atomic writes but not multi-process behavior.
-
-Questions to answer:
-
-- Can more than one sync or refresh run against the same context directory at once?
-- If not, what locking mechanism prevents overlapping writers?
-- If yes, what is the conflict-resolution model for create, update, prune, and root-set changes?
-
-This matters because local snapshot correctness is not just about single-file atomicity.
-
 ### TQ-8: Change Detection Granularity
 
 The refresh strategy currently assumes `updated_at` is the right freshness cursor, but the ADR does not yet spell out which remote changes must be observable locally.
@@ -381,18 +367,6 @@ Questions to answer:
 - Are these cases retriable, user-actionable, or terminal?
 
 This needs resolution before low-level design because it affects pruning, error types, and the human debugging story.
-
-### TQ-11: Repository and Workspace Boundaries
-
-The problem statement wants reuse across callers, but the ADR does not yet define how a context directory is scoped.
-
-Questions to answer:
-
-- Is one context directory tied to a single Linear workspace, team, or project namespace?
-- What metadata is required to prevent collisions between workspaces that may reuse similar issue keys?
-- Should mixed-workspace roots be allowed at all?
-
-This matters before low-level design because directory metadata and validation rules depend on it.
 
 ### TQ-12: Observability and Verification Depth
 

@@ -83,6 +83,12 @@ context-sync diff --context-dir linear-context --json
 
 The CLI is a thin wrapper over the async library API, using `asyncio.run()` as the entry point. All logic lives in the library layer.
 
+Each invocation operates on exactly one `context_dir`. Running the tool against multiple directories is supported only by making separate invocations; the tool does not route work across directories on the caller's behalf.
+
+Parallel invocations against different context directories are allowed. They may still contend on shared upstream Linear rate limits, but the first release does not add any cross-process coordination layer on top of `linear-client`.
+
+Each `context_dir` is scoped to one Linear workspace. Tickets from multiple teams in that workspace may coexist in the same snapshot. Roots from a different workspace are rejected before any mutation occurs.
+
 ---
 
 ## 3. Return Contracts
@@ -131,8 +137,10 @@ Errors are handled per-ticket. The tool never raises for a single linked-ticket 
 |---|---|
 | Root ticket fetch fails | Raise immediately — no meaningful partial result without the root |
 | Linked ticket fetch fails | Write all successful tickets; include failed ticket in `errors` |
-| Linear API rate limit | Respect retry-after; back off; continue |
+| Linear API rate limit | Let `linear-client` perform retry/backoff; surface the slowdown clearly in logs/results |
 | Context directory does not exist | Create it |
+| Context directory already locked by a writer | Fail fast with a clear error; do not wait indefinitely |
+| Root ticket belongs to a different workspace than the current snapshot | Raise before mutating the context directory |
 | File write permission error | Raise exception |
 
 The caller (agent loop or human) decides how to handle the `SyncResult`:
@@ -157,7 +165,10 @@ The tool does **not** manage its own Linear authentication.
 ```
 sync(root_ticket_id, max_tickets, dimensions)
   │
+  ├─ Acquire exclusive writer lock for context_dir
+  ├─ Load or initialize workspace metadata for context_dir
   ├─ Fetch root ticket from Linear
+  ├─ Verify that the root ticket belongs to the configured workspace
   ├─ Add root to the tracked root set if needed
   ├─ Load any existing roots from the context directory
   ├─ Recompute the reachable graph from all roots
@@ -168,7 +179,7 @@ sync(root_ticket_id, max_tickets, dimensions)
   │   │   ├─ Determine edge dimension
   │   │   ├─ If dimension depth > N and target not visited and cap not reached:
   │   │   │   ├─ Enqueue target at depth N+1
-  │   │   │   └─ Fetch target ticket (concurrent, semaphore-limited)
+  │   │   │   └─ Fetch target ticket (TaskGroup + semaphore-limited worker)
   │   │   └─ Else: skip
   │   └─ Continue until queue empty or cap reached
   │
@@ -176,6 +187,8 @@ sync(root_ticket_id, max_tickets, dimensions)
   │   └─ Rewrite the ticket file regardless of local freshness
   │
   ├─ Prune derived tickets no longer reachable
+  │
+  ├─ Release writer lock
   │
   └─ Return SyncResult
 ```
@@ -185,7 +198,9 @@ sync(root_ticket_id, max_tickets, dimensions)
 ```
 refresh()
   │
+  ├─ Acquire exclusive writer lock for context_dir
   ├─ Read frontmatter from all tracked files in context_dir
+  ├─ Load and validate workspace metadata for context_dir
   ├─ Load the full root set
   ├─ Recompute the reachable graph from all roots
   ├─ Batch-query Linear for per-ticket updated_at values via `linear-client`
@@ -197,6 +212,8 @@ refresh()
   │
   ├─ Prune derived tickets no longer reachable
   │
+  ├─ Release writer lock
+  │
   └─ Return SyncResult
 ```
 
@@ -207,7 +224,10 @@ Adding a new root to an existing context directory should use this same whole-sn
 ```
 diff()
   │
+  ├─ Check for active writer lock on context_dir
+  ├─ If a writer is active: fail fast with a clear message
   ├─ Read frontmatter from all tracked files in context_dir
+  ├─ Load and validate workspace metadata for context_dir
   ├─ Fetch current state from Linear for each tracked ticket
   │
   ├─ For each ticket:
