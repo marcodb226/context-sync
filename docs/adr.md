@@ -144,6 +144,8 @@ The body stores the ticket description in Markdown followed by a chronological c
 
 For the first release, each ticket file includes the full comment history returned by Linear. This keeps the snapshot self-contained and keeps refresh logic simple. If comment volume later proves to be a material performance or file-size problem, follow-on optimizations are tracked in [FW-1](<future-work.md#fw-1-comment-storage-optimizations>).
 
+The first release does not include a separate ticket activity or history timeline beyond the comments returned with the ticket. Richer history capture is deferred to [FW-5](<future-work.md#fw-5-ticket-history-and-sectioned-ticket-artifacts>). If that richer history is added later and proves too bulky for the main ticket file, it may be stored in adjacent section files rather than forcing every consumer to open one very large document.
+
 For the first release, attachment handling is metadata-only. Ticket files include attachment metadata and URLs, but do not inline or download attachment contents. Richer handling for text attachments, images, and other file types is deferred and tracked in [FW-2](<future-work.md#fw-2-attachment-content-handling>).
 
 Every file includes `format_version`. When the file format changes, the tool increments the version and re-syncs old files rather than depending on implicit compatibility.
@@ -346,15 +348,16 @@ For many intended callers, the snapshot lives in git-managed files, which gives 
 
 ### TQ-8: Change Detection Granularity
 
-The refresh strategy currently assumes `updated_at` is the right freshness cursor, but the ADR does not yet spell out which remote changes must be observable locally.
+The refresh strategy currently assumes issue-level `updated_at` is the right freshness cursor, but the ADR does not yet spell out the exact v1 persistence contract that cursor must cover.
 
 Questions to answer:
 
-- Does Linear's `updated_at` advance for all changes we care about, including comment edits, relation changes, label changes, and attachment changes?
-- If not, do we need additional per-ticket cursors or field-specific freshness checks?
-- Which local fields count as materially changed for diff reporting?
+- For v1, which persisted fields are materially part of the base ticket snapshot and must therefore be refreshed whenever they change?
+- Does Linear's issue-level `updated_at` advance for all of those v1 fields, including the full comment history stored in the main ticket file?
+- If not, what additional per-ticket cursors or field-specific freshness checks are required before implementation?
+- Which local fields count as materially changed for diff reporting in v1?
 
-This is a low-level-design blocker because it determines whether the lightweight refresh model is actually correct.
+The first release intentionally keeps this scope narrow: the main ticket file includes ticket metadata, description, and full comment history, while richer activity or history timelines remain out of scope and are deferred to [FW-5](<future-work.md#fw-5-ticket-history-and-sectioned-ticket-artifacts>). This is still a low-level-design blocker because it determines whether the lightweight refresh model is actually correct for the persisted v1 snapshot.
 
 ### TQ-9: File-Normalization and Diff-Stability Rules
 

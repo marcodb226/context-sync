@@ -249,6 +249,8 @@ refresh()
   ├─ Load the full root set from the manifest
   ├─ Recompute the reachable graph from all roots
   ├─ Batch-query Linear for per-ticket updated_at values via `linear-client`
+  ├─ Treat issue-level updated_at as the freshness cursor for the v1
+  │   base ticket snapshot (metadata, description, comments)
   │
   ├─ For each reachable ticket where updated_at > last_synced_at
   │   │  or where no local file exists:
@@ -267,6 +269,8 @@ refresh()
 ```
 
 Adding a new root to an existing context directory should use this same whole-snapshot refresh flow after recording the new root. The design intentionally avoids root-local refresh because overlapping root graphs would otherwise produce mixed-time snapshots.
+
+The first release does not treat a richer activity or history timeline as part of this base refresh contract. If that data is added later, it may need its own persistence shape and freshness semantics as described in [FW-5](<future-work.md#fw-5-ticket-history-and-sectioned-ticket-artifacts>).
 
 ### 6.3 Add Flow
 

@@ -58,3 +58,18 @@ Potential follow-on improvements:
 - expose alias provenance in debug output when a reference resolves through an old key.
 
 This item should be revisited if offline resolution of pre-existing ticket references becomes important for agent workflows or for migration from older documentation sets.
+
+## FW-5: Ticket History and Sectioned Ticket Artifacts
+
+The first release stores the ticket description and full comment history in the main ticket Markdown file, but it does not yet capture a richer activity or history timeline as part of the persisted snapshot.
+
+If future workflows need ticket history, that data may make ticket files materially larger and slower for agents or humans to open. A likely follow-on design is to keep one canonical core ticket file and store bulky secondary sections in adjacent files.
+
+Potential follow-on improvements:
+
+- include a ticket activity or history timeline in the local snapshot;
+- store history in an adjacent file such as `<ticket-key>.history.md` rather than in the main ticket file;
+- split other bulky sections such as comments into adjacent files when that improves agent ergonomics or open cost;
+- define how refresh and diff treat per-section freshness if different sections eventually have different update semantics.
+
+This item should be revisited if richer history becomes important for agent workflows or if ticket files become large enough that section-level chunking materially improves usability.
