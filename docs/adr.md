@@ -137,6 +137,8 @@ attachments:
 
 The body stores the ticket description in Markdown followed by a chronological comments section. Each ticket file should be self-contained enough that a human can understand what was fetched without reconstructing the API responses elsewhere.
 
+For the first release, each ticket file includes the full comment history returned by Linear. This keeps the snapshot self-contained and keeps refresh logic simple. If comment volume later proves to be a material performance or file-size problem, follow-on optimizations are tracked in [FW-1](<future-work.md#fw-1-comment-storage-optimizations>).
+
 Every file includes `format_version`. When the file format changes, the tool increments the version and re-syncs old files rather than depending on implicit compatibility.
 
 ---
@@ -280,28 +282,15 @@ These guarantees are part of the architecture because callers need them to trust
 
 ## 9. Open Questions
 
-### TQ-2: Comment Handling for Large Threads
-
-Some tickets accumulate long comment histories.
-
-Options:
-
-- always include all comments;
-- persist only comment deltas;
-- cap the stored comment count and note truncation;
-- split comments into a separate file.
-
-Recommendation: include all comments in the first version unless ticket size proves to be a real operational problem.
-
-### TQ-3: Attachment Content Inlining
+### TQ-1: Attachment Content Inlining
 
 The first version stores attachment metadata and URLs but not attachment contents. Text attachments and images may justify richer handling later, but that should be treated as a separate capability.
 
-### TQ-4: Tool Name
+### TQ-2: Tool Name
 
 Proposed name: `linear-context-sync`.
 
-### TQ-5: Concurrent Fetch Strategy
+### TQ-3: Concurrent Fetch Strategy
 
 The tool needs bounded concurrency for ticket fetches.
 
@@ -313,7 +302,7 @@ Options:
 
 Recommendation: prefer `TaskGroup` with a configurable semaphore limit.
 
-### TQ-6: Root-Set Removal and Demotion Semantics
+### TQ-4: Root-Set Removal and Demotion Semantics
 
 The ADR now decides that the root pool can expand over time, but it does not yet define how roots leave that pool.
 
@@ -325,7 +314,7 @@ Questions to answer:
 
 This matters before low-level design because root lifecycle affects frontmatter, CLI shape, pruning behavior, and result reporting.
 
-### TQ-7: Snapshot Consistency Contract
+### TQ-5: Snapshot Consistency Contract
 
 The problem statement calls out inconsistency in the current runtime fetch model, but the ADR does not yet define the consistency guarantee of the new tool.
 
@@ -337,7 +326,7 @@ Questions to answer:
 
 This matters because it changes both refresh logic and user expectations about what "snapshot" means.
 
-### TQ-8: Ticket Identity and Rename Semantics
+### TQ-6: Ticket Identity and Rename Semantics
 
 The file format uses the human-facing ticket identifier in filenames, but the ADR does not yet resolve how identity behaves if that identifier changes.
 
@@ -349,7 +338,7 @@ Questions to answer:
 
 This needs an answer before low-level design because it affects directory layout, parser behavior, and migration logic.
 
-### TQ-9: Concurrency and Locking for the Context Directory
+### TQ-7: Concurrency and Locking for the Context Directory
 
 The ADR defines atomic writes but not multi-process behavior.
 
@@ -361,7 +350,7 @@ Questions to answer:
 
 This matters because local snapshot correctness is not just about single-file atomicity.
 
-### TQ-10: Change Detection Granularity
+### TQ-8: Change Detection Granularity
 
 The refresh strategy currently assumes `updated_at` is the right freshness cursor, but the ADR does not yet spell out which remote changes must be observable locally.
 
@@ -373,7 +362,7 @@ Questions to answer:
 
 This is a low-level-design blocker because it determines whether the lightweight refresh model is actually correct.
 
-### TQ-11: File-Normalization and Diff-Stability Rules
+### TQ-9: File-Normalization and Diff-Stability Rules
 
 The ADR chooses Markdown plus frontmatter, but it does not yet define normalization rules for stable output.
 
@@ -385,7 +374,7 @@ Questions to answer:
 
 This matters because idempotency depends on deterministic serialization, not just correct data.
 
-### TQ-12: Missing or Inaccessible Remote Tickets
+### TQ-10: Missing or Inaccessible Remote Tickets
 
 The failure model covers linked-ticket fetch failures in general, but it does not yet distinguish between not found, permission loss, archival, and transient API errors.
 
@@ -397,7 +386,7 @@ Questions to answer:
 
 This needs resolution before low-level design because it affects pruning, error types, and the human debugging story.
 
-### TQ-13: Repository and Workspace Boundaries
+### TQ-11: Repository and Workspace Boundaries
 
 The problem statement wants reuse across callers, but the ADR does not yet define how a context directory is scoped.
 
@@ -409,7 +398,7 @@ Questions to answer:
 
 This matters before low-level design because directory metadata and validation rules depend on it.
 
-### TQ-14: Observability and Verification Depth
+### TQ-12: Observability and Verification Depth
 
 The local snapshot is meant to be inspectable, but the ADR does not yet define the operational signals the tool emits while building it.
 
@@ -421,7 +410,7 @@ Questions to answer:
 
 This matters because debugging and trustworthiness are core reasons the tool exists.
 
-### TQ-15: Do We Need a Separate Targeted Read Path?
+### TQ-13: Do We Need a Separate Targeted Read Path?
 
 The problem statement includes pre-write validation as an important workflow, but this ADR now leans toward making `refresh` a whole-snapshot operation in order to preserve checkpoint coherence.
 
