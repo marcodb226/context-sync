@@ -36,7 +36,7 @@ class ContextSyncer:
 
     async def add(
         self,
-        ticket_id: str,
+        ticket_ref: str,
     ) -> SyncResult: ...
 
     async def refresh(self) -> SyncResult: ...
@@ -49,9 +49,9 @@ result = await syncer.sync(root_ticket_id="ACP-123", max_tickets=200)
 # Delta refresh: update stale files in place
 result = await syncer.refresh()
 
-# Expand with a newly discovered ticket by adding it as a root,
+# Expand with a newly discovered ticket by issue key or Linear URL,
 # then run whole-snapshot refresh semantics across all roots
-result = await syncer.add(ticket_id="ACP-999")
+result = await syncer.add(ticket_ref="ACP-999")
 
 # Compare local files to Linear without modifying anything
 result = await syncer.diff()
@@ -88,6 +88,22 @@ Each invocation operates on exactly one `context_dir`. Running the tool against 
 Parallel invocations against different context directories are allowed. They may still contend on shared upstream Linear rate limits, but the first release does not add any cross-process coordination layer on top of `linear-client`.
 
 Each `context_dir` is scoped to one Linear workspace. Tickets from multiple teams in that workspace may coexist in the same snapshot. Roots from a different workspace are rejected before any mutation occurs.
+
+### 2.1 Context Directory Contents
+
+For the first release, a context directory contains:
+
+- ticket snapshot files such as `ACP-123.md`;
+- `.context-sync.yml`, a small manifest file;
+- `.context-sync.lock`, a transient writer-lock file that exists only while a mutating operation is active.
+
+The manifest is the authoritative directory-level metadata file. It stores:
+
+- the context format version;
+- the bound Linear workspace identity, including stable workspace ID and workspace slug;
+- the current root-ticket set.
+
+This design keeps v1 simple. We do not introduce a separate general-purpose index file for roots or ticket lookup. The manifest already answers the two important directory-level questions quickly: which workspace does this snapshot belong to, and which tickets are roots?
 
 ---
 
@@ -141,6 +157,7 @@ Errors are handled per-ticket. The tool never raises for a single linked-ticket 
 | Context directory does not exist | Create it |
 | Context directory already locked by a writer | Fail fast with a clear error; do not wait indefinitely |
 | Root ticket belongs to a different workspace than the current snapshot | Raise before mutating the context directory |
+| `add` is given a Linear URL whose workspace slug clearly mismatches the manifest | Fail fast before the full refresh flow |
 | File write permission error | Raise exception |
 
 The caller (agent loop or human) decides how to handle the `SyncResult`:
@@ -166,11 +183,11 @@ The tool does **not** manage its own Linear authentication.
 sync(root_ticket_id, max_tickets, dimensions)
   │
   ├─ Acquire exclusive writer lock for context_dir
-  ├─ Load or initialize workspace metadata for context_dir
+  ├─ Load or initialize `.context-sync.yml`
   ├─ Fetch root ticket from Linear
   ├─ Verify that the root ticket belongs to the configured workspace
-  ├─ Add root to the tracked root set if needed
-  ├─ Load any existing roots from the context directory
+  ├─ Add root to the manifest root set if needed
+  ├─ Load the full root set from the manifest
   ├─ Recompute the reachable graph from all roots
   │
   ├─ BFS loop:
@@ -200,8 +217,8 @@ refresh()
   │
   ├─ Acquire exclusive writer lock for context_dir
   ├─ Read frontmatter from all tracked files in context_dir
-  ├─ Load and validate workspace metadata for context_dir
-  ├─ Load the full root set
+  ├─ Load and validate `.context-sync.yml`
+  ├─ Load the full root set from the manifest
   ├─ Recompute the reachable graph from all roots
   ├─ Batch-query Linear for per-ticket updated_at values via `linear-client`
   │
@@ -219,7 +236,26 @@ refresh()
 
 Adding a new root to an existing context directory should use this same whole-snapshot refresh flow after recording the new root. The design intentionally avoids root-local refresh because overlapping root graphs would otherwise produce mixed-time snapshots.
 
-### 6.3 Diff Flow
+### 6.3 Add Flow
+
+```
+add(ticket_ref)
+  │
+  ├─ Acquire exclusive writer lock for context_dir
+  ├─ Load or initialize `.context-sync.yml`
+  ├─ Normalize ticket_ref (issue key or Linear issue URL)
+  ├─ If ticket_ref is a URL and its workspace slug mismatches the manifest:
+  │   └─ fail fast
+  ├─ Fetch the referenced ticket from Linear
+  ├─ Verify that the ticket workspace matches the manifest workspace
+  ├─ Add the ticket to the manifest root set
+  ├─ Execute the whole-snapshot refresh steps under the same writer lock
+  ├─ Release writer lock
+  │
+  └─ Return SyncResult
+```
+
+### 6.4 Diff Flow
 
 ```
 diff()
@@ -227,7 +263,7 @@ diff()
   ├─ Check for active writer lock on context_dir
   ├─ If a writer is active: fail fast with a clear message
   ├─ Read frontmatter from all tracked files in context_dir
-  ├─ Load and validate workspace metadata for context_dir
+  ├─ Load and validate `.context-sync.yml`
   ├─ Fetch current state from Linear for each tracked ticket
   │
   ├─ For each ticket:

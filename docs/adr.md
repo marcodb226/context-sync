@@ -143,6 +143,22 @@ For the first release, attachment handling is metadata-only. Ticket files includ
 
 Every file includes `format_version`. When the file format changes, the tool increments the version and re-syncs old files rather than depending on implicit compatibility.
 
+### 2.1 Context Manifest and Non-Ticket Files
+
+Each `context_dir` also contains a small manifest file, `.context-sync.yml`, that stores directory-level metadata that should not require opening ticket files to discover.
+
+For the first release, the manifest is the authoritative source for:
+
+- the workspace identity bound to the directory, including a stable workspace ID and a human-readable workspace slug;
+- the current root-ticket set;
+- the context-level format version.
+
+This manifest is how the tool knows whether an `add` request belongs to the workspace already tracked by the directory. If the caller supplies a Linear URL, the tool may use the URL's workspace slug as an early preflight check, but the authoritative validation is still the fetched ticket's workspace identity compared against the manifest's workspace identity.
+
+No separate secondary index file is introduced in the first release. The manifest already solves the two directory-level lookup problems that matter most in v1: "which workspace is this?" and "which tickets are roots?" Ticket files still retain their own `root` flag for local readability, but the manifest is the authoritative root-set source for refresh and add flows.
+
+The only other required non-ticket file is a transient lock file, `.context-sync.lock`, used to enforce the single-writer rule for mutating operations.
+
 ---
 
 ## 3. Runtime Foundation and Interface Model
