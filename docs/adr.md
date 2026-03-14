@@ -3,13 +3,14 @@
 > **Status**: Draft
 > **Date**: 2026-03-13
 > **Context**: Forked from the agent-control-plane repo
+
 ---
 
 ## 1. Traversal Model
 
 ### 1.1 Dimensions
 
-Each relationship type is a **graph dimension** with its own configurable traversal depth. The following are recognized as built-in dimensions:
+Each relationship type is treated as a graph dimension with its own configurable traversal depth. The built-in dimensions are:
 
 | Dimension | Source | Description | Default depth |
 |---|---|---|---|
@@ -20,79 +21,72 @@ Each relationship type is a **graph dimension** with its own configurable traver
 | `relates_to` | Linear relation | Informational relations | 1 |
 | `ticket_ref` | URL scan | Ticket URLs discovered in other tickets' descriptions or comments | 1 |
 
-Depths are configurable. Dimensions can be disabled by setting depth to 0. A maximum ticket count cap (default: 200) acts as a safety bound independent of dimension depths.
+Dimensions can be disabled by setting depth to 0. A maximum ticket-count cap, with a default of 200, acts as a separate safety bound.
 
-Linear's current relation types (`blocks`, `is_blocked_by`, `related`) are fixed and not user-configurable. `parent` and `child` are structural. If Linear adds new relation types in the future, the tool maps them to an existing dimension or assigns a new built-in one.
+Linear's current relation types are fixed, but the internal dimension representation should remain extensible. The first version ships with the built-in dimensions above, while leaving room for future dimensions without redesigning the traversal engine.
 
-**Custom dimensions**: The built-in set covers Linear's current relation types and within-ticket URL scanning. Future use cases may require additional dimensions (e.g., scanning repository documents for ticket URLs, or mapping a new Linear relation type). The tool's dimension model should be designed so that adding a new dimension requires only configuration, not code changes to the traversal engine. Custom dimension support is deferred to a later release; the first version ships with the built-in set. The internal representation (`dict[str, int]`) should not preclude extension.
-
-**`ticket_ref` vs. `doc_ref`**: Ticket URLs can appear in two contexts:
-
-- **`ticket_ref`**: A ticket URL found in another ticket's description or comments. The tool discovers it while processing a ticket it already fetched. Implemented in the first release.
-- **`doc_ref`** (future): A ticket URL found in a repository document. Requires the tool to scan non-Linear content — a fundamentally different input surface. Deferred.
-
-For the first release, when the caller discovers a ticket URL in a document, the correct action is to call `add` with that ticket ID, making it a root.
+`ticket_ref` covers ticket URLs found inside fetched Linear content. It does not cover repository documents. If the caller finds a ticket ID elsewhere, the caller should add that ticket explicitly as a new root. A future `doc_ref` dimension can be introduced later if repository scanning becomes a tool responsibility.
 
 ### 1.2 Depth Model — Total Hops from Root
 
-The tool counts **total hops from the nearest root**, regardless of edge type. Each outgoing edge from a ticket at depth N is allowed if the edge's dimension has a configured depth greater than N.
+Depth is measured as total hops from the nearest root, regardless of edge type. For a ticket at depth `N`, an outgoing edge is followed only when that edge's dimension is configured for a depth greater than `N`.
 
-The depth number for a dimension answers: "how many total hops from root am I willing to cross this type of edge?" At depth 1, all dimensions with depth ≥ 1 are explored. At depth 2, only dimensions with depth ≥ 2. At depth 3, only depth ≥ 3.
+This means a dimension depth answers the question: "How many total hops from a root am I willing to cross this type of edge?" The traversal does not reset a counter when the edge type changes.
 
 Example with defaults (`blocks`: 3, `relates_to`: 1):
 
-```
+```text
 Root (depth 0)
-├── (blocks) → A (depth 1) ✓  blocks depth 3 ≥ 1
-│   ├── (blocks) → C (depth 2) ✓  blocks depth 3 ≥ 2
-│   │   └── (blocks) → E (depth 3) ✓  blocks depth 3 ≥ 3
-│   └── (relates_to) → D (depth 2) ✗  relates_to depth 1 < 2
-└── (relates_to) → B (depth 1) ✓  relates_to depth 1 ≥ 1
-    └── (blocks) → F (depth 2) ✓  blocks depth 3 ≥ 2
+|- (blocks) -> A (depth 1)      allowed
+|  |- (blocks) -> C (depth 2)   allowed
+|  |  `- (blocks) -> E (depth 3) allowed
+|  `- (relates_to) -> D (depth 2) skipped
+`- (relates_to) -> B (depth 1)  allowed
+   `- (blocks) -> F (depth 2)   allowed
 ```
 
-D is *not* fetched — even though it's only one `relates_to` hop from A, it's two total hops from root, and `relates_to` is configured for depth 1. If that context is important, the user raises `relates_to` depth to 2.
+Under this model, `D` is not fetched. Even though it is one `relates_to` hop away from `A`, it is still two total hops from the root and `relates_to` is configured for depth 1.
 
-**Why total hops, not per-dimension counting**: An alternative model would count hops per dimension independently — a `relates_to` edge at any distance from root would be allowed as long as it's within one `relates_to` hop of the previous ticket. This is more permissive but creates unbounded indirect paths: Root → (blocks) → A → (relates_to) → B → (blocks) → C → (relates_to) → D → ... traverses indefinitely because each dimension's counter resets after a hop of a different type. Preventing this requires a separate global depth cap, adding complexity with no benefit over total hops. Total hops is one counter, naturally bounded, and easy to reason about.
+This total-hop model is preferred over per-dimension counters because it stays naturally bounded, is easier to reason about, and avoids creating long indirect paths whose effective depth is hard to predict.
 
-**Multi-dimension membership**: A ticket may be reachable via multiple paths of different lengths, or from different roots. The tool uses the **shortest total distance from any root** as the ticket's effective depth. A ticket at 1 hop from root A and 3 hops from root B is treated as depth 1.
+When a ticket is reachable through multiple paths or from multiple roots, the tool uses the shortest total distance from any root as the ticket's effective depth.
 
 ### 1.3 Traversal Order and Ticket Cap
 
-The tool traverses in **breadth-first order** from all roots simultaneously. Depth-1 tickets are visited before depth-2 before depth-3. If the ticket cap is reached mid-traversal, the tool stops and returns what it has.
+Traversal is breadth-first from all roots simultaneously. Depth-1 tickets are processed before depth-2 tickets, and so on. If the ticket cap is reached mid-traversal, the tool stops and returns the tickets already collected.
 
-BFS is the right priority for a cap: when budget runs out, the tool has covered the nearest, most diverse neighborhood — close tickets across all dimensions — rather than going deep along one chain. At each depth level, more dimensions are available (depth 1 allows all; depth 3 allows only high-depth dimensions), so the broadest exploration happens closest to root.
-
-The cap is a safety bound, not a precision tool. Users adjust dimension depths for fine-grained control.
+Breadth-first traversal is the right default when a safety cap exists because it prioritizes the nearest and usually most relevant neighborhood before exploring deep chains.
 
 ### 1.4 Root vs. Derived Tickets
 
-Every ticket in the context directory is either **root** or **derived**:
+Every ticket in the context directory is classified as either root or derived.
 
-- **Root tickets** (`root: true`) are explicitly requested — the initial ticket passed to `sync`, or any ticket added via `add`. Roots are pinned and never auto-removed.
-- **Derived tickets** (`root: false`) entered via graph traversal from a root. They exist because they are reachable from at least one root within configured dimension depths.
+- Root tickets are explicitly requested, either by the initial sync or by an explicit add operation. They are pinned and are never removed automatically.
+- Derived tickets enter the directory because they were discovered during traversal from at least one root.
 
-Traversal depth is always measured from a root. A derived ticket's effective depth is the shortest distance from any root. Whether to follow its outgoing edges depends on whether any dimension's configured depth exceeds this effective depth.
+Traversal depth is always measured from a root. A derived ticket's effective depth is the shortest distance from any root. Whether its outgoing edges are followed depends on the configured depth of each edge's dimension relative to that effective depth.
 
-**File lifecycle**: On sync or delta refresh, the tool recomputes the reachable graph from all roots using the active dimension configuration:
+On sync or refresh, the reachable graph is recomputed from all current roots using the active dimension configuration:
 
-- Root tickets are never removed. Refreshed if stale.
-- Derived tickets still reachable are kept. Refreshed if stale.
-- Derived tickets no longer reachable are removed from the context directory.
+- root tickets are kept and refreshed when stale;
+- derived tickets that remain reachable are kept and refreshed when stale;
+- derived tickets that are no longer reachable are removed.
 
-Dimension depth reductions *can* cause derived files to disappear, but roots are always safe.
+Dimension-depth reductions can therefore remove derived files, but they never remove roots.
 
-**Traversal provenance (optional debug metadata)**: By default, frontmatter records only the `root` flag. A debug/verbose flag enables provenance metadata for derived tickets (which root, which dimension, what depth). Useful for debugging; not required for correct operation.
+By default, frontmatter records only whether a ticket is a root. An optional debug mode may also record provenance metadata such as which root reached the ticket, by which dimension, and at what depth.
+
+Cycle safety is mandatory: once a ticket has been visited during a sync run, it is not re-fetched through another path in the same run.
 
 ---
 
-## 2. File Format
+## 2. Persistence Format
 
-One Markdown file per ticket, named `<ticket-identifier>.md` (e.g., `ACP-123.md`). Metadata is stored in YAML frontmatter.
+The tool writes one Markdown file per ticket, named `<ticket-identifier>.md`, with YAML frontmatter for structured metadata.
 
-**Rationale**: Markdown is human-readable, agent-readable, and diffs cleanly in git. YAML frontmatter is a standard convention for structured metadata in Markdown files. The ticket identifier as filename provides natural deduplication and O(1) lookup.
+Markdown is the chosen persistence format because it is human-readable, agent-readable, and diff-friendly in git. The ticket identifier as the filename gives natural deduplication and constant-time lookup.
 
-**Frontmatter fields** (minimum):
+Minimum frontmatter includes:
 
 ```yaml
 ---
@@ -108,115 +102,149 @@ created_at: "2026-03-10T14:30:00Z"
 updated_at: "2026-03-13T09:15:00Z"
 last_synced_at: "2026-03-13T10:00:00Z"
 format_version: 1
-root: false              # true = pinned (explicitly requested), false = derived (discovered via traversal)
+root: false
 parent_ticket: "ACP-100"
 relations:
   - type: "is_blocked_by"
     dimension: "blocks"
     ticket: "ACP-120"
-  - type: "blocks"
-    dimension: "is_blocked_by"
-    ticket: "ACP-130"
-  - type: "relates_to"
-    dimension: "relates_to"
-    ticket: "ACP-125"
-  - type: "ticket_ref"
-    dimension: "ticket_ref"
-    ticket: "ACP-456"
-    context: "referenced in comment by architect-bot at 2026-03-12T08:00:00Z"
 attachments:
   - name: "design-spec.pdf"
     url: "https://linear.app/..."
-# Optional debug metadata (only present when provenance tracking is enabled):
-# provenance:
-#   reached_from: "ACP-100"
-#   dimension: "blocks"
-#   depth_from_root: 1
 ---
 ```
 
-**Body**: The ticket description in Markdown, followed by a `## Comments` section with all comments in chronological order, each attributed to author and timestamp.
+The body stores the ticket description in Markdown followed by a chronological comments section. Each ticket file should be self-contained enough that a human can understand what was fetched without reconstructing the API responses elsewhere.
 
-**Format versioning**: Each file includes `format_version: 1` in frontmatter. When the format changes, the version is incremented. The tool detects old-format files and re-syncs them.
-
----
-
-## 3. Tool Architecture
-
-The tool is a **separate Python project** from `linear-client` and from the agent control plane. It depends on `linear-client` as a library for all Linear API access. It exposes two interfaces: a CLI command (for human use and shell invocation) and an async Python API (for programmatic integration).
-
-**Rationale**: Separation of concerns — `linear-client` is a general-purpose Linear API client; the tool is a domain-specific context materializer. Consumers (including the agent control plane) import it; they do not implement materialization logic. Dual interface supports both library callers (avoiding subprocess overhead, enabling richer error handling) and humans running it from the command line.
-
-See [cr-tool-problem-statement.md](cr-tool-problem-statement.md) Section 7 for project structure, dependencies, and distribution details.
+Every file includes `format_version`. When the file format changes, the tool increments the version and re-syncs old files rather than depending on implicit compatibility.
 
 ---
 
-## 4. Delta Update Strategy
+## 3. Interface Model
 
-The tool uses `last_synced_at` (stored in each file's frontmatter) and the ticket's `updated_at` from the Linear API to determine whether a file needs refreshing. On a delta invocation:
+The tool exposes two interfaces:
 
-1. Identify all root tickets in the context directory.
-2. Recompute the reachable graph from all roots using the active dimension configuration.
-3. For each existing file, compare `last_synced_at` with the ticket's current `updated_at` from Linear.
-4. If `updated_at > last_synced_at`, re-fetch and rewrite the file.
-5. If `updated_at <= last_synced_at`, skip the file.
-6. New tickets discovered in the relation graph (not yet in the context directory) are fetched and written.
-7. Derived tickets no longer reachable from any root are removed.
+- an async Python library API for the agent loop and other programmatic callers;
+- a thin CLI wrapper for humans and shell-based automation.
 
-**Rationale**: `updated_at` changes on any Linear mutation, so this is a conservative but correct freshness check. The tool always knows which files are stale without maintaining a separate state store — the state is in the files themselves.
+The library API is the primary integration surface. It supports full sync, explicit addition of new roots, refresh of existing local context, and diffing the local snapshot against Linear without writing files.
 
----
+The library receives an authenticated `Linear` client instance from the caller instead of constructing one internally. This keeps authentication, connection reuse, and lifecycle management with the embedding application.
 
-## 5. Diff Mode
+The CLI is a convenience layer over the library API. It is responsible for reading configuration and constructing its own authenticated client using the same environment and credential model used by [`docs/design/linear-client.md`](<design/linear-client.md>).
 
-Compare the current context directory against Linear's live state without modifying any files. For each tracked ticket, report whether its local file is current, stale, or missing from Linear. For stale tickets, show which fields changed.
-
-This serves two purposes:
-- **Human debugging**: Inspect an agent's working branch to see where the snapshot diverges from Linear's current state, without triggering a sync.
-- **Pre-sync validation**: Check what *would* change before committing to a refresh.
-
-See [cr-tool-problem-statement.md](cr-tool-problem-statement.md) F5 for the output contract (`DiffEntry`, `DiffResult`).
+Detailed method signatures and return types belong in [design.md](<design.md>), not in the problem statement.
 
 ---
 
-## 6. Open Questions (Tool-Specific)
+## 4. Packaging and Integration Boundary
+
+The tool is a separate Python project from both `linear-client` and the agent control plane.
+
+This separation keeps concerns clear:
+
+- `linear-client` remains a reusable API client and authentication layer;
+- the context-sync tool owns graph traversal, local persistence, and snapshot management;
+- the agent control plane consumes the tool instead of embedding its materialization logic.
+
+The tool should be distributed the same way as other private internal Python packages, as a private wheel that consumers can install into their own environments.
+
+Package layout and implementation flow details belong in [design.md](<design.md>).
+
+---
+
+## 5. Refresh and Diff Strategy
+
+Freshness is determined from information stored in the files themselves. Each ticket file carries `last_synced_at`, and the remote source of truth carries `updated_at`.
+
+On refresh:
+
+1. identify all root tickets in the context directory;
+2. recompute the currently reachable graph from those roots;
+3. compare local `last_synced_at` values against remote `updated_at` values;
+4. re-fetch only stale or newly discovered tickets;
+5. prune derived tickets that are no longer reachable.
+
+This approach avoids a separate state store and supports efficient incremental refreshes. The preferred implementation is a batched `updated_at` query rather than one remote call per ticket. That batching detail remains an open implementation question in [TQ-1](#tq-1-batch-updated_at-query).
+
+The tool also supports a diff mode that compares the current context directory against live Linear data without modifying local files. Diff mode exists for both human debugging and pre-refresh validation.
+
+---
+
+## 6. Failure Model
+
+Linked-ticket failures are reported per ticket rather than failing the entire run. The tool should return partial results whenever it can do so safely.
+
+The important exception is root-ticket failure during an initial sync. If the root ticket cannot be fetched, the sync fails immediately because there is no meaningful graph to materialize.
+
+This leads to the following behavior:
+
+- root fetch failure is terminal for that sync request;
+- linked-ticket fetch failure is recorded in the result while other reachable tickets continue;
+- local write failures are terminal because they break the integrity of the local snapshot.
+
+Result types should therefore carry explicit created, updated, unchanged, removed, and errored sets rather than reducing the run to a single success or failure bit.
+
+---
+
+## 7. Operating Guarantees
+
+The tool makes the following guarantees:
+
+- It is read-only with respect to Linear.
+- It never writes outside the configured context directory.
+- File writes are atomic so a crash does not leave a partially written ticket file behind.
+- Re-running sync or refresh without upstream changes should not rewrite files.
+- Traversal is always bounded by configured depths plus the ticket cap.
+- Rate-limit handling is delegated to `linear-client`; the tool should not introduce a separate, conflicting rate limiter unless experience shows the library layer is insufficient.
+
+These guarantees are part of the architecture because callers need them to trust the local snapshot as an operational input.
+
+---
+
+## 8. Open Questions
 
 ### TQ-1: Batch `updated_at` Query
 
-For delta sync, the tool needs to check whether each existing file's ticket has changed. Fetching each ticket individually is O(N) API calls.
+Delta refresh needs an efficient way to check freshness for many tracked tickets.
 
-**Options**:
-- (a) Single GraphQL query with `id: { in: [...] }` filter to fetch `updated_at` for all tracked tickets in one call.
-- (b) Use `updatedAt: { gte: <oldest_last_synced_at> }` filter, intersect with tracked set.
-- (c) Accept O(N) calls for now; optimize later.
+Options:
 
-**Recommendation**: Option (a). One call per delta check regardless of how many tickets changed. May need `linear-client`'s GraphQL services layer if the domain layer doesn't support batch ID lookups.
+- one GraphQL query using an `id in [...]` filter to fetch `updated_at` for all tracked tickets;
+- a broader `updatedAt >= ...` query intersected with the tracked set;
+- per-ticket lookups for the initial version, with optimization deferred.
+
+Recommendation: prefer the batched ID-based query if it can be exposed cleanly through `linear-client`.
 
 ### TQ-2: Comment Handling for Large Threads
 
-Some tickets accumulate many comments (50+). Including all in every sync could make files very large.
+Some tickets accumulate long comment histories.
 
-**Options**:
-- (a) Always include all comments. Simplest; files are self-contained.
-- (b) Delta comments only (requires watermark).
-- (c) Configurable max comments (e.g., last 50), older truncated with a note.
-- (d) Separate comments file per ticket.
+Options:
 
-**Recommendation**: Option (a) for the first version. Most tickets have fewer than 20 comments. Option (c) is the least-disruptive optimization if needed.
+- always include all comments;
+- persist only comment deltas;
+- cap the stored comment count and note truncation;
+- split comments into a separate file.
+
+Recommendation: include all comments in the first version unless ticket size proves to be a real operational problem.
 
 ### TQ-3: Attachment Content Inlining
 
-Frontmatter includes clickable attachment URLs but not content. Text-based attachments could be fetched and inlined or stored as separate files. Image attachments could be described. Deferred to a future version but should be accounted for in directory structure design.
+The first version stores attachment metadata and URLs but not attachment contents. Text attachments and images may justify richer handling later, but that should be treated as a separate capability.
 
 ### TQ-4: Tool Name
 
-Proposed: `linear-context-sync`. Alternatives: `linear-ticket-dump`, `linear-context-materializer`, `lcs`.
+Proposed name: `linear-context-sync`.
 
 ### TQ-5: Concurrent Fetch Strategy
 
-**Options**:
-- (a) `asyncio.gather` with semaphore (e.g., 10 concurrent fetches).
-- (b) `asyncio.TaskGroup` (Python 3.11+) with semaphore.
-- (c) Rely on `linear-client`'s internal rate limiting.
+The tool needs bounded concurrency for ticket fetches.
 
-**Recommendation**: Option (b) with configurable concurrency limit (default: 10). `TaskGroup` provides better error handling. Semaphore prevents overwhelming the API.
+Options:
+
+- `asyncio.gather` with a semaphore;
+- `asyncio.TaskGroup` with a semaphore;
+- no explicit concurrency control beyond whatever `linear-client` already does internally.
+
+Recommendation: prefer `TaskGroup` with a configurable semaphore limit.
