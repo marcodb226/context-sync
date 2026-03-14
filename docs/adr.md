@@ -6,6 +6,22 @@
 
 ---
 
+## Decision Summary
+
+This ADR turns the needs described in [problem-statement.md](<problem-statement.md>) into architectural decisions. The design must:
+
+- move deterministic Linear retrieval out of the model loop and into a bounded subsystem;
+- produce a durable local snapshot that agents, humans, and automation can inspect directly;
+- support bounded graph traversal beyond a single hop;
+- allow the set of root tickets to grow over time instead of treating the initial root as the only durable anchor;
+- support lightweight refresh behavior where unchanged tickets avoid a full re-fetch and only changed tickets incur full materialization work;
+- remain reusable outside the agent control plane;
+- remain read-only with respect to Linear.
+
+The sections below record the decisions that satisfy those drivers and identify the remaining questions that must be answered before low-level design can begin confidently.
+
+---
+
 ## 1. Traversal Model
 
 ### 1.1 Dimensions
@@ -64,6 +80,8 @@ Every ticket in the context directory is classified as either root or derived.
 - Root tickets are explicitly requested, either by the initial sync or by an explicit add operation. They are pinned and are never removed automatically.
 - Derived tickets enter the directory because they were discovered during traversal from at least one root.
 
+The root set is intentionally mutable over the lifetime of a context directory. The tool must support expanding the pool of roots when a caller discovers an additional ticket that should remain part of the long-lived working set. Once added, that ticket participates in future traversal, refresh, and pruning decisions as a first-class root.
+
 Traversal depth is always measured from a root. A derived ticket's effective depth is the shortest distance from any root. Whether its outgoing edges are followed depends on the configured depth of each edge's dimension relative to that effective depth.
 
 On sync or refresh, the reachable graph is recomputed from all current roots using the active dimension configuration:
@@ -120,7 +138,23 @@ Every file includes `format_version`. When the file format changes, the tool inc
 
 ---
 
-## 3. Interface Model
+## 3. Runtime Foundation and Interface Model
+
+### 3.1 Foundation
+
+The implementation is a Python 3.13+ project and is async-first.
+
+This is a deliberate architectural choice, not just an implementation convenience:
+
+- the primary consumers are already Python systems;
+- the repository conventions are Python-first and async-first;
+- the workload is dominated by I/O to Linear plus local file-system operations, which fits an async model well.
+
+`linear-client` is the mandatory foundation for Linear integration. The context-sync tool builds on top of it for authentication, domain-level access to Linear data, connection management, and rate-limit/backoff behavior. The tool should not create a parallel Linear integration stack unless a missing capability in `linear-client` forces a narrowly scoped extension.
+
+All library entry points that can trigger remote or file I/O should be async functions, and the implementation should avoid introducing blocking I/O in the core sync path. The CLI may bridge into that async API with `asyncio.run()`, but synchronous wrappers are not the primary design center.
+
+### 3.2 Interface Model
 
 The tool exposes two interfaces:
 
@@ -165,7 +199,9 @@ On refresh:
 4. re-fetch only stale or newly discovered tickets;
 5. prune derived tickets that are no longer reachable.
 
-This approach avoids a separate state store and supports efficient incremental refreshes. The preferred implementation is a batched `updated_at` query rather than one remote call per ticket. That batching detail remains an open implementation question in [TQ-1](#tq-1-batch-updated_at-query).
+This approach avoids a separate state store and supports efficient incremental refreshes. The steady-state goal is a lightweight refresh path that scales primarily with changed tickets rather than the full size of the context directory, aside from the bounded metadata work required to determine freshness. In other words, the common case should be "check many, fully re-fetch few."
+
+The preferred implementation is a batched `updated_at` query rather than one remote call per ticket. That batching detail remains an open implementation question in [TQ-1](#tq-1-batch-updated_at-query).
 
 The tool also supports a diff mode that compares the current context directory against live Linear data without modifying local files. Diff mode exists for both human debugging and pre-refresh validation.
 
@@ -248,3 +284,111 @@ Options:
 - no explicit concurrency control beyond whatever `linear-client` already does internally.
 
 Recommendation: prefer `TaskGroup` with a configurable semaphore limit.
+
+### TQ-6: Root-Set Removal and Demotion Semantics
+
+The ADR now decides that the root pool can expand over time, but it does not yet define how roots leave that pool.
+
+Questions to answer:
+
+- Should the tool support an explicit "remove root" or "demote root" operation?
+- If so, is removal immediate, or only effective on the next refresh?
+- How should the tool protect against accidentally removing a root that is still operationally important?
+
+This matters before low-level design because root lifecycle affects frontmatter, CLI shape, pruning behavior, and result reporting.
+
+### TQ-7: Snapshot Consistency Contract
+
+The problem statement calls out inconsistency in the current runtime fetch model, but the ADR does not yet define the consistency guarantee of the new tool.
+
+Questions to answer:
+
+- Is the target guarantee best-effort freshness, a bounded-skew snapshot, or something stronger?
+- Can Linear provide enough metadata to approximate a stable read boundary, or must the tool document that snapshots are assembled over time?
+- How should the tool surface that guarantee to callers and humans reading the files?
+
+This matters because it changes both refresh logic and user expectations about what "snapshot" means.
+
+### TQ-8: Ticket Identity and Rename Semantics
+
+The file format uses the human-facing ticket identifier in filenames, but the ADR does not yet resolve how identity behaves if that identifier changes.
+
+Questions to answer:
+
+- Should the filename be based on the stable Linear UUID, the human-facing issue key, or both?
+- If the issue key changes, does the tool rename the file, create an alias, or keep the old filename?
+- Which identifier is authoritative for deduplication and refresh?
+
+This needs an answer before low-level design because it affects directory layout, parser behavior, and migration logic.
+
+### TQ-9: Concurrency and Locking for the Context Directory
+
+The ADR defines atomic writes but not multi-process behavior.
+
+Questions to answer:
+
+- Can more than one sync or refresh run against the same context directory at once?
+- If not, what locking mechanism prevents overlapping writers?
+- If yes, what is the conflict-resolution model for create, update, prune, and root-set changes?
+
+This matters because local snapshot correctness is not just about single-file atomicity.
+
+### TQ-10: Change Detection Granularity
+
+The refresh strategy currently assumes `updated_at` is the right freshness cursor, but the ADR does not yet spell out which remote changes must be observable locally.
+
+Questions to answer:
+
+- Does Linear's `updated_at` advance for all changes we care about, including comment edits, relation changes, label changes, and attachment changes?
+- If not, do we need additional per-ticket cursors or field-specific freshness checks?
+- Which local fields count as materially changed for diff reporting?
+
+This is a low-level-design blocker because it determines whether the lightweight refresh model is actually correct.
+
+### TQ-11: File-Normalization and Diff-Stability Rules
+
+The ADR chooses Markdown plus frontmatter, but it does not yet define normalization rules for stable output.
+
+Questions to answer:
+
+- What ordering rules apply to labels, relations, and attachments?
+- How are timestamps formatted canonically?
+- How are empty fields represented so repeated syncs do not churn files unnecessarily?
+
+This matters because idempotency depends on deterministic serialization, not just correct data.
+
+### TQ-12: Missing or Inaccessible Remote Tickets
+
+The failure model covers linked-ticket fetch failures in general, but it does not yet distinguish between not found, permission loss, archival, and transient API errors.
+
+Questions to answer:
+
+- When a previously synced ticket becomes inaccessible, should the local file be kept, pruned, or replaced with a tombstone state?
+- How should diff mode report that case?
+- Are these cases retriable, user-actionable, or terminal?
+
+This needs resolution before low-level design because it affects pruning, error types, and the human debugging story.
+
+### TQ-13: Repository and Workspace Boundaries
+
+The problem statement wants reuse across callers, but the ADR does not yet define how a context directory is scoped.
+
+Questions to answer:
+
+- Is one context directory tied to a single Linear workspace, team, or project namespace?
+- What metadata is required to prevent collisions between workspaces that may reuse similar issue keys?
+- Should mixed-workspace roots be allowed at all?
+
+This matters before low-level design because directory metadata and validation rules depend on it.
+
+### TQ-14: Observability and Verification Depth
+
+The local snapshot is meant to be inspectable, but the ADR does not yet define the operational signals the tool emits while building it.
+
+Questions to answer:
+
+- What logs, counters, or summary metadata are required so humans can diagnose partial refreshes or pruning surprises?
+- Should the tool verify written files by re-reading them, or is serializer determinism sufficient?
+- What minimum provenance should be available outside debug mode?
+
+This matters because debugging and trustworthiness are core reasons the tool exists.
