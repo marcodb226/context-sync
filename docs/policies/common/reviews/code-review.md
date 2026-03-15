@@ -27,6 +27,9 @@
 ## API and Contract Impact
 
 - Does this change public behavior, schema, payloads, or assumptions for callers?
+- In repositories that have already shipped a stable release (`>=1.0.0`), does this change externally observable behavior relative to the previous release?
+- If released behavior changed, is `CHANGELOG.md` updated for the upcoming release?
+- If no changelog entry was added, is the omission explicitly justified and correct?
 
 ## Readability
 

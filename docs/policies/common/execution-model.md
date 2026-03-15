@@ -61,22 +61,24 @@ Phase A produces the ticket deliverable and the execution record needed for inde
 ### 4.3 Implementation Ticket Requirements
 
 1. **Coding guidelines compliance:** Before marking implementation complete, verify every change against [`docs/policies/common/coding-guidelines.md`](<coding-guidelines.md>). Check: docstring format, type annotations, exception specificity, async patterns, Pydantic for cross-boundary models, logging, and security rules. Record the compliance check in the execution file.
-2. **Non-waivable validation gate:** Before completion, run required validation commands (`ruff check`, `ruff format --check`, and ticket-appropriate test commands). If any command fails, stop and treat it as blocking. Do not mark the ticket complete while failures remain.
-3. **No baseline-failure waiver:** "Pre-existing" or "out-of-scope" validation failures do not permit completion. The session must either (a) fix the failing baseline in the same ticket, or (b) explicitly log a blocking prerequisite and stop without marking the ticket complete.
+2. **Stable-release changelog gate:** In repositories that have already shipped a stable release (`>=1.0.0`), evaluate whether the ticket changes externally observable behavior relative to the previous release. If it does, update `CHANGELOG.md` for the upcoming release before marking Phase A complete. If it does not, record `No changelog entry required` with a short rationale in the execution file.
+3. **Non-waivable validation gate:** Before completion, run required validation commands (`ruff check`, `ruff format --check`, and ticket-appropriate test commands). If any command fails, stop and treat it as blocking. Do not mark the ticket complete while failures remain.
+4. **No baseline-failure waiver:** "Pre-existing" or "out-of-scope" validation failures do not permit completion. The session must either (a) fix the failing baseline in the same ticket, or (b) explicitly log a blocking prerequisite and stop without marking the ticket complete.
 
 ## 5. Phase B - Review
 
 1. **Reviewer session gate:** Start Phase B in a different agent session than Phase A for the same ticket.
 2. **Create review file:** Create (or open) the matching `*-review.md` file in `docs/execution/`.
 3. **Review focus:** Review for bugs, regressions, design-contract mismatches, operational risks, and missing tests. Use the applicable reference checklist as a lightweight prompt set: [`docs/policies/common/reviews/code-review.md`](<reviews/code-review.md>) for implementation-heavy review, [`docs/policies/common/reviews/design-review.md`](<reviews/design-review.md>) for design-heavy review, and both when a ticket spans both concerns. These references guide reviewer attention but are not a mandatory rubric: the reviewer does not need to answer every prompt, force coverage of irrelevant headings, or restate checklist items that appear satisfactory. Record material findings, notable residual risks, and meaningful testing or validation gaps.
-4. **Linear-specific domain layer boundary check:** Verify changes that interact with Linear stayed within the `linear-client` domain layer, except for explicit exceptions documented in the design artifacts for the ticket.
-5. **Findings table format:** Record findings in a table with this exact header order:
+4. **Stable-release changelog review:** For implementation tickets in repositories that have already shipped a stable release (`>=1.0.0`), verify that any externally observable behavior change relative to the previous release is reflected in `CHANGELOG.md`, or that the Phase A execution record contains a sound rationale for omitting a changelog entry.
+5. **Linear-specific domain layer boundary check:** Verify changes that interact with Linear stayed within the `linear-client` domain layer, except for explicit exceptions documented in the design artifacts for the ticket.
+6. **Findings table format:** Record findings in a table with this exact header order:
    `| ID | Severity | Status | Area | Finding | Evidence | Impact | Recommendation |`
-6. **Finding ID contract:** Use progressive IDs per ticket in the form `<ticket-id>-Rn` (for example: `M1-1-R1`, `M1-1-R2`, ...). When referencing a finding ID in prose, table cells, or any text outside the `ID` column, always use the fully qualified form (e.g., `M1-3-R5`, never bare `R5`). Bare short-form IDs like `R5` are ambiguous across tickets and must not appear anywhere in the review file.
-7. **Initial status contract:** Set `Status` to `Todo` for all newly recorded findings.
-8. **Evidence link contract:** In `Evidence`, keep the rendered evidence text as repo-style file paths (optionally with `:line`), and ensure the underlying Markdown link target is reachable from the review file location (use relative links).
-9. **Markdown link contract enforcement:** Ensure any repository file references added during review (findings, notes, residual-risk sections) follow the mandatory Markdown link rule.
-10. **No-findings case:** If no findings are discovered, state that explicitly in the review file and include any residual risks/testing gaps.
+7. **Finding ID contract:** Use progressive IDs per ticket in the form `<ticket-id>-Rn` (for example: `M1-1-R1`, `M1-1-R2`, ...). When referencing a finding ID in prose, table cells, or any text outside the `ID` column, always use the fully qualified form (e.g., `M1-3-R5`, never bare `R5`). Bare short-form IDs like `R5` are ambiguous across tickets and must not appear anywhere in the review file.
+8. **Initial status contract:** Set `Status` to `Todo` for all newly recorded findings.
+9. **Evidence link contract:** In `Evidence`, keep the rendered evidence text as repo-style file paths (optionally with `:line`), and ensure the underlying Markdown link target is reachable from the review file location (use relative links).
+10. **Markdown link contract enforcement:** Ensure any repository file references added during review (findings, notes, residual-risk sections) follow the mandatory Markdown link rule.
+11. **No-findings case:** If no findings are discovered, state that explicitly in the review file and include any residual risks/testing gaps.
 
 ## 6. Phase C - Ticket Owner Response
 

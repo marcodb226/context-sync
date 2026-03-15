@@ -4,7 +4,7 @@
 
 Before writing or modifying any code, read and follow:
 
-- `docs/policies/common/coding-guidelines.md` — formatting, type annotations, async patterns, exception handling, docstring format, testing, security rules.
+- `docs/policies/common/coding-guidelines.md` — formatting, type annotations, async patterns, exception handling, docstring format, testing, security rules, and repository versioning/changelog conventions.
 - `docs/policies/common/execution-model.md` — execution model for implementation-plan ticket work.
 
 ## Instruction file source of truth

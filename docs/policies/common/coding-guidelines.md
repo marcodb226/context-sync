@@ -2,7 +2,7 @@
 
 ## Scope
 
-These guidelines apply to all Python source files in this project. Shell scripts and GitHub Actions workflow YAML files are also in scope for the general principles (documentation, explicitness, no silent failures). Language-specific sections apply only to the language named.
+These guidelines apply to all Python source files in this project. Shell scripts and GitHub Actions workflow YAML files are also in scope for the general principles (documentation, explicitness, no silent failures). These guidelines also include repository-level release conventions that apply when the project publishes versioned releases. Language-specific sections apply only to the language named.
 
 ---
 
@@ -24,6 +24,34 @@ These guidelines apply to all Python source files in this project. Shell scripts
 - **Never expose secrets in logs or error output.** Do not log secrets, tokens, or any value that could be used to authenticate — not even a prefix or suffix for debugging. Use opaque identifiers (e.g., the last 4 characters of a token ID, not the token itself) if correlation is needed.
 
 - **Validate at system boundaries.** All external inputs — API payloads, webhook events, human-provided configuration — must be validated before entering internal logic. Raw unvalidated data must not be passed downstream.
+
+---
+
+## Repository Versioning and Changelog
+
+These rules apply to repositories that publish versioned releases.
+
+### Semantic Versioning
+
+- Use Semantic Versioning (`MAJOR.MINOR.PATCH`) for release versions.
+- Until the first stable release, use `0.y.z`.
+- For `0.y.z` releases:
+  - `y` increments may include breaking changes.
+  - `z` increments are for non-breaking fixes or adjustments.
+- The first stable public release is `1.0.0`.
+- For `>=1.0.0` releases:
+  - `MAJOR` for breaking changes to documented public behavior.
+  - `MINOR` for backward-compatible features.
+  - `PATCH` for backward-compatible bug fixes.
+
+### Changelog
+
+- Maintain a top-level `CHANGELOG.md` once the project starts publishing stable releases (`>=1.0.0`).
+- Before the first stable release (`<1.0.0`), changelog maintenance may be optional.
+- In repositories that have already shipped a stable release (`>=1.0.0`), any change to externally observable behavior relative to the previous release must be reflected in the upcoming `CHANGELOG.md`.
+- Changelog-required behavior changes include changes to public interfaces, documented configuration semantics, externally visible error behavior, and other user-visible or operator-visible behavior.
+- Each release entry should summarize user-visible changes.
+- Prefer durable change categories such as Added, Changed, Fixed, Removed, Deprecated, and Security.
 
 ---
 
