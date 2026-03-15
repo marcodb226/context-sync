@@ -108,7 +108,7 @@ For the first release, a context directory contains:
 
 - ticket snapshot files such as `ACP-123.md`;
 - `.context-sync.yml`, a small manifest file;
-- `.context-sync.lock`, a transient writer-lock file that exists only while a mutating operation is active.
+- `.context-sync.lock`, a small structured writer-lock file that normally exists only while a mutating operation owns the directory, though an interrupted writer may leave behind a stale lock record.
 
 The manifest is the authoritative directory-level metadata file. It stores:
 
@@ -126,6 +126,18 @@ Because the manifest is authoritative for roots, deleting a ticket file by hand 
 Ticket files remain named by the current human-facing issue key for readability. The stable Linear UUID is the authoritative identity used for deduplication, root membership, and issue-key-change handling. When the tool observes that a tracked ticket's current issue key changed, it renames the local file and preserves the previous key in the manifest alias table so local agents can still resolve old references offline. The concrete documented reason for this today is that a Linear issue can move to another team in the same workspace and receive a new issue ID. More generally, the implementation should treat any upstream reassignment of the human-facing issue key the same way.
 
 That offline alias support is intentionally bounded in v1. The tool can preserve issue-key-change history only from the point it starts tracking a ticket unless the API itself exposes older aliases; importing such historical aliases is deferred to [FW-4](<../future-work.md#fw-4-historical-ticket-alias-import>).
+
+The lock file is not just a sentinel. For the first release it should store enough metadata for safe contention handling and operator diagnosis:
+
+- `writer_id`: a unique ID for the owning invocation;
+- `host`: the machine or worker host identity;
+- `pid`: the owning process ID when available;
+- `acquired_at`: the timestamp when the lock was taken;
+- `mode`: the mutating operation (`sync`, `refresh`, `add`, or `remove-root`).
+
+The lock must be acquired with an atomic create-or-fail step. If a lock record already exists, the tool inspects its metadata before deciding what to do next.
+
+For v1, a lock is **demonstrably stale** only when the tool can prove the recorded writer is gone, for example because the lock names the current host and a PID that no longer exists. `acquired_at` is still important for diagnostics, but timestamp age alone is not sufficient to authorize preemption in v1.
 
 ### 2.2 Ticket File Rendering
 
@@ -214,7 +226,9 @@ Errors are not all treated the same. Systemic remote failures abort the run imme
 | Systemic remote failure (workspace access lost, invalid auth, lost network access, retry-exhausted `5xx`) | Abort immediately and stop further edits; a partial snapshot may remain if the failure happens mid-run |
 | Linear API rate limit | Let `linear-client` perform retry/backoff; if retries are exhausted, treat it as a systemic remote failure |
 | Context directory does not exist | Create it |
-| Context directory already locked by a writer | Fail fast with a clear error; do not wait indefinitely |
+| Context directory lock belongs to an active writer | Fail fast with a clear error; do not wait indefinitely |
+| Context directory lock is demonstrably stale | Preempt the stale lock, log that decision, and continue |
+| Context directory lock exists but staleness cannot be established safely | Fail with an explicit stale-lock error; do not guess |
 | Root ticket belongs to a different workspace than the current snapshot | Raise before mutating the context directory |
 | `add` is given a Linear URL whose workspace slug clearly mismatches the manifest | Fail fast before the full refresh flow |
 | `remove-root` targets a ticket that is not in the manifest root set | Fail fast with a clear error |
@@ -245,7 +259,11 @@ The tool does **not** manage its own Linear authentication.
 ```
 sync(root_ticket_id, max_tickets, dimensions)
   │
-  ├─ Acquire exclusive writer lock for context_dir
+  ├─ Attempt atomic writer-lock acquisition for context_dir
+  ├─ If a lock record already exists: inspect lock metadata
+  ├─ If the recorded writer is active: fail fast
+  ├─ If the lock is demonstrably stale: preempt it and continue
+  ├─ Else: fail with an explicit stale-lock error
   ├─ Load or initialize `.context-sync.yml`
   ├─ Fetch root ticket from Linear
   ├─ Verify that the root ticket belongs to the configured workspace
@@ -282,7 +300,11 @@ sync(root_ticket_id, max_tickets, dimensions)
 ```
 refresh()
   │
-  ├─ Acquire exclusive writer lock for context_dir
+  ├─ Attempt atomic writer-lock acquisition for context_dir
+  ├─ If a lock record already exists: inspect lock metadata
+  ├─ If the recorded writer is active: fail fast
+  ├─ If the lock is demonstrably stale: preempt it and continue
+  ├─ Else: fail with an explicit stale-lock error
   ├─ Load and validate `.context-sync.yml`
   ├─ Read frontmatter from all tracked files in context_dir
   ├─ Load the full root set from the manifest
@@ -324,7 +346,11 @@ The first release does not treat a richer activity or history timeline as part o
 ```
 add(ticket_ref)
   │
-  ├─ Acquire exclusive writer lock for context_dir
+  ├─ Attempt atomic writer-lock acquisition for context_dir
+  ├─ If a lock record already exists: inspect lock metadata
+  ├─ If the recorded writer is active: fail fast
+  ├─ If the lock is demonstrably stale: preempt it and continue
+  ├─ Else: fail with an explicit stale-lock error
   ├─ Load or initialize `.context-sync.yml`
   ├─ Normalize ticket_ref (issue key or Linear issue URL)
   ├─ Attempt local resolution through the manifest alias table
@@ -344,8 +370,11 @@ add(ticket_ref)
 ```
 diff()
   │
-  ├─ Check for active writer lock on context_dir
-  ├─ If a writer is active: fail fast with a clear message
+  ├─ Check for writer lock on context_dir
+  ├─ If a lock record exists: inspect lock metadata
+  ├─ If the recorded writer is active: fail fast with a clear message
+  ├─ If the lock is demonstrably stale: clear it and continue
+  ├─ Else if staleness cannot be established safely: fail with an explicit stale-lock error
   ├─ Load and validate `.context-sync.yml`
   ├─ Read frontmatter from all tracked files in context_dir
   ├─ Fetch current state from Linear for each tracked ticket
@@ -365,7 +394,11 @@ diff()
 ```
 remove_root(ticket_ref)
   │
-  ├─ Acquire exclusive writer lock for context_dir
+  ├─ Attempt atomic writer-lock acquisition for context_dir
+  ├─ If a lock record already exists: inspect lock metadata
+  ├─ If the recorded writer is active: fail fast
+  ├─ If the lock is demonstrably stale: preempt it and continue
+  ├─ Else: fail with an explicit stale-lock error
   ├─ Load and validate `.context-sync.yml`
   ├─ Normalize ticket_ref (issue key or Linear issue URL)
   ├─ Resolve the referenced ticket UUID through the manifest alias table

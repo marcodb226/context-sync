@@ -172,7 +172,9 @@ This manifest is how the tool knows whether an `add` request belongs to the work
 
 No separate secondary index file is introduced in the first release. The manifest already solves the directory-level lookup problems that matter most in v1: "which workspace is this?", "which tickets are roots?", and "which locally tracked ticket does this key or alias refer to?" Ticket files still retain their own `root` flag for local readability, but the manifest is the authoritative root-set and ticket-identity source for refresh, add, and remove-root flows.
 
-The only other required non-ticket file is a transient lock file, `.context-sync.lock`, used to enforce the single-writer rule for mutating operations.
+The only other required non-ticket file is `.context-sync.lock`, a small structured lock record used to enforce the single-writer rule for mutating operations.
+
+For the first release, the lock record should contain enough metadata for safe contention handling and human diagnosis: a unique writer ID, host identifier, process ID when available, acquisition timestamp, and the mutating mode that owns the lock. On lock contention, the tool should inspect this metadata rather than treating mere file existence as proof of an active writer.
 
 ### 2.2 Normalization and Rendered Body Structure
 
@@ -341,6 +343,7 @@ The first release also defines a minimal observability and verification contract
 - the manifest records the last snapshot mode, started-at timestamp, completed-at timestamp, and whether the most recent mutating run completed successfully;
 - `INFO`-level logs should cover run start, run end, mode, root count, reachable ticket count, created/updated/unchanged/removed/error counts, duration, and any catastrophic abort reason;
 - `DEBUG`-level logs should cover per-ticket decisions such as "fresh", "stale", "pruned", "renamed due to key change", and alias-based reference resolution;
+- lock-handling logs should make it clear whether the run acquired a clean lock, refused an active lock, or preempted a demonstrably stale lock;
 - after writing a ticket file, the tool re-parses the generated file and verifies critical fields and required structural markers against the in-memory rendered data before considering that write successful.
 
 This verification step is intentionally lightweight. It exists to catch serializer or parser drift early, not to prove full semantic equivalence of every Markdown body block against the upstream API response.
@@ -375,8 +378,9 @@ The tool makes the following guarantees:
 
 - It is read-only with respect to Linear.
 - It never writes outside the configured context directory.
-- Mutating modes (`sync`, `refresh`, and root-set changes such as `add`) take an exclusive lock on the context directory. Two writers are not allowed to operate on the same directory concurrently.
-- `diff` does not run against a context directory while a writer lock is held; it should fail fast rather than inspect a directory whose snapshot may be changing underneath it.
+- Mutating modes (`sync`, `refresh`, and root-set changes such as `add`) take an exclusive lock on the context directory. Two active writers are not allowed to operate on the same directory concurrently.
+- Lock contention is handled explicitly. If the recorded writer is still active, the new run fails fast. If the lock is demonstrably stale, the new run may preempt it and continue. If the tool cannot establish staleness safely, it must fail with a clear stale-lock error rather than guessing.
+- `diff` does not run against a context directory while an active writer lock is held; it should also inspect any existing lock record rather than treating lock-file existence alone as proof of an active writer.
 - File writes are atomic so a crash does not leave a partially written ticket file behind.
 - A failed or interrupted run may still leave the directory partially updated at the snapshot level in the first release. The tool does not yet guarantee whole-directory atomic commit; stronger semantics are deferred to [FW-3](<future-work.md#fw-3-whole-snapshot-atomic-commit>).
 - Re-running sync or refresh without upstream changes should not rewrite files.
