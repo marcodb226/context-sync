@@ -6,7 +6,7 @@ This document defines the ticket execution model used by repository implementati
 
 ## 1. Scope
 
-This execution model applies only to named tickets created by an implementation plan that explicitly adopts it, such as [`docs/implementation-plan.md`](<../../implementation-plan.md>).
+This execution model applies only to named tickets created by an implementation plan that explicitly adopts it, such as [`docs/implementation-plan.md`](<../../implementation-plan.md>) when present.
 
 It does not apply to ad hoc repository work, repository-maintenance tasks, or direct edits to planning, design, or instruction documents unless a named implementation-plan ticket explicitly requires that work.
 
