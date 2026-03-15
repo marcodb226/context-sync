@@ -41,7 +41,7 @@ These guidelines apply to all Python source files in this project. Shell scripts
 
 - **All structured data must be strongly typed.** Every class, dataclass, and container used to hold structured data must have explicit type annotations on all fields. Bare `dict`, `tuple`, or `list` used as ad-hoc data structures are not permitted — define a typed class instead.
 - All function and method signatures must include type annotations for parameters and return types. No exceptions for internal helpers.
-- Use **Pydantic** (`BaseModel` / `BaseSettings`) for data crossing trust or serialization boundaries (configuration, API payloads, persisted data). Use **`dataclass`** for internal state containers and private implementation structs. Do not use plain `dict` or untyped `dataclass` as structured data models at any boundary. See [`docs/design/data-modeling.md`](<../design/data-modeling.md>) for the full decision heuristic and examples.
+- Use **Pydantic** (`BaseModel` / `BaseSettings`) for data crossing trust or serialization boundaries (configuration, API payloads, persisted data). Use **`dataclass`** for internal state containers and private implementation structs. Do not use plain `dict` or untyped `dataclass` as structured data models at any boundary. See [`docs/policies/data-modeling.md`](<data-modeling.md>) for the full decision heuristic and examples.
 - Use `from __future__ import annotations` at the top of files where forward references are needed, rather than quoting type names.
 - Use `typing.Protocol` for structural interfaces rather than abstract base classes where duck typing is the intent.
 
