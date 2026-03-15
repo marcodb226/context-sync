@@ -6,7 +6,7 @@ This document defines the ticket execution model used by repository implementati
 
 ## 1. Scope
 
-This execution model applies only to named tickets created by an implementation plan that explicitly adopts it, including the Release 1 plan in [`docs/implementation-plan.md`](<../implementation-plan.md>).
+This execution model applies only to named tickets created by an implementation plan that explicitly adopts it, such as [`docs/implementation-plan.md`](<../implementation-plan.md>).
 
 It does not apply to ad hoc repository work, repository-maintenance tasks, or direct edits to planning, design, or instruction documents unless a named implementation-plan ticket explicitly requires that work.
 
@@ -20,7 +20,7 @@ Ticket artifacts live under `docs/execution/`.
 - Each ticket has a review file at `docs/execution/<ticket-id>-review.md`.
 - The `*-review.md` artifact is shared by Phase B and Phase C. Phase B owns the findings table and reviewer notes; Phase C appends a ticket-owner-response section below the reviewer-authored content.
 
-Release 1 examples:
+Examples (the references might not exist, and are exemplary only):
 - Design tickets: `M1-D3` -> `docs/execution/M1-D3.md`, `docs/execution/M1-D3-review.md`
 - Implementation tickets: `M1-2` -> `docs/execution/M1-2.md`, `docs/execution/M1-2-review.md`
 
@@ -56,7 +56,7 @@ Phase A produces the ticket deliverable and the execution record needed for inde
 
 1. **Design alignment check:** Before marking design work complete, verify the deliverable against the governing artifacts for the ticket (for example the ADR, problem statement, prerequisite design docs, framework policies, and role documents as applicable). Record the documents checked in the execution file.
 2. **Decision and scope capture:** Record the chosen design, material assumptions, unresolved questions, explicit deferrals, and downstream follow-up dependencies in the execution file so later implementation tickets can rely on repository artifacts alone.
-3. **Design validation expectation:** For docs-only design tickets, the execution model does not impose a mandatory automated lint/test gate today; instead, record the manual validation or cross-document consistency checks that were performed. If a design ticket also modifies executable code or otherwise falls outside docs-only scope, satisfy the implementation-ticket requirements in Section 4.3 for those changes.
+3. **Design validation expectation:** For docs-only design tickets, the execution model does not impose a mandatory automated lint/test gate; instead, record the manual validation or cross-document consistency checks that were performed. If a design ticket also modifies executable code or otherwise falls outside docs-only scope, satisfy the implementation-ticket requirements in Section 4.3 for those changes.
 
 ### 4.3 Implementation Ticket Requirements
 
