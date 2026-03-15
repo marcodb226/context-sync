@@ -13,8 +13,8 @@ Before writing or modifying any code, read and follow:
 
 - `docs/policies/common/agent-instructions.md` is the only source-of-truth file for repository-level agent instructions.
 - `AGENTS.md` and `CLAUDE.md` are generated artifacts and must never be edited directly.
-- Never suggest direct edits to `AGENTS.md` or `CLAUDE.md`. When instruction changes are needed, edit `docs/policies/common/agent-instructions.md` and then run `.venv/bin/python docs/policies/common/tool/sync_agent_instructions.py` to sync the generated files.
-- Optionally run `.venv/bin/python docs/policies/common/tool/sync_agent_instructions.py --check` after syncing to confirm `docs/policies/common/agent-instructions.md`, `AGENTS.md`, and `CLAUDE.md` are aligned.
+- Never suggest direct edits to `AGENTS.md` or `CLAUDE.md`. When instruction changes are needed, edit `docs/policies/common/agent-instructions.md` and then run `.venv/bin/python docs/policies/common/tools/sync_agent_instructions.py` to sync the generated files.
+- Optionally run `.venv/bin/python docs/policies/common/tools/sync_agent_instructions.py --check` after syncing to confirm `docs/policies/common/agent-instructions.md`, `AGENTS.md`, and `CLAUDE.md` are aligned.
 
 ## Validation scope gate
 
