@@ -388,15 +388,3 @@ For many intended callers, the snapshot lives in git-managed files, which gives 
 ---
 
 ## 9. Open Questions
-
-### TQ-13: Do We Need a Separate Targeted Read Path?
-
-The problem statement includes pre-write validation as an important workflow, but this ADR now leans toward making `refresh` a whole-snapshot operation in order to preserve checkpoint coherence.
-
-Questions to answer:
-
-- If a caller wants a very cheap "check just this one ticket before writing" operation, should that exist outside the persisted snapshot modes?
-- If so, should it be exposed as a transient library helper rather than as `refresh`?
-- How do we prevent callers from confusing a targeted transient read with a coherent snapshot update?
-
-This matters because it affects both API shape and how strictly we preserve whole-snapshot semantics.

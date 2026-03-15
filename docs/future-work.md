@@ -73,3 +73,18 @@ Potential follow-on improvements:
 - define how refresh and diff treat per-section freshness if different sections eventually have different update semantics.
 
 This item should be revisited if richer history becomes important for agent workflows or if ticket files become large enough that section-level chunking materially improves usability.
+
+## FW-6: Transient Ticket Preview Without Persistence
+
+The first release keeps the persisted interface intentionally small: `sync`, `refresh`, `diff`, `add`, and `remove-root` all operate in terms of the current context directory and its coherent whole-snapshot semantics. There is no separate v1 mode for peeking at a ticket without touching local files.
+
+Future human and agent workflows may still want a cheap way to inspect a ticket, and possibly a small reachable neighborhood, without persisting anything to `context_dir`.
+
+Potential follow-on improvements:
+
+- expose a transient library helper that fetches a ticket by issue key or URL and returns a lightweight preview object;
+- optionally support a bounded non-persisted neighborhood preview for nearby linked tickets;
+- define how this preview surface differs clearly from `diff`, which compares live Linear state against an existing local snapshot;
+- consider whether a CLI-level preview command would be useful for humans once the library behavior is proven.
+
+This item should be revisited if callers repeatedly need ad hoc ticket inspection before deciding whether to add a root or refresh a snapshot.
