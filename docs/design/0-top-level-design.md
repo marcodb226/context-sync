@@ -276,14 +276,21 @@ sync(root_ticket_id, max_tickets, dimensions)
   ├─ Load the full root set from the manifest
   ├─ Recompute the reachable graph from all roots
   │
-  ├─ BFS loop:
-  │   ├─ Dequeue ticket at depth N
-  │   ├─ For each outgoing edge (relation, parent/child, ticket_ref):
-  │   │   ├─ Determine edge dimension
-  │   │   ├─ If dimension depth > N and target not visited and cap not reached:
-  │   │   │   ├─ Enqueue target at depth N+1
-  │   │   │   └─ Fetch target ticket (TaskGroup + semaphore-limited worker)
-  │   │   └─ Else: skip
+  ├─ Tiered BFS loop:
+  │   ├─ Process one depth frontier at a time
+  │   ├─ For frontier tickets at depth N, examine outgoing edges
+  │   ├─ Determine edge dimension for each outgoing edge
+  │   ├─ Discard edges whose dimension depth is not greater than N
+  │   ├─ Bucket remaining edges into traversal tiers:
+  │   │   ├─ Tier 1: blocks, is_blocked_by, parent, child
+  │   │   ├─ Tier 2: relates_to
+  │   │   └─ Tier 3: ticket_ref
+  │   ├─ Process tiers in order within depth N
+  │   ├─ Within a tier, preserve normal breadth-first frontier order;
+  │   │   do not assign an absolute per-relation ranking
+  │   ├─ For each target not yet visited and while cap not reached:
+  │   │   ├─ Enqueue target at depth N+1
+  │   │   └─ Fetch target ticket (TaskGroup + semaphore-limited worker)
   │   └─ Continue until queue empty or cap reached
   │
   ├─ For each fetched ticket:
@@ -299,6 +306,8 @@ sync(root_ticket_id, max_tickets, dimensions)
   │
   └─ Return SyncResult
 ```
+
+This same tiered breadth-first ordering applies whenever `refresh`, `add`, or `remove-root` recomputes reachability from the root set. The priority decision happens only at the tier level. Within a single tier, the design intentionally keeps ordinary breadth-first processing of the current frontier rather than assigning an absolute ranking to every individual relation. If the ticket cap is hit, lower-priority tiers at the current depth may be omitted before the tool considers deeper levels.
 
 ### 6.2 Refresh Flow
 

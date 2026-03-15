@@ -70,9 +70,21 @@ When a ticket is reachable through multiple paths or from multiple roots, the to
 
 ### 1.3 Traversal Order and Ticket Cap
 
-Traversal is breadth-first from all roots simultaneously. Depth-1 tickets are processed before depth-2 tickets, and so on. If the ticket cap is reached mid-traversal, the tool stops and returns the tickets already collected.
+Traversal is breadth-first by total depth from all roots simultaneously. Depth-1 tickets are processed before depth-2 tickets, and so on.
 
-Breadth-first traversal is the right default when a safety cap exists because it prioritizes the nearest and usually most relevant neighborhood before exploring deep chains.
+Within a given depth, the first release uses fixed dimension-priority tiers:
+
+- Tier 1: `blocks`, `is_blocked_by`, `parent`, `child`
+- Tier 2: `relates_to`
+- Tier 3: `ticket_ref`
+
+If the ticket cap becomes relevant, higher-priority tiers at the current depth are processed before lower-priority tiers. This ensures structural dependency edges win over informational edges near the safety bound.
+
+Within a tier, traversal remains ordinary breadth-first processing of the current depth frontier. The first release does **not** define an absolute global ranking among individual relations inside the same tier. In other words, tier selection is prioritized, but same-tier work still follows normal breadth-first order with deterministic relation ordering.
+
+If the ticket cap is reached mid-traversal, the tool stops and returns the tickets already collected. This means lower-priority tiers at the current depth, and all deeper depths, may be omitted by design when the cap is hit.
+
+Tiered breadth-first traversal is the right default when a safety cap exists because it still prioritizes the nearest neighborhood before deep chains, while avoiding the specific failure mode where informational edges crowd out structural dependencies.
 
 ### 1.4 Root vs. Derived Tickets
 
