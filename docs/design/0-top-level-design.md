@@ -204,23 +204,27 @@ class DiffResult:
 
 ## 4. Error Handling
 
-Errors are handled per-ticket. The tool never raises for a single linked-ticket failure; it completes the sync and reports errors in `SyncResult`.
+Errors are not all treated the same. Systemic remote failures abort the run immediately, while isolated linked-ticket failures are reported in `SyncResult` when the broader run can still proceed safely.
 
 | Scenario | Tool behavior |
 |---|---|
 | Root ticket fetch fails | Raise immediately — no meaningful partial result without the root |
-| Linked ticket fetch fails | Write all successful tickets; include failed ticket in `errors` |
-| Linear API rate limit | Let `linear-client` perform retry/backoff; surface the slowdown clearly in logs/results |
+| Existing manifest root is not available during `refresh` | Raise immediately; do not auto-remove the root from the manifest |
+| Linked ticket fetch fails unexpectedly while the broader run is still healthy | Write all successful tickets; include failed ticket in `errors` |
+| Systemic remote failure (workspace access lost, invalid auth, lost network access, retry-exhausted `5xx`) | Abort immediately and stop further edits; a partial snapshot may remain if the failure happens mid-run |
+| Linear API rate limit | Let `linear-client` perform retry/backoff; if retries are exhausted, treat it as a systemic remote failure |
 | Context directory does not exist | Create it |
 | Context directory already locked by a writer | Fail fast with a clear error; do not wait indefinitely |
 | Root ticket belongs to a different workspace than the current snapshot | Raise before mutating the context directory |
 | `add` is given a Linear URL whose workspace slug clearly mismatches the manifest | Fail fast before the full refresh flow |
 | `remove-root` targets a ticket that is not in the manifest root set | Fail fast with a clear error |
+| Previously local derived ticket is no longer reachable from the recomputed visible graph | Prune it normally; do not keep a tombstone file |
 | Process interrupted mid-run | No partial file writes, but the directory may still contain a partially applied snapshot update |
 | File write permission error | Raise exception |
 
 The caller (agent loop or human) decides how to handle the `SyncResult`:
 - Root failure → abort context reconstruction
+- Systemic remote failure → abort the run; if the directory is git-managed, the caller may choose to revert partial local edits
 - Linked ticket failure → proceed with partial context or retry
 
 ---
@@ -282,6 +286,8 @@ refresh()
   ├─ Load and validate `.context-sync.yml`
   ├─ Read frontmatter from all tracked files in context_dir
   ├─ Load the full root set from the manifest
+  ├─ Verify that every manifest root is available in the current visible view
+  │   before rewriting local files; fail immediately if any root is unavailable
   ├─ Recompute the reachable graph from all roots
   ├─ Batch-query Linear for per-ticket updated_at values via `linear-client`
   ├─ Treat issue-level updated_at as the freshness cursor for the v1
@@ -344,6 +350,8 @@ diff()
   ├─ For each ticket:
   │   ├─ Compare local fields vs remote fields
   │   ├─ Classify as current / stale / missing_locally / missing_remotely
+  │   │   where missing_remotely means not available in the current visible view
+  │   │   without distinguishing deletion from permission loss
   │   └─ Record changed fields if stale
   │
   └─ Return DiffResult (no files modified)

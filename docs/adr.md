@@ -338,14 +338,20 @@ The tool also supports a diff mode that compares the current context directory a
 
 ## 7. Failure Model
 
-Linked-ticket failures are reported per ticket rather than failing the entire run. The tool should return partial results whenever it can do so safely.
+Remote failures are divided into two observable classes: systemic failures that affect the run as a whole, and ticket-scoped failures or absences observed while the broader run is otherwise healthy.
 
-The important exception is root-ticket failure during an initial sync. If the root ticket cannot be fetched, the sync fails immediately because there is no meaningful graph to materialize.
+Systemic failures include whole-workspace access loss, invalid authentication, lost network access, and retry-exhausted upstream `5xx` failures reported by `linear-client`. These are catastrophic for a mutating run: the tool must stop immediately and perform no further edits. If such a failure occurs after some local files were already updated, the directory may be left partially updated at the snapshot level in the first release; stronger no-half-sync semantics remain deferred to [FW-3](<future-work.md#fw-3-whole-snapshot-atomic-commit>).
+
+Ticket-scoped absence is modeled only in terms of what the current caller can observe. The tool does not attempt to distinguish "ticket was deleted" from "ticket is no longer visible to this identity" for an individual missing ticket. Both are treated as "not available in the current visible view."
+
+The important exception is root-ticket unavailability. If a requested root during `sync` or `add`, or an already-recorded root during `refresh`, is not available in the current visible view, the run fails immediately because there is no meaningful way to satisfy the caller's explicit request. The tool must not silently remove that root from the manifest.
 
 This leads to the following behavior:
 
-- root fetch failure is terminal for that sync request;
-- linked-ticket fetch failure is recorded in the result while other reachable tickets continue;
+- systemic remote failure is terminal for the run;
+- root-ticket unavailability is terminal for that run;
+- a previously local non-root ticket that is no longer reachable from the recomputed visible graph is pruned normally;
+- an unexpected linked-ticket fetch failure that occurs while the broader run continues is recorded in the result;
 - local write failures are terminal because they break the integrity of the local snapshot.
 
 Result types should therefore carry explicit created, updated, unchanged, removed, and errored sets rather than reducing the run to a single success or failure bit.
@@ -373,18 +379,6 @@ For many intended callers, the snapshot lives in git-managed files, which gives 
 ---
 
 ## 9. Open Questions
-
-### TQ-10: Missing or Inaccessible Remote Tickets
-
-The failure model covers linked-ticket fetch failures in general, but it does not yet distinguish between not found, permission loss, archival, and transient API errors.
-
-Questions to answer:
-
-- When a previously synced ticket becomes inaccessible, should the local file be kept, pruned, or replaced with a tombstone state?
-- How should diff mode report that case?
-- Are these cases retriable, user-actionable, or terminal?
-
-This needs resolution before low-level design because it affects pruning, error types, and the human debugging story.
 
 ### TQ-12: Observability and Verification Depth
 
