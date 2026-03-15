@@ -334,6 +334,15 @@ This refresh decision carries one explicit validation requirement before impleme
 
 The tool also supports a diff mode that compares the current context directory against live Linear data without modifying local files. Diff mode exists for both human debugging and pre-refresh validation.
 
+The first release also defines a minimal observability and verification contract:
+
+- the manifest records the last snapshot mode, started-at timestamp, completed-at timestamp, and whether the most recent mutating run completed successfully;
+- `INFO`-level logs should cover run start, run end, mode, root count, reachable ticket count, created/updated/unchanged/removed/error counts, duration, and any catastrophic abort reason;
+- `DEBUG`-level logs should cover per-ticket decisions such as "fresh", "stale", "pruned", "renamed due to key change", and alias-based reference resolution;
+- after writing a ticket file, the tool re-parses the generated file and verifies critical fields and required structural markers against the in-memory rendered data before considering that write successful.
+
+This verification step is intentionally lightweight. It exists to catch serializer or parser drift early, not to prove full semantic equivalence of every Markdown body block against the upstream API response.
+
 ---
 
 ## 7. Failure Model
@@ -379,18 +388,6 @@ For many intended callers, the snapshot lives in git-managed files, which gives 
 ---
 
 ## 9. Open Questions
-
-### TQ-12: Observability and Verification Depth
-
-The local snapshot is meant to be inspectable, but the ADR does not yet define the operational signals the tool emits while building it.
-
-Questions to answer:
-
-- What logs, counters, or summary metadata are required so humans can diagnose partial refreshes or pruning surprises?
-- Should the tool verify written files by re-reading them, or is serializer determinism sufficient?
-- What minimum provenance should be available outside debug mode?
-
-This matters because debugging and trustworthiness are core reasons the tool exists.
 
 ### TQ-13: Do We Need a Separate Targeted Read Path?
 

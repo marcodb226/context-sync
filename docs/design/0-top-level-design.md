@@ -385,7 +385,7 @@ The first release does not guarantee whole-directory atomic commit for these flo
 **Risk**: A bug in the Markdown serializer produces incorrect or incomplete ticket data. The agent acts on bad context without knowing it.
 
 **Mitigation**:
-- The tool includes a **verification step**: after writing each file, re-parse it and compare key fields against the API response. Log discrepancies.
+- The tool includes a lightweight **verification step**: after writing each file, re-parse it and verify critical fields plus required `context-sync:` structural markers against the in-memory rendered data. Treat verification mismatch as a write failure.
 - Format versioning (`format_version: 1` in frontmatter) enables detection of old-format files and automatic re-sync.
 - Human review: anyone can checkout the branch and read the files. Bad context is visible, not hidden in an API call trace.
 
