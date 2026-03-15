@@ -2,9 +2,9 @@
 """
 Sync agent instruction markdown files.
 
-By default, this script treats agent-instructions.md as the source of truth and
-mirrors it to CLAUDE.md and AGENTS.md. It can also run in check mode for CI/pre-commit
-validation.
+By default, this script treats docs/policies/common/agent-instructions.md as
+the source of truth and mirrors it to CLAUDE.md and AGENTS.md. It can also run
+in check mode for CI/pre-commit validation.
 """
 
 from __future__ import annotations
@@ -15,24 +15,27 @@ from collections.abc import Sequence
 from pathlib import Path
 
 AUTOGEN_COMMENT = "<!-- auto-generated, do not edit -->"
+REPO_ROOT = Path(__file__).resolve().parents[4]
+DEFAULT_SOURCE = Path("docs/policies/common/agent-instructions.md")
+DEFAULT_TARGETS = (Path("CLAUDE.md"), Path("AGENTS.md"))
 
 
 def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Sync agent instruction files. Defaults to reading "
-            "agent-instructions.md and writing CLAUDE.md + AGENTS.md."
+            "docs/policies/common/agent-instructions.md and writing CLAUDE.md + AGENTS.md."
         )
     )
     parser.add_argument(
         "--source",
-        default="agent-instructions.md",
-        help="Source markdown file path (default: agent-instructions.md).",
+        default=str(DEFAULT_SOURCE),
+        help="Source markdown file path (default: docs/policies/common/agent-instructions.md).",
     )
     parser.add_argument(
         "--targets",
         nargs="+",
-        default=["CLAUDE.md", "AGENTS.md"],
+        default=[str(path) for path in DEFAULT_TARGETS],
         help="Target markdown files to sync (default: CLAUDE.md AGENTS.md).",
     )
     parser.add_argument(
@@ -41,6 +44,13 @@ def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
         help="Check that targets already match source without writing files.",
     )
     return parser.parse_args(argv)
+
+
+def _resolve_repo_path(path_text: str) -> Path:
+    path = Path(path_text)
+    if path.is_absolute():
+        return path.resolve()
+    return (REPO_ROOT / path).resolve()
 
 
 def _read_text(path: Path) -> str:
@@ -120,8 +130,8 @@ def _sync(source: Path, targets: Sequence[Path], check_only: bool) -> int:
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv if argv is not None else sys.argv[1:])
 
-    source = Path(args.source).resolve()
-    targets = [Path(target).resolve() for target in args.targets]
+    source = _resolve_repo_path(args.source)
+    targets = [_resolve_repo_path(target) for target in args.targets]
 
     unique_targets: list[Path] = []
     seen: set[Path] = set()

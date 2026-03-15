@@ -6,7 +6,7 @@ This document defines the ticket execution model used by repository implementati
 
 ## 1. Scope
 
-This execution model applies only to named tickets created by an implementation plan that explicitly adopts it, such as [`docs/implementation-plan.md`](<../implementation-plan.md>).
+This execution model applies only to named tickets created by an implementation plan that explicitly adopts it, such as [`docs/implementation-plan.md`](<../../implementation-plan.md>).
 
 It does not apply to ad hoc repository work, repository-maintenance tasks, or direct edits to planning, design, or instruction documents unless a named implementation-plan ticket explicitly requires that work.
 
@@ -60,7 +60,7 @@ Phase A produces the ticket deliverable and the execution record needed for inde
 
 ### 4.3 Implementation Ticket Requirements
 
-1. **Coding guidelines compliance:** Before marking implementation complete, verify every change against [`docs/policies/coding-guidelines.md`](<coding-guidelines.md>). Check: docstring format, type annotations, exception specificity, async patterns, Pydantic for cross-boundary models, logging, and security rules. Record the compliance check in the execution file.
+1. **Coding guidelines compliance:** Before marking implementation complete, verify every change against [`docs/policies/common/coding-guidelines.md`](<coding-guidelines.md>). Check: docstring format, type annotations, exception specificity, async patterns, Pydantic for cross-boundary models, logging, and security rules. Record the compliance check in the execution file.
 2. **Non-waivable validation gate:** Before completion, run required validation commands (`ruff check`, `ruff format --check`, and ticket-appropriate test commands). If any command fails, stop and treat it as blocking. Do not mark the ticket complete while failures remain.
 3. **No baseline-failure waiver:** "Pre-existing" or "out-of-scope" validation failures do not permit completion. The session must either (a) fix the failing baseline in the same ticket, or (b) explicitly log a blocking prerequisite and stop without marking the ticket complete.
 
@@ -68,7 +68,7 @@ Phase A produces the ticket deliverable and the execution record needed for inde
 
 1. **Reviewer session gate:** Start Phase B in a different agent session than Phase A for the same ticket.
 2. **Create review file:** Create (or open) the matching `*-review.md` file in `docs/execution/`.
-3. **Review focus:** Review for bugs, regressions, design-contract mismatches, operational risks, and missing tests. Use the applicable reference checklist as a lightweight prompt set: [`docs/reference/review/code-review.md`](<../reference/review/code-review.md>) for implementation-heavy review, [`docs/reference/review/design-review.md`](<../reference/review/design-review.md>) for design-heavy review, and both when a ticket spans both concerns. These references guide reviewer attention but are not a mandatory rubric: the reviewer does not need to answer every prompt, force coverage of irrelevant headings, or restate checklist items that appear satisfactory. Record material findings, notable residual risks, and meaningful testing or validation gaps.
+3. **Review focus:** Review for bugs, regressions, design-contract mismatches, operational risks, and missing tests. Use the applicable reference checklist as a lightweight prompt set: [`docs/policies/common/reviews/code-review.md`](<reviews/code-review.md>) for implementation-heavy review, [`docs/policies/common/reviews/design-review.md`](<reviews/design-review.md>) for design-heavy review, and both when a ticket spans both concerns. These references guide reviewer attention but are not a mandatory rubric: the reviewer does not need to answer every prompt, force coverage of irrelevant headings, or restate checklist items that appear satisfactory. Record material findings, notable residual risks, and meaningful testing or validation gaps.
 4. **Linear-specific domain layer boundary check:** Verify changes that interact with Linear stayed within the `linear-client` domain layer, except for explicit exceptions documented in the design artifacts for the ticket.
 5. **Findings table format:** Record findings in a table with this exact header order:
    `| ID | Severity | Status | Area | Finding | Evidence | Impact | Recommendation |`
@@ -95,7 +95,7 @@ Phase C is written by the ticket owner: the designer for design tickets, or the 
    - `Discard`
 6. **Deferral specificity rule:** Any `Defer ...` verdict must name the exact destination ticket or milestone. Bare `Defer` is not allowed. `Future work` is the only deferred-disposition verdict that intentionally omits an active-ticket or active-milestone destination.
 7. **Future-work proposal rule:** `Future work` means the ticket owner proposes moving the item to post-release backlog instead of scheduling it in the active implementation plan. The proposal must not cite a future milestone or placeholder ticket.
-8. **Accepted future-work export rule:** If the human accepts a `Future work` disposition, create a new `FW-n` entry in [`docs/future-work.md`](<../future-work.md>) and then update the same Phase C response row to include a clickable reference to that exported future-work item in the `Rationale` cell.
+8. **Accepted future-work export rule:** If the human accepts a `Future work` disposition, create a new `FW-n` entry in [`docs/future-work.md`](<../../future-work.md>) and then update the same Phase C response row to include a clickable reference to that exported future-work item in the `Rationale` cell.
 9. **Reviewer-table content immutability:** Phase C must not rewrite reviewer-authored content in the findings table (`Severity`, `Area`, `Finding`, `Evidence`, `Impact`, `Recommendation` columns) or reviewer prose outside the table. The `Status` column is a lifecycle field owned jointly — see rule 11.
 10. **Human adjudication rule:** The Phase C table is a proposal, not a final disposition. The human later reviews the response and decides which findings must be fixed now, which are deferred and to where, which are exported as future work, and which are discarded.
 11. **Post-adjudication status tracking:** After the human accepts a Phase C disposition, the ticket owner updates the reviewer findings table `Status` column to reflect implementation progress. Permitted status transitions: `Todo` → `Done` when the fix lands, `Todo` → `Done (<destination>)` when an accepted deferral is recorded (e.g., `Done (M1-3)`, `Done (FW-18)`), `Todo` → `Deferred (<destination>)` when the finding is deferred without an immediate fix, `Todo` → `Future work (<FW-id>)` when exported to the backlog (e.g., `Future work (FW-22)`), or `Todo` → `Discarded` when the human accepts a `Discard` verdict. Structural changes to the findings table (e.g., splitting a row to match an accepted split disposition) are also permitted after human adjudication. Findings that remain `Todo` pending implementation (including accepted `Fix now` verdicts) keep their `Status` as `Todo` until the fix lands. No other findings-table content may be changed.

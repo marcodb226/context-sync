@@ -6,15 +6,15 @@
 
 Before writing or modifying any code, read and follow:
 
-- `docs/policies/coding-guidelines.md` — formatting, type annotations, async patterns, exception handling, docstring format, testing, security rules.
-- `docs/policies/execution-model.md` — execution model for implementation-plan ticket work.
+- `docs/policies/common/coding-guidelines.md` — formatting, type annotations, async patterns, exception handling, docstring format, testing, security rules.
+- `docs/policies/common/execution-model.md` — execution model for implementation-plan ticket work.
 
 ## Instruction file source of truth
 
-- `agent-instructions.md` is the only source-of-truth file for repository-level agent instructions.
+- `docs/policies/common/agent-instructions.md` is the only source-of-truth file for repository-level agent instructions.
 - `AGENTS.md` and `CLAUDE.md` are generated artifacts and must never be edited directly.
-- Never suggest direct edits to `AGENTS.md` or `CLAUDE.md`. When instruction changes are needed, edit `agent-instructions.md` and then run `.venv/bin/python tools/sync_agent_instructions.py` to sync the generated files.
-- Optionally run `.venv/bin/python tools/sync_agent_instructions.py --check` after syncing to confirm `agent-instructions.md`, `AGENTS.md`, and `CLAUDE.md` are aligned.
+- Never suggest direct edits to `AGENTS.md` or `CLAUDE.md`. When instruction changes are needed, edit `docs/policies/common/agent-instructions.md` and then run `.venv/bin/python docs/policies/common/tool/sync_agent_instructions.py` to sync the generated files.
+- Optionally run `.venv/bin/python docs/policies/common/tool/sync_agent_instructions.py --check` after syncing to confirm `docs/policies/common/agent-instructions.md`, `AGENTS.md`, and `CLAUDE.md` are aligned.
 
 ## Validation scope gate
 
@@ -26,7 +26,6 @@ A change is **docs-only** only if every changed file matches one of:
 - `*.md`
 - `README.md`
 - `notes.md`
-- `agent-instructions.md`
 - `AGENTS.md`
 - `CLAUDE.md`
 
@@ -44,26 +43,26 @@ If the change is not docs-only:
 
 Before marking any work performed under a named implementation-plan ticket as complete, verify:
 
-1. For non-docs-only changes, every rule in `docs/policies/coding-guidelines.md` has been checked against the changed code.
+1. For non-docs-only changes, every rule in `docs/policies/common/coding-guidelines.md` has been checked against the changed code.
 2. For non-docs-only changes, `.venv/bin/ruff check` and `.venv/bin/ruff format --check` pass with no errors.
 3. For non-docs-only changes, all new and modified tests pass (`.venv/bin/python -m pytest tests/`).
 4. For work performed under a named implementation-plan ticket, the required artifact in `docs/execution/` is up to date.
 
 ## Execution artifact scope
 
-- `docs/execution/` is reserved for work performed under named tickets from repository implementation plans that adopt `docs/policies/execution-model.md`, and for ticket-linked review/follow-up artifacts defined by that execution model.
+- `docs/execution/` is reserved for work performed under named tickets from repository implementation plans that adopt `docs/policies/common/execution-model.md`, and for ticket-linked review/follow-up artifacts defined by that execution model.
 - Do not create or update `docs/execution/` for ad hoc conversational requests, repository maintenance, or direct edits to planning, design, or instruction documents unless the work is explicitly tied to a named ticket or the user explicitly requests an execution artifact.
-- Editing `docs/implementation-plan.md`, `agent-instructions.md`, `AGENTS.md`, or `CLAUDE.md` is not, by itself, an implementation-plan ticket and must not trigger a new `docs/execution/` artifact unless a named ticket explicitly requires that edit.
+- Editing `docs/implementation-plan.md`, `docs/policies/common/agent-instructions.md`, `AGENTS.md`, or `CLAUDE.md` is not, by itself, an implementation-plan ticket and must not trigger a new `docs/execution/` artifact unless a named ticket explicitly requires that edit.
 
 ## Ticket review requests
 
 Requests to review a named implementation-plan ticket (for example, `review M1-2` or `review M1-D3`) are treated as
-Phase B review work under `docs/policies/execution-model.md`.
+Phase B review work under `docs/policies/common/execution-model.md`.
 
 For those requests, the agent must:
 
 - create or update the matching review artifact at `docs/execution/<ticket>-review.md`
-- follow the required review-file format from `docs/policies/execution-model.md`
+- follow the required review-file format from `docs/policies/common/execution-model.md`
 - treat the repository review artifact as mandatory, not optional
 
 If the user also asks for chat-only feedback or says not to edit files, that conflicts with the
@@ -80,6 +79,7 @@ which mode they want:
 - `tests/` — mirrors `shared/` and `agents/` source tree.
 - `docs/design/` — design documents (gate implementation tickets).
 - `docs/execution/` — per-ticket execution logs.
+- `docs/policies/common/` — repository policy sources, review checklists, and policy tooling.
 - `deps/` — vendored private wheels (gitignored).
 - `tools/` — standalone bootstrap/setup scripts (not part of agent runtime).
 
