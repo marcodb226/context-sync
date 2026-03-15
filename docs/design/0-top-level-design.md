@@ -295,6 +295,9 @@ refresh()
   ├─ Before treating this design as correct, validate that issue-level
   │   updated_at advances when any of those v1-persisted fields change,
   │   especially when comments are added or edited
+  ├─ Treat that validation as an explicit release gate from
+  │   [docs/adr.md](<../adr.md#oq-1-refresh-freshness-validation-against-live-linear-behavior>);
+  │   `refresh` is not implementation-complete until it is resolved
   │
   ├─ For each reachable ticket where updated_at > last_synced_at
   │   │  or where no local file exists:

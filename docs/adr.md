@@ -332,6 +332,8 @@ The refresh path uses a batched GraphQL freshness query via `linear-client` rath
 
 This refresh decision carries one explicit validation requirement before implementation is considered correct: confirm that issue-level `updated_at` advances for every v1-persisted field the main ticket file depends on, especially when comments are added or edited. If that validation fails for any part of the v1 snapshot contract, the refresh design must be revised before low-level design proceeds; a plain issue-level `updated_at` check would not be sufficient.
 
+This is a release-gating validation requirement, not post-release future work. Until it is resolved, `refresh` should be treated as provisionally designed rather than as a settled correctness contract.
+
 The tool also supports a diff mode that compares the current context directory against live Linear data without modifying local files. Diff mode exists for both human debugging and pre-refresh validation.
 
 The first release also defines a minimal observability and verification contract:
@@ -388,3 +390,11 @@ For many intended callers, the snapshot lives in git-managed files, which gives 
 ---
 
 ## 9. Open Questions
+
+- **OQ-1: Refresh freshness validation against live Linear behavior**
+
+  The first-release `refresh` design assumes issue-level `updated_at` advances whenever any v1-persisted field changes, including comment creation, comment edits, relation changes reflected in the ticket snapshot, and any other field that can affect the rendered main ticket file.
+
+  This assumption must be validated against live Linear behavior before `refresh` is considered implementation-complete. That validation does not require the full tool to exist first; a focused probe or spike against Linear behavior is sufficient.
+
+  If the assumption holds, the current batch `updated_at` freshness design can proceed. If it does not hold, the refresh design must be revised before release, for example by using richer freshness cursors or by narrowing the supported v1 refresh contract.
