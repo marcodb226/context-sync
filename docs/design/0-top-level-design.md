@@ -96,6 +96,8 @@ context-sync diff --context-dir linear-context --json
 
 The CLI is a thin wrapper over the async library API, using `asyncio.run()` as the entry point. All logic lives in the library layer.
 
+If `diff` detects a lock record that is not demonstrably stale, the CLI should fail with a clear non-interactive message. That message should explain that the refusal is intentional: running `diff` now would compete with the mutating run for rate-limited Linear API calls and could delay the write. The output should recommend retrying after the lock clears or after an operator resolves the lock.
+
 Each invocation operates on exactly one `context_dir`. Running the tool against multiple directories is supported only by making separate invocations; the tool does not route work across directories on the caller's behalf.
 
 Parallel invocations against different context directories are allowed. They may still contend on shared upstream Linear rate limits, but the first release does not add any cross-process coordination layer on top of `linear-client`.
@@ -138,6 +140,8 @@ The lock file is not just a sentinel. For the first release it should store enou
 The lock must be acquired with an atomic create-or-fail step. If a lock record already exists, the tool inspects its metadata before deciding what to do next.
 
 For v1, a lock is **demonstrably stale** only when the tool can prove the recorded writer is gone, for example because the lock names the current host and a PID that no longer exists. `acquired_at` is still important for diagnostics, but timestamp age alone is not sufficient to authorize preemption in v1.
+
+`diff` never acquires, clears, or preempts the lock record. It may inspect lock metadata to decide whether it can safely proceed, but it remains read-only with respect to both ticket files and lock state. If the lock is not demonstrably stale, `diff` fails fast rather than competing with the mutating run for rate-limited Linear API capacity.
 
 ### 2.2 Ticket File Rendering
 
@@ -226,9 +230,10 @@ Errors are not all treated the same. Systemic remote failures abort the run imme
 | Systemic remote failure (workspace access lost, invalid auth, lost network access, retry-exhausted `5xx`) | Abort immediately and stop further edits; a partial snapshot may remain if the failure happens mid-run |
 | Linear API rate limit | Let `linear-client` perform retry/backoff; if retries are exhausted, treat it as a systemic remote failure |
 | Context directory does not exist | Create it |
-| Context directory lock belongs to an active writer | Fail fast with a clear error; do not wait indefinitely |
-| Context directory lock is demonstrably stale | Preempt the stale lock, log that decision, and continue |
-| Context directory lock exists but staleness cannot be established safely | Fail with an explicit stale-lock error; do not guess |
+| Mutating operation sees a context directory lock that belongs to an active writer | Fail fast with a clear error; do not wait indefinitely |
+| Mutating operation sees a demonstrably stale context directory lock | Preempt the stale lock, log that decision, and continue |
+| Mutating operation sees a context directory lock whose staleness cannot be established safely | Fail with an explicit stale-lock error; do not guess |
+| `diff` sees a lock record that is not demonstrably stale | Fail fast with a clear error explaining that `diff` would otherwise compete with the mutating run for rate-limited Linear API calls |
 | Root ticket belongs to a different workspace than the current snapshot | Raise before mutating the context directory |
 | `add` is given a Linear URL whose workspace slug clearly mismatches the manifest | Fail fast before the full refresh flow |
 | `remove-root` targets a ticket that is not in the manifest root set | Fail fast with a clear error |
@@ -372,9 +377,9 @@ diff()
   │
   ├─ Check for writer lock on context_dir
   ├─ If a lock record exists: inspect lock metadata
-  ├─ If the recorded writer is active: fail fast with a clear message
-  ├─ If the lock is demonstrably stale: clear it and continue
-  ├─ Else if staleness cannot be established safely: fail with an explicit stale-lock error
+  ├─ If the lock is not demonstrably stale:
+  │   └─ Fail fast with a clear lock-contention error
+  ├─ Else: continue without modifying the lock
   ├─ Load and validate `.context-sync.yml`
   ├─ Read frontmatter from all tracked files in context_dir
   ├─ Fetch current state from Linear for each tracked ticket

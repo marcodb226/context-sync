@@ -296,6 +296,8 @@ Adding a root to an existing context directory should therefore use `refresh` se
 
 `diff` compares the current local snapshot to live Linear state without modifying files. It exists to let humans and automation see what moved since the current checkpoint before deciding whether to run `refresh` or `sync`.
 
+`diff` does not acquire the writer lock. If it observes a lock record that is not demonstrably stale, it must fail fast with a clear message instead of proceeding. The reason is not local mutation risk alone: a live `diff` would still consume rate-limited Linear API capacity and could delay the mutating run that already owns the directory. The failure should recommend retrying after the lock clears or after an operator resolves the lock.
+
 ---
 
 ## 6. Refresh and Diff Strategy
@@ -344,6 +346,7 @@ The first release also defines a minimal observability and verification contract
 - `INFO`-level logs should cover run start, run end, mode, root count, reachable ticket count, created/updated/unchanged/removed/error counts, duration, and any catastrophic abort reason;
 - `DEBUG`-level logs should cover per-ticket decisions such as "fresh", "stale", "pruned", "renamed due to key change", and alias-based reference resolution;
 - lock-handling logs should make it clear whether the run acquired a clean lock, refused an active lock, or preempted a demonstrably stale lock;
+- if `diff` refuses to run because a lock record exists that is not demonstrably stale, the user-facing output should make clear that the refusal avoids competing with an in-flight mutating run for rate-limited Linear API capacity;
 - after writing a ticket file, the tool re-parses the generated file and verifies critical fields and required structural markers against the in-memory rendered data before considering that write successful.
 
 This verification step is intentionally lightweight. It exists to catch serializer or parser drift early, not to prove full semantic equivalence of every Markdown body block against the upstream API response.
@@ -379,8 +382,8 @@ The tool makes the following guarantees:
 - It is read-only with respect to Linear.
 - It never writes outside the configured context directory.
 - Mutating modes (`sync`, `refresh`, and root-set changes such as `add`) take an exclusive lock on the context directory. Two active writers are not allowed to operate on the same directory concurrently.
-- Lock contention is handled explicitly. If the recorded writer is still active, the new run fails fast. If the lock is demonstrably stale, the new run may preempt it and continue. If the tool cannot establish staleness safely, it must fail with a clear stale-lock error rather than guessing.
-- `diff` does not run against a context directory while an active writer lock is held; it should also inspect any existing lock record rather than treating lock-file existence alone as proof of an active writer.
+- For mutating modes, lock contention is handled explicitly. If the recorded writer is still active, the new run fails fast. If the lock is demonstrably stale, the new run may preempt it and continue. If the tool cannot establish staleness safely, it must fail with a clear stale-lock error rather than guessing.
+- `diff` does not acquire the writer lock. It should inspect any existing lock record, and if the lock is not demonstrably stale it must fail fast rather than competing with an in-flight mutating run for rate-limited Linear API capacity. `diff` must not clear or preempt the lock record.
 - File writes are atomic so a crash does not leave a partially written ticket file behind.
 - A failed or interrupted run may still leave the directory partially updated at the snapshot level in the first release. The tool does not yet guarantee whole-directory atomic commit; stronger semantics are deferred to [FW-3](<future-work.md#fw-3-whole-snapshot-atomic-commit>).
 - Re-running sync or refresh without upstream changes should not rewrite files.
