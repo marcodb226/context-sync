@@ -53,6 +53,27 @@ For the full rationale behind the symlink approach, recommended workspace
 layout, one-checkout-per-client-repo best practice, and alternatives considered,
 see [`docs/policies/common/README.md`](docs/policies/common/README.md).
 
+## Agent sandbox setup
+
+Because `docs/policies/common` is a symlink whose target lives outside this
+repository, Claude Code needs explicit write access to the resolved path.
+Add the following to `.claude/settings.json`:
+
+```json
+{
+  "sandbox": {
+    "filesystem": {
+      "allowWrite": [
+        "~/src/agent-policies-context-sync/docs/policies/common"
+      ]
+    }
+  }
+}
+```
+
+Read access is allowed by default across the filesystem; only write access
+needs to be explicitly granted for paths outside the project.
+
 ## Project layout
 
 | Path | Purpose |

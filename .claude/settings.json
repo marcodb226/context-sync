@@ -5,7 +5,10 @@
     "enabled": true,
     "autoAllowBashIfSandboxed": true,
     "filesystem": {
-      "allowWrite": ["//tmp"]
+      "allowWrite": [
+        "//tmp",
+        "~/src/agent-policies-context-sync/docs/policies/common"
+      ]
     }
   }
 }
