@@ -83,6 +83,12 @@ Before marking any work performed under a named active-plan item as complete, ve
 
 - `docs/execution/` is reserved for work performed under named active-plan items from plans that adopt `docs/policies/common/execution-model.md`, and for ticket-linked review/follow-up artifacts defined by that execution model.
 - Do not create or update `docs/execution/` for ad hoc conversational requests, repository maintenance, or direct edits to planning, design, or instruction documents unless the work is explicitly tied to a named active-plan item or the user explicitly requests an execution artifact.
+- During bootstrap planning, ad hoc planning artifacts such as ADR reviews,
+  candidate analysis notes, or other pre-plan materials may live under
+  `docs/planning/` with freeform filenames. Those are planning artifacts, not
+  execution artifacts, and do not by themselves imply that
+  `docs/planning/implementation-plan.md` or `docs/implementation-plan.md` must
+  already exist.
 - Editing `docs/implementation-plan.md`, `docs/future-work.md`, anything under
   `docs/planning/`, `docs/policies/common/agent-instructions.md`, `AGENTS.md`,
   or `CLAUDE.md` is not, by itself, an active-plan item and must not trigger a
