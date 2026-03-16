@@ -44,15 +44,21 @@ class ContextSyncer:
         ticket_ref: str,
     ) -> SyncResult: ...
 
-    async def refresh(self) -> SyncResult: ...
+    async def refresh(
+        self,
+        missing_root_policy: Literal["quarantine", "remove"] = "quarantine",
+    ) -> SyncResult: ...
 
     async def diff(self) -> DiffResult: ...
 
 # Initial sync: dump the root ticket plus its reachable neighborhood
 result = await syncer.sync(root_ticket_id="ACP-123", max_tickets=200)
 
-# Delta refresh: update stale files in place
+# Delta refresh: update stale files in place, quarantining unavailable roots
 result = await syncer.refresh()
+
+# Delta refresh with explicit forced removal of unavailable tracked roots
+result = await syncer.refresh(missing_root_policy="remove")
 
 # Expand with a newly discovered ticket by issue key or Linear URL,
 # then run whole-snapshot refresh semantics across all roots
@@ -83,6 +89,9 @@ context-sync sync ACP-123 --max-tickets 200 --context-dir linear-context \
 
 # Delta refresh all
 context-sync refresh --context-dir linear-context
+
+# Delta refresh, forcing immediate removal of unavailable tracked roots
+context-sync refresh --context-dir linear-context --missing-root-policy remove
 
 # Expand with a newly discovered root, then refresh the whole snapshot
 context-sync add ACP-999 --context-dir linear-context
@@ -116,7 +125,7 @@ The manifest is the authoritative directory-level metadata file. It stores:
 
 - the context format version;
 - the bound Linear workspace identity, including stable workspace ID and workspace slug;
-- the current root-ticket set, keyed by stable ticket UUID;
+- the current root-ticket set, keyed by stable ticket UUID, including per-root state such as `active` or `quarantined`;
 - a ticket lookup table that maps stable ticket UUIDs to current issue keys and current file paths;
 - a key-alias table that maps locally known current and previous issue keys back to stable ticket UUIDs;
 - snapshot-pass metadata, including the last completed snapshot mode and timestamps for the most recent completed pass.
@@ -124,6 +133,8 @@ The manifest is the authoritative directory-level metadata file. It stores:
 This design keeps v1 simple. We do not introduce a separate general-purpose index file beyond the manifest. The manifest already answers the important directory-level questions quickly: which workspace does this snapshot belong to, which tickets are roots, and which locally tracked ticket does a current or previously observed issue key refer to?
 
 Because the manifest is authoritative for roots, deleting a ticket file by hand is not a supported way to remove a root. If the ticket remains in the manifest root set, a later refresh may recreate the file.
+
+The ticket file should still mirror root state for single-file readers. For root tickets, frontmatter includes `root_state: "active"` or `root_state: "quarantined"`. When a root is quarantined, frontmatter also includes a machine-readable reason such as `quarantined_reason: "not_available_in_visible_view"`. If file state and manifest state ever diverge during recovery from an interrupted run, the manifest remains authoritative.
 
 Ticket files remain named by the current human-facing issue key for readability. The stable Linear UUID is the authoritative identity used for deduplication, root membership, and issue-key-change handling. When the tool observes that a tracked ticket's current issue key changed, it renames the local file and preserves the previous key in the manifest alias table so local agents can still resolve old references offline. The concrete documented reason for this today is that a Linear issue can move to another team in the same workspace and receive a new issue ID. More generally, the implementation should treat any upstream reassignment of the human-facing issue key the same way.
 
@@ -153,6 +164,8 @@ The body has a fixed section order:
 
 1. description
 2. comments
+
+When `root_state == "quarantined"`, the serializer also emits a short warning preamble before the normal description section. That warning is local snapshot metadata explaining that the tracked root was unavailable during the last refresh and that the content below may be stale. It is not fetched Linear content and should be clearly distinguishable from the ticket description itself.
 
 The comments section is rendered as threads, not as a flat chronological list. Top-level threads are ordered newest-first by thread activity. Within each thread, the parent comment is rendered first and replies are nested directly under that parent. Replies within a sibling set are rendered in chronological order so the local conversation reads naturally. The thread-level `resolved` flag belongs with the rendered thread metadata and with the machine-readable thread marker.
 
@@ -190,13 +203,13 @@ class SyncResult:
     created: list[str]       # current issue keys of newly created files
     updated: list[str]       # current issue keys of files that were refreshed
     unchanged: list[str]     # current issue keys of files that were fresh (skipped)
-    removed: list[str]       # current issue keys of derived files pruned
+    removed: list[str]       # current issue keys removed from the snapshot, including derived files pruned and roots removed by policy
     errors: list[SyncError]  # tickets that could not be fetched
 
 @dataclass
 class SyncError:
     ticket_id: str           # current issue key for reporting
-    error_type: str          # e.g., "not_found", "permission_denied", "api_error"
+    error_type: str          # e.g., "not_found", "permission_denied", "api_error", "root_quarantined"
     message: str
     retriable: bool
 ```
@@ -225,7 +238,8 @@ Errors are not all treated the same. Systemic remote failures abort the run imme
 | Scenario | Tool behavior |
 |---|---|
 | Root ticket fetch fails | Raise immediately — no meaningful partial result without the root |
-| Existing manifest root is not available during `refresh` | Raise immediately; do not auto-remove the root from the manifest |
+| Existing manifest root is not available during `refresh` and `missing_root_policy=\"quarantine\"` | Mark the root quarantined in the manifest, rewrite the local ticket file so `root_state` and the warning preamble reflect quarantine, skip traversing from it during this pass, and include the condition in `errors` |
+| Existing manifest root is not available during `refresh` and `missing_root_policy=\"remove\"` | Remove the root from the manifest root set, delete its local file immediately, and continue the refresh pass |
 | Linked ticket fetch fails unexpectedly while the broader run is still healthy | Write all successful tickets; include failed ticket in `errors` |
 | Systemic remote failure (workspace access lost, invalid auth, lost network access, retry-exhausted `5xx`) | Abort immediately and stop further edits; a partial snapshot may remain if the failure happens mid-run |
 | Linear API rate limit | Let `linear-client` perform retry/backoff; if retries are exhausted, treat it as a systemic remote failure |
@@ -322,9 +336,20 @@ refresh()
   ├─ Load and validate `.context-sync.yml`
   ├─ Read frontmatter from all tracked files in context_dir
   ├─ Load the full root set from the manifest
-  ├─ Verify that every manifest root is available in the current visible view
-  │   before rewriting local files; fail immediately if any root is unavailable
-  ├─ Recompute the reachable graph from all roots
+  ├─ For each manifest root not available in the current visible view:
+  │   ├─ If missing_root_policy == "quarantine":
+  │   │   ├─ Mark the root quarantined in the manifest
+  │   │   ├─ Rewrite the local ticket file so root_state and the
+  │   │   │   warning preamble reflect quarantine
+  │   │   └─ Record a root_quarantined entry in SyncResult.errors
+  │   ├─ Else if missing_root_policy == "remove":
+  │   │   ├─ Remove the root from the manifest root set
+  │   │   └─ Delete its local file immediately
+  │   └─ Continue
+  ├─ For each quarantined root visible again during refresh:
+  │   ├─ Clear the quarantined state and treat it as active again
+  │   └─ Rewrite the local ticket file so the quarantine markers are removed
+  ├─ Recompute the reachable graph from active non-quarantined roots
   ├─ Batch-query Linear for per-ticket updated_at values via `linear-client`
   ├─ Treat issue-level updated_at as the freshness cursor for the v1
   │   base ticket snapshot (metadata, description, comments)
@@ -351,7 +376,7 @@ refresh()
   └─ Return SyncResult
 ```
 
-Adding a new root to an existing context directory should use this same whole-snapshot refresh flow after recording the new root. The design intentionally avoids root-local refresh because overlapping root graphs would otherwise produce mixed-time snapshots.
+Adding a new root to an existing context directory should use this same whole-snapshot refresh flow after recording the new root. The design intentionally avoids root-local refresh because overlapping root graphs would otherwise produce mixed-time snapshots. The `missing_root_policy` knob applies only to already-tracked roots during `refresh`; it does not weaken the strict behavior of `sync` or `add` for explicitly requested roots.
 
 The first release does not treat a richer activity or history timeline as part of this base refresh contract. If that data is added later, it may need its own persistence shape and freshness semantics as described in [FW-5](<../future-work.md#fw-5-ticket-history-and-sectioned-ticket-artifacts>).
 
@@ -402,6 +427,8 @@ diff()
   │
   └─ Return DiffResult (no files modified)
 ```
+
+`diff` never changes manifest root state. If a tracked root is unavailable, `diff` reports it as `missing_remotely` just like any other unavailable tracked ticket. Whether that root should later be quarantined or removed is a separate `refresh` decision controlled by `missing_root_policy`.
 
 ### 6.5 Remove-Root Flow
 

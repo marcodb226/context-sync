@@ -111,7 +111,7 @@ On sync or refresh, the reachable graph is recomputed from all current roots usi
 
 Dimension-depth reductions can therefore remove derived files, but they never remove roots.
 
-By default, frontmatter records only whether a ticket is a root. An optional debug mode may also record provenance metadata such as which root reached the ticket, by which dimension, and at what depth.
+Frontmatter records whether a ticket is a root. For root tickets, the file should also mirror the current root state (`active` or `quarantined`) so a reader opening only that ticket can tell whether the local content is still trustworthy. The manifest remains authoritative if manifest state and file state ever diverge during recovery from an interrupted run. An optional debug mode may also record provenance metadata such as which root reached the ticket, by which dimension, and at what depth.
 
 Cycle safety is mandatory: once a ticket has been visited during a sync run, it is not re-fetched through another path in the same run.
 
@@ -152,7 +152,11 @@ updated_at: "2026-03-13T09:15:00Z"
 ---
 ```
 
+For root tickets, frontmatter also includes `root_state: "active"` or `root_state: "quarantined"`. When a root is quarantined, the file should also record a machine-readable reason such as `quarantined_reason: "not_available_in_visible_view"` so local readers know the persisted content may be stale or no longer visible to the current caller.
+
 The body stores the ticket description in Markdown followed by a chronological comments section. Each ticket file should be self-contained enough that a human can understand what was fetched without reconstructing the API responses elsewhere.
+
+When a root is quarantined, the ticket file should also include a short warning preamble ahead of the normal fetched content making it clear that the ticket was unavailable during the last refresh and that the persisted description/comments below may be stale. This warning is local snapshot metadata, not fetched Linear content.
 
 For the first release, each ticket file includes the full comment history returned by Linear. This keeps the snapshot self-contained and keeps refresh logic simple. If comment volume later proves to be a material performance or file-size problem, follow-on optimizations are tracked in [FW-1](<future-work.md#fw-1-comment-storage-optimizations>).
 
@@ -175,14 +179,14 @@ Each `context_dir` also contains a small manifest file, `.context-sync.yml`, tha
 For the first release, the manifest is the authoritative source for:
 
 - the workspace identity bound to the directory, including a stable workspace ID and a human-readable workspace slug;
-- the current root-ticket set, keyed by stable ticket UUID;
+- the current root-ticket set, keyed by stable ticket UUID, including per-root state such as `active` or `quarantined`;
 - ticket identity lookup metadata, including UUID-to-current-key and path mappings plus known key aliases back to UUID;
 - the context-level format version;
 - snapshot-pass metadata, including the last completed snapshot mode and timestamps for when that pass started and completed.
 
 This manifest is how the tool knows whether an `add` request belongs to the workspace already tracked by the directory. If the caller supplies a Linear URL, the tool may use the URL's workspace slug as an early preflight check, but the authoritative validation is still the fetched ticket's workspace identity compared against the manifest's workspace identity.
 
-No separate secondary index file is introduced in the first release. The manifest already solves the directory-level lookup problems that matter most in v1: "which workspace is this?", "which tickets are roots?", and "which locally tracked ticket does this key or alias refer to?" Ticket files still retain their own `root` flag for local readability, but the manifest is the authoritative root-set and ticket-identity source for refresh, add, and remove-root flows.
+No separate secondary index file is introduced in the first release. The manifest already solves the directory-level lookup problems that matter most in v1: "which workspace is this?", "which tickets are roots?", and "which locally tracked ticket does this key or alias refer to?" Ticket files still retain their own `root` flag and mirrored `root_state` for local readability and agent safety, but the manifest is the authoritative root-set and root-state source for refresh, add, and remove-root flows.
 
 The only other required non-ticket file is `.context-sync.lock`, a small structured lock record used to enforce the single-writer rule for mutating operations.
 
@@ -300,6 +304,8 @@ In `refresh` mode:
 - it fully re-fetches only tickets that changed remotely or are newly discovered;
 - it prunes derived tickets that are no longer reachable.
 
+`refresh` also owns the policy for handling existing manifest roots that are no longer available in the current visible view. The default policy is `quarantine`: keep the root recorded in the manifest, mark it quarantined, update the local ticket file so it clearly reflects that quarantined state, skip traversing from it during this pass, and continue refreshing the healthy roots. An explicit `remove` policy may be requested to force immediate deletion instead: remove the unavailable root from the manifest root set and delete its local ticket file before continuing the refresh pass.
+
 The first version should treat `refresh` as a whole-snapshot operation, not a root-local or ticket-local refresh mode. Partial refresh of only one root's neighborhood risks creating a mixed-time snapshot when roots overlap.
 
 Adding a root to an existing context directory should therefore use `refresh` semantics by default: mutate the root set first, then run a whole-snapshot incremental update from all roots. Root addition is not a separate snapshot-construction mode.
@@ -309,6 +315,8 @@ Adding a root to an existing context directory should therefore use `refresh` se
 `diff` compares the current local snapshot to live Linear state without modifying files. It exists to let humans and automation see what moved since the current checkpoint before deciding whether to run `refresh` or `sync`.
 
 `diff` does not acquire the writer lock. If it observes a lock record that is not demonstrably stale, it must fail fast with a clear message instead of proceeding. The reason is not local mutation risk alone: a live `diff` would still consume rate-limited Linear API capacity and could delay the mutating run that already owns the directory. The failure should recommend retrying after the lock clears or after an operator resolves the lock.
+
+`diff` never applies the `refresh` missing-root policy. If a tracked ticket, including a root ticket, is not available in the current visible view, `diff` simply reports that state as drift (for example `missing_remotely`) and leaves any quarantine or deletion decision to a later `refresh` run.
 
 ---
 
@@ -373,12 +381,20 @@ Systemic failures include whole-workspace access loss, invalid authentication, l
 
 Ticket-scoped absence is modeled only in terms of what the current caller can observe. The tool does not attempt to distinguish "ticket was deleted" from "ticket is no longer visible to this identity" for an individual missing ticket. Both are treated as "not available in the current visible view."
 
-The important exception is root-ticket unavailability. If a requested root during `sync` or `add`, or an already-recorded root during `refresh`, is not available in the current visible view, the run fails immediately because there is no meaningful way to satisfy the caller's explicit request. The tool must not silently remove that root from the manifest.
+The important exception is explicit root acquisition. If a requested root during `sync` or `add` is not available in the current visible view, the run fails immediately because there is no meaningful way to satisfy the caller's explicit request.
+
+`refresh` is different because it operates on an existing tracked root set rather than on a newly requested root. When an already-recorded root is not available in the current visible view, `refresh` follows its configured missing-root policy:
+
+- `quarantine` (default): keep the root in the manifest, mark it quarantined, update the local ticket file so the quarantined state is visible to single-file readers, skip traversing from it during this pass, and continue refreshing the healthy roots;
+- `remove`: remove the root from the manifest root set and delete its local ticket file before continuing the refresh pass.
+
+`refresh` must not silently choose between these behaviors; the default is `quarantine`, and deletion requires the explicit `remove` policy.
 
 This leads to the following behavior:
 
 - systemic remote failure is terminal for the run;
-- root-ticket unavailability is terminal for that run;
+- requested root unavailability during `sync` or `add` is terminal for that run;
+- existing root unavailability during `refresh` is policy-driven: quarantine by default, remove only when explicitly requested;
 - a previously local non-root ticket that is no longer reachable from the recomputed visible graph is pruned normally;
 - an unexpected linked-ticket fetch failure that occurs while the broader run continues is recorded in the result;
 - local write failures are terminal because they break the integrity of the local snapshot.
