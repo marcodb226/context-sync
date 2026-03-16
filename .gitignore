@@ -5,6 +5,7 @@ __pycache__/
 /site/
 /dist/
 *.egg-info/
+/docs/policies/common
 docs/pub/reference/generated/
 
 # Ignore test data with secrets
