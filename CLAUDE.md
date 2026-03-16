@@ -3,6 +3,16 @@
 <!-- auto-generated, do not edit -->
 
 <!-- begin common instructions: docs/policies/common/agent-instructions.md -->
+## Common-policy integrity gate
+
+At the start of every conversation, verify that `docs/policies/common` exists
+and contains at least one file. If the directory is missing, is not a readable
+directory, or is empty, **stop immediately** — do not proceed with any task.
+Instead, emit a clearly visible error (all-caps is appropriate) explaining that
+the common-policy layer is absent and that work cannot continue until the
+symlink or directory is restored (for example: re-creating the symlink to the
+shared policy repository).
+
 ## Mandatory references
 
 Before writing or modifying any code, read and follow:
