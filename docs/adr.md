@@ -426,7 +426,7 @@ For many intended callers, the snapshot lives in git-managed files, which gives 
 
 ## 9. Open Questions
 
-- **OQ-1: Refresh freshness validation against live Linear behavior**
+### OQ-1: Refresh freshness validation against live Linear behavior
 
   The first-release `refresh` design assumes issue-level `updated_at` advances whenever any v1-persisted field changes, including comment creation, comment edits, relation changes reflected in the ticket snapshot, and any other field that can affect the rendered main ticket file.
 
