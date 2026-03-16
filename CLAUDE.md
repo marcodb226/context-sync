@@ -9,7 +9,9 @@ Before writing or modifying any code, read and follow:
 
 - `docs/policies/common/coding-guidelines.md` — language-agnostic documentation, security, and repository versioning/changelog conventions.
 - `docs/policies/common/coding-guidelines-python.md` — apply only if the repository uses Python.
-- `docs/policies/common/execution-model.md` — execution model for implementation-plan ticket work.
+- `docs/policies/common/planning-model.md` — planning model for candidate selection, draft-plan creation, review, and activation.
+- `docs/policies/common/future-work-model.md` — apply when the repository uses a future-work artifact such as `docs/future-work.md`.
+- `docs/policies/common/execution-model.md` — execution model for active named plan-item work.
 
 When applying those references, treat readability cleanup as part of the initial
 implementation pass, not as an optional follow-up once behavior works. In
@@ -68,24 +70,28 @@ If the change is not docs-only:
 
 ## Pre-completion checklist
 
-Before marking any work performed under a named implementation-plan ticket as complete, verify:
+Before marking any work performed under a named active-plan item as complete, verify:
 
 1. For non-docs-only changes, every rule in `docs/policies/common/coding-guidelines.md` has been checked against the changed code.
 2. For non-docs-only changes, the repository's declared linting and formatting
    commands pass with no errors.
 3. For non-docs-only changes, all new and modified tests pass under the
    repository's declared test command(s).
-4. For work performed under a named implementation-plan ticket, the required artifact in `docs/execution/` is up to date.
+4. For work performed under a named active-plan item, the required artifact in `docs/execution/` is up to date.
 
 ## Execution artifact scope
 
-- `docs/execution/` is reserved for work performed under named tickets from repository implementation plans that adopt `docs/policies/common/execution-model.md`, and for ticket-linked review/follow-up artifacts defined by that execution model.
-- Do not create or update `docs/execution/` for ad hoc conversational requests, repository maintenance, or direct edits to planning, design, or instruction documents unless the work is explicitly tied to a named ticket or the user explicitly requests an execution artifact.
-- Editing `docs/implementation-plan.md`, `docs/policies/common/agent-instructions.md`, `AGENTS.md`, or `CLAUDE.md` is not, by itself, an implementation-plan ticket and must not trigger a new `docs/execution/` artifact unless a named ticket explicitly requires that edit.
+- `docs/execution/` is reserved for work performed under named active-plan items from plans that adopt `docs/policies/common/execution-model.md`, and for ticket-linked review/follow-up artifacts defined by that execution model.
+- Do not create or update `docs/execution/` for ad hoc conversational requests, repository maintenance, or direct edits to planning, design, or instruction documents unless the work is explicitly tied to a named active-plan item or the user explicitly requests an execution artifact.
+- Editing `docs/implementation-plan.md`, `docs/future-work.md`, anything under
+  `docs/planning/`, `docs/policies/common/agent-instructions.md`, `AGENTS.md`,
+  or `CLAUDE.md` is not, by itself, an active-plan item and must not trigger a
+  new `docs/execution/` artifact unless a named active-plan item explicitly
+  requires that edit.
 
 ## Ticket review requests
 
-Requests to review a named implementation-plan ticket (for example, `review M1-2` or `review M1-D3`) are treated as
+Requests to review a named active-plan item (for example, `review M1-2` or `review M1-D3`) are treated as
 Phase B review work under `docs/policies/common/execution-model.md`.
 
 For those requests, the agent must:
