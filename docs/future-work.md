@@ -20,12 +20,13 @@ This item should be revisited after first-release usage data shows whether comme
 
 ## FW-2: Attachment Content Handling
 
-The first release stores attachment metadata and URLs in ticket files but does not inline or download attachment contents. That keeps the sync tool read-only, predictable, and simpler to ship, but it leaves useful attachment content outside the local snapshot.
+The first release stores attachment metadata and URLs in ticket files but does not inline or download attachment contents. It also does not attempt to resolve repo-hosted attachment or resource URLs into local filesystem paths, even when the same file may already exist in a checked-out project clone. That keeps the sync tool read-only, predictable, and simpler to ship, but it leaves useful attachment content and local path affordances outside the local snapshot.
 
 Potential follow-on improvements:
 
 - inline text-based attachment content when it is safe and useful;
 - store selected attachment contents as adjacent local files while preserving source URLs in frontmatter;
+- expose best-effort local filesystem paths for repo-hosted attachment or resource URLs when the corresponding repository is already cloned and available locally, while keeping the original URL authoritative;
 - add type-specific handling for images or other rich media;
 - define size, type, and safety limits so attachment handling does not bloat snapshots or introduce surprising network cost.
 

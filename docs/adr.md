@@ -162,7 +162,7 @@ For the first release, each ticket file includes the full comment history return
 
 The first release does not include a separate ticket activity or history timeline beyond the comments returned with the ticket. Richer history capture is deferred to [FW-5](<future-work.md#fw-5-ticket-history-and-sectioned-ticket-artifacts>). If that richer history is added later and proves too bulky for the main ticket file, it may be stored in adjacent section files rather than forcing every consumer to open one very large document.
 
-For the first release, attachment handling is metadata-only. Ticket files include attachment metadata and URLs, but do not inline or download attachment contents. Richer handling for text attachments, images, and other file types is deferred and tracked in [FW-2](<future-work.md#fw-2-attachment-content-handling>).
+For the first release, attachment handling is metadata-only. Ticket files include attachment metadata and URLs, but do not inline or download attachment contents, and they do not attempt to project repo-hosted URLs into local filesystem paths. Richer handling for text attachments, images, other file types, and best-effort local path projection for repo-hosted resources is deferred and tracked in [FW-2](<future-work.md#fw-2-attachment-content-handling>).
 
 Every file includes `format_version`. When the file format changes, the tool increments the version and re-syncs old files rather than depending on implicit compatibility.
 
