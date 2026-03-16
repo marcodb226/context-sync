@@ -2,28 +2,50 @@
 
 <!-- auto-generated, do not edit -->
 
+<!-- begin common instructions: docs/policies/common/agent-instructions.md -->
 ## Mandatory references
 
 Before writing or modifying any code, read and follow:
 
-- `docs/policies/common/coding-guidelines.md` — formatting, type annotations, async patterns, exception handling, docstring format, testing, security rules, and repository versioning/changelog conventions.
+- `docs/policies/common/coding-guidelines.md` — language-agnostic documentation, security, and repository versioning/changelog conventions.
+- `docs/policies/common/coding-guidelines-python.md` — apply only if the repository uses Python.
 - `docs/policies/common/execution-model.md` — execution model for implementation-plan ticket work.
+
+When applying those references, treat readability cleanup as part of the initial
+implementation pass, not as an optional follow-up once behavior works. In
+particular, remove unexplained magic numbers, raw repository/path indexing, and
+other opaque structural assumptions while making the functional change.
+When editing an existing file, inspect the surrounding lines first and preserve
+the local formatting conventions unless you are intentionally reformatting the
+whole section or file.
 
 ## Instruction file source of truth
 
-- `docs/policies/common/agent-instructions.md` is the only source-of-truth file for repository-level agent instructions.
+- `docs/policies/common/agent-instructions.md` is the source-of-truth file for the shared common layer of repository-level agent instructions.
+- `docs/policies/agent-instructions.md` is the optional repo-local layer for instructions that should not be shared across the whole client-repo group.
+- Repo-local policy that is meant for humans as well as agents should have its
+  primary home in human-facing repository docs such as `docs/policies/*.md` or
+  other clearly designated project documentation. Use
+  `docs/policies/agent-instructions.md` to summarize or reference that local
+  policy when agent workflow needs it, not as the sole normative home.
 - `AGENTS.md` and `CLAUDE.md` are generated artifacts and must never be edited directly.
-- Never suggest direct edits to `AGENTS.md` or `CLAUDE.md`. When instruction changes are needed, edit `docs/policies/common/agent-instructions.md` and then run `.venv/bin/python docs/policies/common/tools/sync_agent_instructions.py` to sync the generated files.
-- Optionally run `.venv/bin/python docs/policies/common/tools/sync_agent_instructions.py --check` after syncing to confirm `docs/policies/common/agent-instructions.md`, `AGENTS.md`, and `CLAUDE.md` are aligned.
+- Never suggest direct edits to `AGENTS.md` or `CLAUDE.md`. When instruction changes are needed, edit the appropriate source layer and then run `.venv/bin/python docs/policies/common/tools/sync_agent_instructions.py` to sync the generated files.
+- Optionally run `.venv/bin/python docs/policies/common/tools/sync_agent_instructions.py --check` after syncing to confirm the source layers, `AGENTS.md`, and `CLAUDE.md` are aligned.
 
 ## Validation scope gate
 
 Before running linting or tests, classify the change scope from `git diff --name-only`.
 
+For this gate, treat `docs/**` as documentation/support content even when it
+contains helper scripts or maintenance tooling (for example
+`docs/policies/common/tools/**`). These files are not shipped agent runtime
+code and do not, by themselves, trigger repository lint/test commands.
+
 A change is **docs-only** only if every changed file matches one of:
 
 - `docs/**`
 - `*.md`
+- `.gitignore`
 - `README.md`
 - `notes.md`
 - `AGENTS.md`
@@ -31,21 +53,28 @@ A change is **docs-only** only if every changed file matches one of:
 
 If the change is docs-only:
 
-- Do **not** run `.venv/bin/ruff check`, `.venv/bin/ruff format --check`, or `.venv/bin/python -m pytest tests/` unless explicitly requested by the user.
+- Do **not** run the repository's declared linting, formatting, or test
+  commands unless explicitly requested by the user.
+- Do **not** add or modify files under `tests/**` solely to validate helper tooling
+  inside `docs/**` unless the user explicitly asks for automated coverage.
+- For changes under `docs/policies/common/**`, prefer manual verification of the
+  affected documentation/support workflow over repository-wide validation.
 
 If the change is not docs-only:
 
-- Run `.venv/bin/ruff check`.
-- Run `.venv/bin/ruff format --check`.
-- Run `.venv/bin/python -m pytest tests/` (or ticket-appropriate subset when explicitly allowed by the active ticket/scope instructions).
+- Run the repository's declared linting and formatting commands.
+- Run the repository's declared test command(s) (or a ticket-appropriate subset
+  when explicitly allowed by the active ticket/scope instructions).
 
 ## Pre-completion checklist
 
 Before marking any work performed under a named implementation-plan ticket as complete, verify:
 
 1. For non-docs-only changes, every rule in `docs/policies/common/coding-guidelines.md` has been checked against the changed code.
-2. For non-docs-only changes, `.venv/bin/ruff check` and `.venv/bin/ruff format --check` pass with no errors.
-3. For non-docs-only changes, all new and modified tests pass (`.venv/bin/python -m pytest tests/`).
+2. For non-docs-only changes, the repository's declared linting and formatting
+   commands pass with no errors.
+3. For non-docs-only changes, all new and modified tests pass under the
+   repository's declared test command(s).
 4. For work performed under a named implementation-plan ticket, the required artifact in `docs/execution/` is up to date.
 
 ## Execution artifact scope
@@ -72,21 +101,22 @@ which mode they want:
 - official Phase B review with `docs/execution/<ticket>-review.md` updated
 - informal in-chat review with no file edits
 
-## Project layout
+## Common Conventions
 
-- `shared/` — framework code shared by all agent roles (installed as a package).
-- `agents/<role>/` — role-specific agent code.
-- `tests/` — mirrors `shared/` and `agents/` source tree.
-- `docs/design/` — design documents (gate implementation tickets).
-- `docs/execution/` — per-ticket execution logs.
-- `docs/policies/common/` — repository policy sources, review checklists, and policy tooling.
-- `deps/` — vendored private wheels (gitignored).
-- `tools/` — standalone bootstrap/setup scripts (not part of agent runtime).
+- Follow the repository's declared language/runtime targets; do not assume the
+  source repository's version floor applies to every client repository in the
+  group.
+- If the repository adopts language- or tool-specific common policy modules,
+  follow those modules in addition to this top-level common baseline.
+- Follow the repository's documented command or launcher convention. If a
+  client repo standardizes on an explicit wrapper, virtualenv executable, or
+  other launcher pattern, use it consistently rather than assuming the source
+  repository's command style applies everywhere.
+- Follow the repository's declared linting and formatting toolchain; do not
+  assume the source repository's tool choices apply to every client repository
+  in the group.
+<!-- end common instructions: docs/policies/common/agent-instructions.md -->
 
-## Key conventions
-
-- Python 3.13+. Async-first. Pydantic for all cross-boundary data models.
-- For all Python-related commands in this repository, use the project virtualenv executables explicitly: `.venv/bin/python`, `.venv/bin/pytest`, `.venv/bin/ruff`, `.venv/bin/pip`, etc. Do not rely on bare `python`/`pytest`/`ruff`/`pip` or shell activation state.
-- `linear-client` is a private dependency — see `docs/design/linear-client.md` Installation section.
-- Ruff is the sole linter/formatter. Config is in `pyproject.toml`.
-- Tests use `conftest.py` sys.modules mocking for `linear_client` — test passage does not verify the real library works.
+<!-- begin local instructions: docs/policies/agent-instructions.md -->
+<!-- local instructions absent: docs/policies/agent-instructions.md -->
+<!-- end local instructions: docs/policies/agent-instructions.md -->
