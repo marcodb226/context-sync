@@ -5,6 +5,9 @@
     "enabled": true,
     "autoAllowBashIfSandboxed": true,
     "filesystem": {
+      "allowRead": [
+        "~/src/agent-policies-context-sync/docs/policies/common"
+      ],
       "allowWrite": [
         "//tmp",
         "~/src/agent-policies-context-sync/docs/policies/common"
