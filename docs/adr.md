@@ -38,7 +38,7 @@ Each relationship type is treated as a graph dimension with its own configurable
 | `relates_to` | Linear relation | Informational relations | 1 |
 | `ticket_ref` | URL scan | Ticket URLs discovered in other tickets' descriptions or comments | 1 |
 
-Dimensions can be disabled by setting depth to 0. A maximum ticket-count cap, with a default of 200, acts as a separate safety bound.
+Dimensions can be disabled by setting depth to 0. A maximum per-root ticket-count cap, with a default of 200 tickets per root, acts as a separate safety bound.
 
 Linear's current relation types are fixed, but the internal dimension representation should remain extensible. The first version ships with the built-in dimensions above, while leaving room for future dimensions without redesigning the traversal engine.
 
@@ -68,9 +68,11 @@ This total-hop model is preferred over per-dimension counters because it stays n
 
 When a ticket is reachable through multiple paths or from multiple roots, the tool uses the shortest total distance from any root as the ticket's effective depth.
 
+The ticket cap is enforced per root, not once globally across the whole context directory. Conceptually, each root gets its own bounded reachable set under the active traversal configuration, and the final snapshot is the union of those per-root reachable sets. A ticket that is reachable from multiple roots may count toward multiple per-root reachable sets, but it is still materialized only once in the local snapshot.
+
 ### 1.3 Traversal Order and Ticket Cap
 
-Traversal is breadth-first by total depth from all roots simultaneously. Depth-1 tickets are processed before depth-2 tickets, and so on.
+Traversal is breadth-first by total depth from each root. When multiple roots exist, the implementation may interleave work across roots for efficiency, but cap enforcement remains per root rather than global. Depth-1 tickets are processed before depth-2 tickets, and so on, within each root's bounded traversal.
 
 Within a given depth, the first release uses fixed dimension-priority tiers:
 
@@ -78,11 +80,11 @@ Within a given depth, the first release uses fixed dimension-priority tiers:
 - Tier 2: `relates_to`
 - Tier 3: `ticket_ref`
 
-If the ticket cap becomes relevant, higher-priority tiers at the current depth are processed before lower-priority tiers. This ensures structural dependency edges win over informational edges near the safety bound.
+If a given root's ticket cap becomes relevant, higher-priority tiers at the current depth are processed before lower-priority tiers for that root. This ensures structural dependency edges win over informational edges near the safety bound.
 
 Within a tier, traversal remains ordinary breadth-first processing of the current depth frontier. The first release does **not** define an absolute global ranking among individual relations inside the same tier. In other words, tier selection is prioritized, but same-tier work still follows normal breadth-first order with deterministic relation ordering.
 
-If the ticket cap is reached mid-traversal, the tool stops and returns the tickets already collected. This means lower-priority tiers at the current depth, and all deeper depths, may be omitted by design when the cap is hit.
+If one root reaches its ticket cap mid-traversal, the tool stops expanding that root and keeps the tickets already collected for it. This means lower-priority tiers at the current depth, and all deeper depths, may be omitted by design for that root when its cap is hit. Other roots continue traversing until they either exhaust their reachable neighborhood or hit their own per-root cap.
 
 Tiered breadth-first traversal is the right default when a safety cap exists because it still prioritizes the nearest neighborhood before deep chains, while avoiding the specific failure mode where informational edges crowd out structural dependencies.
 
@@ -103,7 +105,7 @@ Deleting a ticket file by hand is not a supported way to remove a root. The mani
 
 Traversal depth is always measured from a root. A derived ticket's effective depth is the shortest distance from any root. Whether its outgoing edges are followed depends on the configured depth of each edge's dimension relative to that effective depth.
 
-On sync or refresh, the reachable graph is recomputed from all current roots using the active dimension configuration:
+On sync or refresh, the reachable graph is recomputed from all current roots using the active dimension configuration and the active per-root ticket cap:
 
 - root tickets are kept and refreshed when stale;
 - derived tickets that remain reachable are kept and refreshed when stale;
@@ -182,6 +184,7 @@ For the first release, the manifest is the authoritative source for:
 - the current root-ticket set, keyed by stable ticket UUID, including per-root state such as `active` or `quarantined`;
 - ticket identity lookup metadata, including UUID-to-current-key and path mappings plus known key aliases back to UUID;
 - the context-level format version;
+- the active traversal configuration, including per-dimension depths and the per-root ticket cap;
 - snapshot-pass metadata, including the last completed snapshot mode and timestamps for when that pass started and completed.
 
 This manifest is how the tool knows whether an `add` request belongs to the workspace already tracked by the directory. If the caller supplies a Linear URL, the tool may use the URL's workspace slug as an early preflight check, but the authoritative validation is still the fetched ticket's workspace identity compared against the manifest's workspace identity.
@@ -328,7 +331,7 @@ The first release guarantees a bounded-skew snapshot, not a transactional one.
 
 That means:
 
-- each `sync` or `refresh` run operates on one root set and one traversal configuration;
+- each `sync` or `refresh` run operates on one root set and one traversal configuration, including one per-root ticket cap;
 - all files written by that run come from the same rebuild or refresh pass;
 - the snapshot may still reflect upstream changes that happened while the pass was in progress, because the tool does not have a true transactional read boundary from Linear.
 
@@ -363,7 +366,7 @@ The tool also supports a diff mode that compares the current context directory a
 The first release also defines a minimal observability and verification contract:
 
 - the manifest records the last snapshot mode, started-at timestamp, completed-at timestamp, and whether the most recent mutating run completed successfully;
-- `INFO`-level logs should cover run start, run end, mode, root count, reachable ticket count, created/updated/unchanged/removed/error counts, duration, and any catastrophic abort reason;
+- `INFO`-level logs should cover run start, run end, mode, root count, configured per-root ticket cap, reachable ticket count, whether any roots were truncated by their cap, created/updated/unchanged/removed/error counts, duration, and any catastrophic abort reason;
 - `DEBUG`-level logs should cover per-ticket decisions such as "fresh", "stale", "pruned", "renamed due to key change", and alias-based reference resolution;
 - lock-handling logs should make it clear whether the run acquired a clean lock, refused an active lock, or preempted a demonstrably stale lock;
 - if `diff` refuses to run because a lock record exists that is not demonstrably stale, the user-facing output should make clear that the refusal avoids competing with an in-flight mutating run for rate-limited Linear API capacity;
@@ -415,7 +418,7 @@ The tool makes the following guarantees:
 - File writes are atomic so a crash does not leave a partially written ticket file behind.
 - A failed or interrupted run may still leave the directory partially updated at the snapshot level in the first release. The tool does not yet guarantee whole-directory atomic commit; stronger semantics are deferred to [FW-3](<future-work.md#fw-3-whole-snapshot-atomic-commit>).
 - Re-running sync or refresh without upstream changes should not rewrite files.
-- Traversal is always bounded by configured depths plus the ticket cap.
+- Traversal is always bounded by configured depths plus the per-root ticket cap.
 - Rate-limit handling is delegated to `linear-client`; the tool should not introduce a separate, conflicting rate limiter unless experience shows the library layer is insufficient.
 
 These guarantees are part of the architecture because callers need them to trust the local snapshot as an operational input.

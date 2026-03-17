@@ -30,7 +30,7 @@ class ContextSyncer:
     async def sync(
         self,
         root_ticket_id: str,
-        max_tickets: int = 200,
+        max_tickets_per_root: int = 200,
         dimensions: dict[str, int] | None = None,
     ) -> SyncResult: ...
 
@@ -52,7 +52,7 @@ class ContextSyncer:
     async def diff(self) -> DiffResult: ...
 
 # Initial sync: dump the root ticket plus its reachable neighborhood
-result = await syncer.sync(root_ticket_id="ACP-123", max_tickets=200)
+result = await syncer.sync(root_ticket_id="ACP-123", max_tickets_per_root=200)
 
 # Delta refresh: update stale files in place, quarantining unavailable roots
 result = await syncer.refresh()
@@ -73,6 +73,8 @@ result = await syncer.diff()
 
 Caller-facing inputs continue to use familiar issue keys or Linear issue URLs for ergonomics. Internally, once a ticket is resolved, the stable Linear UUID becomes the authoritative identity used for deduplication, root membership, and issue-key-change handling.
 
+Traversal configuration consists of the per-dimension depths plus `max_tickets_per_root`. The cap applies independently to each root's reachable set rather than once globally across the whole context directory, and the final snapshot is the union of those per-root reachable sets.
+
 Traversal semantics and interface rationale live in [docs/adr.md](<../adr.md>).
 
 ---
@@ -83,7 +85,7 @@ For human use and shell invocation:
 
 ```bash
 # Initial sync
-context-sync sync ACP-123 --max-tickets 200 --context-dir linear-context \
+context-sync sync ACP-123 --max-tickets-per-root 200 --context-dir linear-context \
   --depth-blocks 3 --depth-is-blocked-by 2 --depth-parent 2 \
   --depth-child 2 --depth-relates-to 1 --depth-ticket-ref 1
 
@@ -125,6 +127,7 @@ The manifest is the authoritative directory-level metadata file. It stores:
 
 - the context format version;
 - the bound Linear workspace identity, including stable workspace ID and workspace slug;
+- the active traversal configuration, including per-dimension depths and `max_tickets_per_root`;
 - the current root-ticket set, keyed by stable ticket UUID, including per-root state such as `active` or `quarantined`;
 - a ticket lookup table that maps stable ticket UUIDs to current issue keys and current file paths;
 - a key-alias table that maps locally known current and previous issue keys back to stable ticket UUIDs;
@@ -276,7 +279,7 @@ The tool does **not** manage its own Linear authentication.
 ### 6.1 Sync Flow
 
 ```
-sync(root_ticket_id, max_tickets, dimensions)
+sync(root_ticket_id, max_tickets_per_root, dimensions)
   │
   ├─ Attempt atomic writer-lock acquisition for context_dir
   ├─ If a lock record already exists: inspect lock metadata
@@ -288,24 +291,25 @@ sync(root_ticket_id, max_tickets, dimensions)
   ├─ Verify that the root ticket belongs to the configured workspace
   ├─ Add root UUID to the manifest root set if needed
   ├─ Load the full root set from the manifest
-  ├─ Recompute the reachable graph from all roots
+  ├─ Recompute the reachable graph from all roots using one bounded reachable set per root
   │
   ├─ Tiered BFS loop:
-  │   ├─ Process one depth frontier at a time
-  │   ├─ For frontier tickets at depth N, examine outgoing edges
+  │   ├─ For each active root, process one depth frontier at a time
+  │   ├─ For frontier tickets at depth N for that root, examine outgoing edges
   │   ├─ Determine edge dimension for each outgoing edge
   │   ├─ Discard edges whose dimension depth is not greater than N
   │   ├─ Bucket remaining edges into traversal tiers:
   │   │   ├─ Tier 1: blocks, is_blocked_by, parent, child
   │   │   ├─ Tier 2: relates_to
   │   │   └─ Tier 3: ticket_ref
-  │   ├─ Process tiers in order within depth N
+  │   ├─ Process tiers in order within that root's depth N frontier
   │   ├─ Within a tier, preserve normal breadth-first frontier order;
   │   │   do not assign an absolute per-relation ranking
-  │   ├─ For each target not yet visited and while cap not reached:
-  │   │   ├─ Enqueue target at depth N+1
-  │   │   └─ Fetch target ticket (TaskGroup + semaphore-limited worker)
-  │   └─ Continue until queue empty or cap reached
+  │   ├─ For each target not yet counted for that root and while that root's cap is not reached:
+  │   │   ├─ Enqueue target for that root at depth N+1
+  │   │   ├─ Record that the root can reach the target
+  │   │   └─ Fetch target ticket once globally if it has not already been fetched
+  │   └─ Stop expanding a root when its cap is reached; continue other roots
   │
   ├─ For each fetched ticket:
   │   ├─ Update manifest UUID/current-key/path mappings
@@ -321,7 +325,7 @@ sync(root_ticket_id, max_tickets, dimensions)
   └─ Return SyncResult
 ```
 
-This same tiered breadth-first ordering applies whenever `refresh`, `add`, or `remove-root` recomputes reachability from the root set. The priority decision happens only at the tier level. Within a single tier, the design intentionally keeps ordinary breadth-first processing of the current frontier rather than assigning an absolute ranking to every individual relation. If the ticket cap is hit, lower-priority tiers at the current depth may be omitted before the tool considers deeper levels.
+This same tiered breadth-first ordering applies whenever `refresh`, `add`, or `remove-root` recomputes reachability from the root set. Cap enforcement is per root, not global across the whole directory. The priority decision happens only at the tier level. Within a single tier, the design intentionally keeps ordinary breadth-first processing of the current frontier rather than assigning an absolute ranking to every individual relation. If one root hits its cap, lower-priority tiers at the current depth and deeper levels may be omitted for that root, while other roots continue traversing under their own budgets.
 
 ### 6.2 Refresh Flow
 
