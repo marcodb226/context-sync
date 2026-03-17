@@ -10,6 +10,5 @@ __pycache__/
 docs/pub/reference/generated/
 
 # Ignore test data with secrets
-scripts/harness_env.sh
-scripts/.harness_env.sh
+scripts/.linear_env.sh
 scripts/.linear_client_oauth*.json
