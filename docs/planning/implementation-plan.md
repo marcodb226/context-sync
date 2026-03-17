@@ -1,6 +1,6 @@
 # Implementation Plan - Context Sync v1 Bootstrap
 
-> **Status**: Draft (Stage 1)
+> **Status**: Draft (Stage 3)
 > **Governing artifacts**:
 > [docs/problem-statement.md](../problem-statement.md),
 > [docs/adr.md](../adr.md),
@@ -69,7 +69,8 @@ outcomes while explicitly keeping the current `FW-*` backlog deferred.
 | Candidate | Decision | Draft plan destination | Notes |
 | --- | --- | --- | --- |
 | Refresh correctness gate from [OQ-1](../adr.md#oq-1-refresh-freshness-validation-against-live-linear-behavior) | Keep | [M1-D1](#m1-d1---refresh-freshness-validation-spike) | Must be settled before `refresh` can be considered implementation-complete. |
-| Library API and package bootstrap from [docs/design/0-top-level-design.md](../design/0-top-level-design.md#1-library-api) and [docs/design/linear-client.md](../design/linear-client.md) | Keep | [M1-1](#m1-1---project-scaffold-and-public-runtime-contracts) | Establishes the project layout, public interfaces, and dependency boundary with `linear-client`. |
+| Linear domain-layer coverage audit and adapter-boundary definition from [docs/adr.md](../adr.md#31-foundation), [docs/design/0-top-level-design.md](../design/0-top-level-design.md#11-linear-dependency-boundary), and [docs/design/linear-client.md](../design/linear-client.md) | Keep | [M1-D2](#m1-d2---linear-domain-coverage-audit-and-adapter-boundary) | Makes the domain-vs-GraphQL fallback decision explicit before traversal, relation, and refresh tickets depend on it. |
+| Library API, runtime configuration, and package bootstrap from [docs/adr.md](../adr.md#31-foundation), [docs/design/0-top-level-design.md](../design/0-top-level-design.md#1-library-api), and [docs/design/linear-client.md](../design/linear-client.md) | Keep | [M1-1](#m1-1---project-scaffold-and-public-runtime-contracts) | Establishes the project layout, public interfaces, per-process concurrency controls, reusable test harness, and the narrow dependency boundary with `linear-client`. |
 | Manifest, deterministic ticket rendering, and lock metadata from [docs/adr.md](../adr.md#2-persistence-format), [docs/design/0-top-level-design.md](../design/0-top-level-design.md#21-context-directory-contents), and [ADR-R2a](./26.03.15%20-%20ADR%20review.md#adr-r2a-done-stale-lock-recovery-and-lock-metadata) | Keep | [M1-2](#m1-2---manifest-lock-and-rendering-primitives) | Shared persistence helpers should land before the flow-specific tickets. |
 | Tiered per-root traversal and bounded reachable sets from [docs/adr.md](../adr.md#13-traversal-order-and-ticket-cap) and [ADR-R3](./26.03.15%20-%20ADR%20review.md#adr-r3-done-pure-breadth-first-traversal-cutoffs) | Keep | [M2-1](#m2-1---reachable-graph-builder-and-tiered-per-root-traversal) | Structural edges must beat informational edges near the ticket cap. |
 | Full-snapshot `sync` behavior from [docs/adr.md](../adr.md#51-sync-full-snapshot-rebuild) and [docs/design/0-top-level-design.md](../design/0-top-level-design.md#61-sync-flow) | Keep | [M2-3](#m2-3---full-snapshot-sync-flow) | Initial materialization should exist before incremental maintenance flows. |
@@ -106,7 +107,7 @@ Planned ticket identifiers use these forms:
 
 | Milestone | Name | Primary deliverable |
 | --- | --- | --- |
-| M1 | Foundation and release-gate validation | Project scaffold, shared persistence primitives, and an explicit `OQ-1` outcome |
+| M1 | Foundation and release-gate validation | Project scaffold, Linear adapter-boundary audit, shared persistence primitives, and an explicit `OQ-1` outcome |
 | M2 | Full snapshot materialization | Deterministic traversal, rendering, and whole-snapshot `sync` |
 | M3 | Incremental maintenance and drift inspection | `refresh`, `add`, `remove-root`, and `diff` with the ADR's missing-root and lock semantics |
 | M4 | CLI and release readiness | Human-facing commands, operational logging, validation coverage, and onboarding docs |
@@ -128,12 +129,13 @@ and the refresh-correctness decision that later milestones depend on.
 | # | Status | Ticket | Deliverable | Dependencies | Reviewers | Source |
 | --- | --- | --- | --- | --- | --- | --- |
 | <a id="m1-d1---refresh-freshness-validation-spike"></a>M1-D1 | Planned | Refresh freshness validation spike | A short repository artifact that records whether issue-level `updated_at` is sufficient for the v1 persisted snapshot contract and, if not, the exact amendment needed before `refresh` work proceeds | None | Independent Stage 2 review session | [OQ-1](../adr.md#oq-1-refresh-freshness-validation-against-live-linear-behavior) |
+| <a id="m1-d2---linear-domain-coverage-audit-and-adapter-boundary"></a>M1-D2 | Planned | Linear domain-coverage audit and adapter boundary | A repository artifact that enumerates the v1 Linear operations required by traversal, fetch, and refresh, records whether the `linear-client` domain layer already covers each one, and defines any narrow `linear.gql.*` fallback boundary that implementation tickets may use | None | Independent Stage 2 review session | [docs/adr.md](../adr.md#31-foundation), [docs/design/0-top-level-design.md](../design/0-top-level-design.md#11-linear-dependency-boundary), [docs/design/linear-client.md](../design/linear-client.md) |
 
 ### 3.2 Implementation Tickets
 
 | # | Status | Ticket | Description | Dependencies | Tests | Source |
 | --- | --- | --- | --- | --- | --- | --- |
-| <a id="m1-1---project-scaffold-and-public-runtime-contracts"></a>M1-1 | Planned | Project scaffold and public runtime contracts | Create the initial Python package layout, configuration surface, public async entry points, shared result/error models, and the documented developer command set the rest of the plan will rely on | None | Unit tests for configuration parsing, result/error contracts, and package import boundaries | [docs/design/0-top-level-design.md](../design/0-top-level-design.md#1-library-api), [docs/design/linear-client.md](../design/linear-client.md), [README.md](../../README.md) |
+| <a id="m1-1---project-scaffold-and-public-runtime-contracts"></a>M1-1 | Planned | Project scaffold and public runtime contracts | Create the initial Python package layout, configuration surface, public async entry points, shared result/error models, reusable fake-client test harness, and the documented developer command set the rest of the plan will rely on | [M1-D2](#m1-d2---linear-domain-coverage-audit-and-adapter-boundary) | Unit tests for configuration parsing, result/error contracts, adapter/fake-client contracts, and package import boundaries | [docs/adr.md](../adr.md#31-foundation), [docs/design/0-top-level-design.md](../design/0-top-level-design.md#1-library-api), [docs/design/linear-client.md](../design/linear-client.md), [README.md](../../README.md) |
 | <a id="m1-2---manifest-lock-and-rendering-primitives"></a>M1-2 | Planned | Manifest, lock, and rendering primitives | Implement the manifest schema, deterministic YAML/Markdown rendering helpers, atomic per-file writes, lock metadata handling, and post-write verification utilities for later flows to reuse | [M1-1](#m1-1---project-scaffold-and-public-runtime-contracts) | Round-trip tests for manifest and ticket serialization, lock acquisition/preemption tests, and verification-failure tests | [docs/adr.md](../adr.md#2-persistence-format), [docs/design/0-top-level-design.md](../design/0-top-level-design.md#21-context-directory-contents), [docs/design/0-top-level-design.md](../design/0-top-level-design.md#22-ticket-file-rendering), [ADR-R2a](./26.03.15%20-%20ADR%20review.md#adr-r2a-done-stale-lock-recovery-and-lock-metadata) |
 
 ### 3.3 Detailed Ticket Notes
@@ -146,14 +148,32 @@ and the refresh-correctness decision that later milestones depend on.
   stop and route that change through a plan amendment before
   [M3-1](#m3-1---incremental-refresh-and-quarantined-root-recovery) begins.
 
+#### M1-D2 - Linear domain-coverage audit and adapter boundary
+
+- Audit the exact v1 read operations needed for traversal, relation discovery,
+  ticket fetch, and refresh freshness checks before implementation tickets
+  widen the `linear-client` adapter by accident.
+- Call out the batched per-ticket `updated_at` freshness query explicitly. If
+  the `linear-client` domain layer does not already expose that operation,
+  record the expected `linear.gql.*` fallback shape inside the narrow adapter
+  boundary so later tickets do not rediscover it ad hoc.
+- Record any newly discovered missing domain capabilities in an authoritative
+  repository artifact so maintainers have a durable upstream follow-up target.
+
 #### M1-1 - Project scaffold and public runtime contracts
 
 - The repository currently has design docs but no code scaffold, package
   metadata, or declared validation commands. This ticket should define that
   baseline explicitly instead of leaving later tickets to infer it.
-- Keep the `linear-client` dependency behind a narrow adapter boundary so later
-  tickets can fall back to its GraphQL layer only when the documented domain
-  layer is insufficient.
+- Keep the `linear-client` dependency behind the narrow adapter boundary
+  defined by [M1-D2](#m1-d2---linear-domain-coverage-audit-and-adapter-boundary)
+  so later tickets can fall back to its GraphQL layer only when that design
+  artifact says the domain layer is insufficient.
+- Define the per-process concurrency configuration surface described in
+  [docs/adr.md](../adr.md#31-foundation), including the semaphore limit that
+  later fetch-heavy tickets must honor.
+- Establish the reusable fake-client or fixture-builder contract that later
+  integration tests extend instead of inventing one-off mocks per ticket.
 
 #### M1-2 - Manifest, lock, and rendering primitives
 
@@ -169,9 +189,12 @@ and the refresh-correctness decision that later milestones depend on.
 
 1. The repository has a runnable package scaffold and documented validation
    command set.
-2. Manifest, lock, and ticket-render helpers exist with deterministic
+2. The repository has an explicit Linear adapter-boundary artifact that
+   records required domain operations and any approved GraphQL fallbacks before
+   traversal or refresh work begins.
+3. Manifest, lock, and ticket-render helpers exist with deterministic
    round-trip coverage.
-3. The `OQ-1` outcome is recorded in-repo and any blocking amendment is visible
+4. The `OQ-1` outcome is recorded in-repo and any blocking amendment is visible
    before incremental refresh work starts.
 
 ---
@@ -192,8 +215,8 @@ than reopen it.
 
 | # | Status | Ticket | Description | Dependencies | Tests | Source |
 | --- | --- | --- | --- | --- | --- | --- |
-| <a id="m2-1---reachable-graph-builder-and-tiered-per-root-traversal"></a>M2-1 | Planned | Reachable graph builder and tiered per-root traversal | Build the traversal engine that tracks one bounded reachable set per root, enforces per-root ticket caps, prioritizes structural tiers ahead of informational tiers, and unions the per-root results into one snapshot graph | [M1-1](#m1-1---project-scaffold-and-public-runtime-contracts) | Unit tests for per-root caps, tier priority, shortest-depth resolution, cycle safety, and multi-root overlap | [docs/adr.md](../adr.md#11-dimensions), [docs/adr.md](../adr.md#13-traversal-order-and-ticket-cap), [docs/adr.md](../adr.md#14-root-vs-derived-tickets), [ADR-R3](./26.03.15%20-%20ADR%20review.md#adr-r3-done-pure-breadth-first-traversal-cutoffs) |
-| <a id="m2-2---ticket-fetch-normalization-and-render-pipeline"></a>M2-2 | Planned | Ticket fetch normalization and render pipeline | Normalize fetched ticket data into the persisted manifest/ticket shape, preserve alias history on issue-key changes, render threaded comments deterministically, and verify generated output before it is accepted | [M1-2](#m1-2---manifest-lock-and-rendering-primitives), [M2-1](#m2-1---reachable-graph-builder-and-tiered-per-root-traversal) | Serializer and parser tests for alias retention, issue-key rename behavior, comment-thread ordering, and verification mismatch handling | [docs/adr.md](../adr.md#2-persistence-format), [docs/design/0-top-level-design.md](../design/0-top-level-design.md#22-ticket-file-rendering), [docs/design/0-top-level-design.md](../design/0-top-level-design.md#7-risks-and-mitigations-tool-specific) |
+| <a id="m2-1---reachable-graph-builder-and-tiered-per-root-traversal"></a>M2-1 | Planned | Reachable graph builder and tiered per-root traversal | Build the traversal engine that tracks one bounded reachable set per root, enforces per-root ticket caps, prioritizes structural tiers ahead of informational tiers, and unions the per-root results into one snapshot graph | [M1-D2](#m1-d2---linear-domain-coverage-audit-and-adapter-boundary), [M1-1](#m1-1---project-scaffold-and-public-runtime-contracts) | Unit tests for per-root caps, tier priority, shortest-depth resolution, cycle safety, and multi-root overlap | [docs/adr.md](../adr.md#11-dimensions), [docs/adr.md](../adr.md#13-traversal-order-and-ticket-cap), [docs/adr.md](../adr.md#14-root-vs-derived-tickets), [ADR-R3](./26.03.15%20-%20ADR%20review.md#adr-r3-done-pure-breadth-first-traversal-cutoffs) |
+| <a id="m2-2---ticket-fetch-normalization-and-render-pipeline"></a>M2-2 | Planned | Ticket fetch normalization and render pipeline | Normalize fetched ticket data into the persisted manifest/ticket shape, execute bounded concurrent fetches through the shared adapter, preserve alias history on issue-key changes, render threaded comments deterministically, and verify generated output before it is accepted | [M1-2](#m1-2---manifest-lock-and-rendering-primitives), [M2-1](#m2-1---reachable-graph-builder-and-tiered-per-root-traversal) | Serializer and parser tests for alias retention, issue-key rename behavior, comment-thread ordering, concurrency-limit behavior, and verification mismatch handling | [docs/adr.md](../adr.md#2-persistence-format), [docs/adr.md](../adr.md#31-foundation), [docs/design/0-top-level-design.md](../design/0-top-level-design.md#22-ticket-file-rendering), [docs/design/0-top-level-design.md](../design/0-top-level-design.md#7-risks-and-mitigations-tool-specific) |
 | <a id="m2-3---full-snapshot-sync-flow"></a>M2-3 | Planned | Full-snapshot `sync` flow | Implement the initial/rooted whole-snapshot rebuild path, including workspace validation, manifest bootstrap, all-root traversal, reachable-ticket rewrite, and derived-ticket pruning | [M2-1](#m2-1---reachable-graph-builder-and-tiered-per-root-traversal), [M2-2](#m2-2---ticket-fetch-normalization-and-render-pipeline) | Integration tests for initial sync, repeated no-op sync, workspace mismatch rejection, and derived-ticket pruning | [docs/adr.md](../adr.md#51-sync-full-snapshot-rebuild), [docs/design/0-top-level-design.md](../design/0-top-level-design.md#61-sync-flow), [docs/design/0-top-level-design.md](../design/0-top-level-design.md#4-error-handling) |
 
 ### 4.3 Detailed Ticket Notes
@@ -211,6 +234,9 @@ than reopen it.
 - Preserve current human-readable issue-key filenames and manifest-based alias
   resolution as documented in
   [docs/adr.md](../adr.md#2-persistence-format).
+- Honor the per-process semaphore limit from
+  [M1-1](#m1-1---project-scaffold-and-public-runtime-contracts) instead of
+  allowing unbounded ticket-fetch fan-out inside one invocation.
 - Keep attachment handling metadata-only and richer ticket-history capture
   deferred to
   [FW-2](../future-work.md#fw-2-attachment-content-handling) and
@@ -252,7 +278,7 @@ reopened before this milestone is activated.
 
 | # | Status | Ticket | Description | Dependencies | Tests | Source |
 | --- | --- | --- | --- | --- | --- | --- |
-| <a id="m3-1---incremental-refresh-and-quarantined-root-recovery"></a>M3-1 | Planned | Incremental `refresh` and quarantined-root recovery | Recompute reachability from active roots, batch-check freshness, re-fetch only stale or newly discovered tickets, quarantine or remove unavailable roots per policy, and recover quarantined roots when they become visible again | [M1-D1](#m1-d1---refresh-freshness-validation-spike), [M2-2](#m2-2---ticket-fetch-normalization-and-render-pipeline), [M2-3](#m2-3---full-snapshot-sync-flow) | Integration tests for stale-vs-fresh refresh, root quarantine, root reactivation, explicit remove policy, and changed-ticket selective rewrite behavior | [docs/adr.md](../adr.md#52-refresh-incremental-whole-snapshot-update), [docs/adr.md](../adr.md#61-snapshot-consistency-contract), [docs/design/0-top-level-design.md](../design/0-top-level-design.md#62-refresh-flow), [ADR-R4](./26.03.15%20-%20ADR%20review.md#adr-r4-done-terminal-root-fragility) |
+| <a id="m3-1---incremental-refresh-and-quarantined-root-recovery"></a>M3-1 | Planned | Incremental `refresh` and quarantined-root recovery | Recompute reachability from active roots, batch-check freshness, re-fetch only stale or newly discovered tickets, quarantine or remove unavailable roots per policy, and recover quarantined roots when they become visible again | [M1-D1](#m1-d1---refresh-freshness-validation-spike), [M1-D2](#m1-d2---linear-domain-coverage-audit-and-adapter-boundary), [M2-2](#m2-2---ticket-fetch-normalization-and-render-pipeline), [M2-3](#m2-3---full-snapshot-sync-flow) | Integration tests for stale-vs-fresh refresh, unchanged-upstream no-op refresh/no rewrite, root quarantine, root reactivation, explicit remove policy, and changed-ticket selective rewrite behavior | [docs/adr.md](../adr.md#52-refresh-incremental-whole-snapshot-update), [docs/adr.md](../adr.md#61-snapshot-consistency-contract), [docs/design/0-top-level-design.md](../design/0-top-level-design.md#62-refresh-flow), [ADR-R4](./26.03.15%20-%20ADR%20review.md#adr-r4-done-terminal-root-fragility) |
 | <a id="m3-2---add-and-remove-root-whole-snapshot-flows"></a>M3-2 | Planned | `add` and `remove-root` whole-snapshot flows | Implement root-set mutation through alias-aware ticket resolution, workspace checks, manifest updates, and reuse of the whole-snapshot refresh behavior under the same writer lock | [M3-1](#m3-1---incremental-refresh-and-quarantined-root-recovery) | Integration tests for adding by issue key and URL, overlapping-root refresh behavior, and failing `remove-root` for non-roots | [docs/design/0-top-level-design.md](../design/0-top-level-design.md#63-add-flow), [docs/design/0-top-level-design.md](../design/0-top-level-design.md#65-remove-root-flow), [docs/adr.md](../adr.md#14-root-vs-derived-tickets) |
 | <a id="m3-3---diff-mode-and-lock-aware-drift-reporting"></a>M3-3 | Planned | `diff` mode and lock-aware drift reporting | Implement the non-mutating drift inspection path, including tracked-ticket comparison, `missing_remotely` classification, changed-field reporting, and refusal to run when a non-stale writer lock exists | [M2-2](#m2-2---ticket-fetch-normalization-and-render-pipeline), [M2-3](#m2-3---full-snapshot-sync-flow) | Integration tests for lock refusal, stale-lock observation without mutation, changed-field reporting, and unavailable-ticket classification | [docs/adr.md](../adr.md#53-diff-non-mutating-drift-inspection), [docs/design/0-top-level-design.md](../design/0-top-level-design.md#64-diff-flow), [docs/design/0-top-level-design.md](../design/0-top-level-design.md#4-error-handling) |
 
@@ -264,6 +290,10 @@ reopened before this milestone is activated.
   [M1-D1](#m1-d1---refresh-freshness-validation-spike)
   invalidates issue-level `updated_at`, this ticket must not improvise a silent
   workaround. Update the plan first so the new cursor contract is explicit.
+- Use the adapter contract from
+  [M1-D2](#m1-d2---linear-domain-coverage-audit-and-adapter-boundary) for the
+  batched freshness query rather than widening the Linear boundary during
+  implementation.
 - Keep the default missing-root policy as `quarantine`; destructive removal
   remains opt-in.
 
@@ -307,7 +337,7 @@ scope.
 
 | # | Status | Ticket | Description | Dependencies | Tests | Source |
 | --- | --- | --- | --- | --- | --- | --- |
-| <a id="m4-1---cli-surface-and-command-output-contracts"></a>M4-1 | Planned | CLI surface and command output contracts | Add the thin CLI wrapper over the async library, expose the documented commands and options, and define human-readable plus machine-readable output behavior for success and failure cases | [M2-3](#m2-3---full-snapshot-sync-flow), [M3-1](#m3-1---incremental-refresh-and-quarantined-root-recovery), [M3-3](#m3-3---diff-mode-and-lock-aware-drift-reporting) | CLI tests for command parsing, JSON output, lock-error text, and missing-root-policy selection | [docs/design/0-top-level-design.md](../design/0-top-level-design.md#2-cli-interface), [docs/design/0-top-level-design.md](../design/0-top-level-design.md#4-error-handling) |
+| <a id="m4-1---cli-surface-and-command-output-contracts"></a>M4-1 | Planned | CLI surface and command output contracts | Add the thin CLI wrapper over the async library, expose the documented commands and options, and define human-readable plus machine-readable output behavior for success and failure cases | [M2-3](#m2-3---full-snapshot-sync-flow), [M3-1](#m3-1---incremental-refresh-and-quarantined-root-recovery), [M3-2](#m3-2---add-and-remove-root-whole-snapshot-flows), [M3-3](#m3-3---diff-mode-and-lock-aware-drift-reporting) | CLI tests for command parsing, JSON output, lock-error text, and missing-root-policy selection | [docs/design/0-top-level-design.md](../design/0-top-level-design.md#2-cli-interface), [docs/design/0-top-level-design.md](../design/0-top-level-design.md#4-error-handling) |
 | <a id="m4-2---operational-logging-validation-hardening-and-user-docs"></a>M4-2 | Planned | Operational logging, validation hardening, and user docs | Add the INFO/DEBUG logging contract, end-to-end validation coverage, onboarding and usage docs, and the sample configuration artifact needed to satisfy the repository's documentation/security conventions | [M4-1](#m4-1---cli-surface-and-command-output-contracts) | End-to-end fixture tests covering all major modes plus manual CLI smoke checks documented in repo docs | [docs/adr.md](../adr.md#61-snapshot-consistency-contract), [README.md](../../README.md), [docs/policies/common/coding-guidelines.md](../policies/common/coding-guidelines.md) |
 
 ### 6.3 Detailed Ticket Notes
@@ -351,9 +381,16 @@ scope.
   resolution, and serializer normalization with isolated tests.
 
 **Integration tests**
+- [M1-1](#m1-1---project-scaffold-and-public-runtime-contracts) should
+  establish the reusable fake-client or fixture-builder pattern that later
+  integration tickets extend instead of inventing per-ticket mocks.
 - Use fixture-driven or fake-client-backed tests to exercise `sync`,
   `refresh`, `add`, `remove-root`, and `diff` end to end without requiring live
   network access for routine validation.
+- Treat directory-level idempotency as a named cross-cutting check: run
+  `sync` twice against the same fixture and verify the second pass performs no
+  file rewrites, then run `refresh` against unchanged upstream fixtures and
+  verify zero local churn there as well.
 - Keep live Linear behavior checks narrowly scoped to
   [M1-D1](#m1-d1---refresh-freshness-validation-spike)
   and any explicit follow-up needed to confirm `linear-client` integration
@@ -379,8 +416,6 @@ scope.
 | Item | Blocks | Resolution path |
 | --- | --- | --- |
 | Availability of a live Linear workspace or fixture strategy for [M1-D1](#m1-d1---refresh-freshness-validation-spike) | [M3-1](#m3-1---incremental-refresh-and-quarantined-root-recovery) | Confirm whether the refresh validation spike can run against real credentials/workspace data or whether a narrower pre-implementation probe artifact is needed first |
-| Exact `linear-client` domain-layer coverage for traversal, relation, and freshness queries | [M1-1](#m1-1---project-scaffold-and-public-runtime-contracts), [M2-1](#m2-1---reachable-graph-builder-and-tiered-per-root-traversal), [M3-1](#m3-1---incremental-refresh-and-quarantined-root-recovery) | Audit the documented domain APIs early and record any narrow GraphQL fallback boundaries in the implementation docs |
-| Repository-local launcher/tooling convention for day-to-day development | [M1-1](#m1-1---project-scaffold-and-public-runtime-contracts), later validation gates | Define the package/CLI/test command surface during scaffold work so the rest of the plan can reuse one canonical workflow |
 
 ---
 
@@ -389,7 +424,7 @@ scope.
 | Risk | Impact | Mitigation |
 | --- | --- | --- |
 | [OQ-1](../adr.md#oq-1-refresh-freshness-validation-against-live-linear-behavior) invalidates issue-level `updated_at` as the refresh cursor | High | Front-load [M1-D1](#m1-d1---refresh-freshness-validation-spike) and require a plan amendment before incremental refresh work if the assumption fails |
-| `linear-client` lacks one or more required domain operations for v1 | Medium | Keep a narrow adapter boundary in [M1-1](#m1-1---project-scaffold-and-public-runtime-contracts) and explicitly document any GraphQL fallbacks instead of scattering them across later tickets |
+| `linear-client` lacks one or more required domain operations for v1 | Medium | Audit the required operations in [M1-D2](#m1-d2---linear-domain-coverage-audit-and-adapter-boundary), keep a narrow adapter boundary in [M1-1](#m1-1---project-scaffold-and-public-runtime-contracts), and explicitly document any GraphQL fallbacks instead of scattering them across later tickets |
 | Deterministic rendering or alias-renaming bugs produce misleading local context | Medium | Centralize rendering/verification in [M1-2](#m1-2---manifest-lock-and-rendering-primitives) and cover rename/threading cases in [M2-2](#m2-2---ticket-fetch-normalization-and-render-pipeline) |
 | Interrupted runs still leave a partially updated directory at snapshot scope in v1 | Medium | Preserve atomic per-file writes, document the limitation clearly, and keep stronger directory-level atomicity deferred to [FW-3](../future-work.md#fw-3-whole-snapshot-atomic-commit) |
 
