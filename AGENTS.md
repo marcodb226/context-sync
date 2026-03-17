@@ -40,6 +40,16 @@ whole section or file.
 
 - `docs/policies/common/agent-instructions.md` is the source-of-truth file for the shared common layer of repository-level agent instructions.
 - `docs/policies/agent-instructions.md` is the optional repo-local layer for instructions that should not be shared across the whole client-repo group.
+- `docs/policies/common/*.md` files other than
+  `docs/policies/common/agent-instructions.md` are shared common-policy
+  documents for humans and agents alike. When editing those files, keep the
+  language and requirements human-neutral unless the document is explicitly
+  scoped to agents.
+- Agent-only workflow, refusal behavior, or tool-usage guidance belongs in
+  `docs/policies/common/agent-instructions.md` or
+  `docs/policies/agent-instructions.md`, not in the shared planning,
+  execution, future-work, coding, or reference-material policy documents
+  unless the rule genuinely applies to humans too.
 - Repo-local policy that is meant for humans as well as agents should have its
   primary home in human-facing repository docs such as `docs/policies/*.md` or
   other clearly designated project documentation. Use
@@ -93,6 +103,23 @@ Before marking any work performed under a named active-plan item as complete, ve
 3. For non-docs-only changes, all new and modified tests pass under the
    repository's declared test command(s).
 4. For work performed under a named active-plan item, the required artifact in `docs/execution/` is up to date.
+
+## Draft-plan execution gate
+
+For named plan-item requests, treat
+`docs/policies/common/planning-model.md` and
+`docs/policies/common/execution-model.md` as the source of truth for draft vs
+active plan behavior rather than relying on a duplicated summary here.
+
+Agent-side reminder:
+
+- if a named item exists only in `docs/planning/`, treat the request as
+  planning / activation work rather than execution
+- if the user asks to `activate the plan`, treat that as Stage 4 planning work
+  and follow the activation preflight defined by
+  `docs/policies/common/planning-model.md`
+- do not create `docs/execution/` artifacts for that item until the governing
+  plan is active under the rules defined by the planning and execution models
 
 ## Execution artifact scope
 
