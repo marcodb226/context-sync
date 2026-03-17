@@ -86,6 +86,10 @@ GitHub repository documented in
 treat installation as self-serve bootstrap work. If the project virtualenv
 does not already contain `linear-client`, ask a human to install it before
 running imports, CLI commands, or validations that depend on the library.
+The repo keeps the local credential bootstrap template at
+[`scripts/.linear_env.sh.sample`](../../scripts/.linear_env.sh.sample); create
+the ignored `scripts/.linear_env.sh` from that sample and source it in the
+same shell session before running Linear-dependent commands.
 
 Within `context-sync`, prefer the `linear-client` domain layer. Reach for
 `linear.gql.*` only when the domain layer does not yet expose a required

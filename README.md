@@ -117,3 +117,4 @@ needs to be explicitly granted for paths outside the project.
 | `docs/planning/` | Planning artifacts (candidates, draft plans) |
 | `docs/execution/` | Per-ticket execution logs |
 | `docs/policies/` | Policy documents; `common/` is the shared symlink |
+| `scripts/` | Local bootstrap helpers and tracked sample env files for ignored local runtime config |

@@ -23,6 +23,10 @@ For `context-sync`, treat installation as a human-run environment bootstrap
 step. Agents should not attempt to install `linear-client` themselves. If the
 project virtualenv does not already contain it, ask a human to provision it
 before running imports, the CLI, or validations that depend on the library.
+The repo-local sample env bootstrap file lives at
+[`scripts/.linear_env.sh.sample`](../../scripts/.linear_env.sh.sample); copy it
+to `scripts/.linear_env.sh`, fill in the required values, and source it into
+the same shell session that will run Linear-dependent commands.
 
 ```bash
 # Human-only bootstrap step; requires SSH access to the private repo
