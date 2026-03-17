@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+
+# Sample environment configuration for running linear-client in
+# client-credentials mode for local M1-O1 bootstrap work.
+#
+# Copy this file to scripts/.linear_env.sh, fill in the values, and source it
+# into the same shell session that will run Linear-dependent commands.
+#
+# Security:
+# - Do not commit real secrets.
+# - Keep local env files out of version control.
+
+# Linear OAuth application client ID.
+export LINEAR_CLIENT_ID=""
+
+# Linear OAuth application client secret.
+export LINEAR_CLIENT_SECRET=""
+
+# Required in client-credentials mode.
+# Comma-separated scopes, for example:
+#   read,write,app:assignable,app:mentionable
+export LINEAR_OAUTH_SCOPE="read,write,app:assignable,app:mentionable"
+
+# Optional: path to persisted token JSON file.
+# Default (if unset): ~/.linear_client_oauth.json
+# This keeps the token cache next to the local env file without hardcoding a
+# checkout-specific absolute path.
+export LINEAR_OAUTH_TOKEN_PATH="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/.linear_client_oauth.json"
+
+# Optional: OAuth token endpoint URL.
+# Default (if unset): https://api.linear.app/oauth/token
+#export LINEAR_OAUTH_URL="https://api.linear.app/oauth/token"
+
+# Optional: expiry skew in seconds before token is treated as expired.
+# Default (if unset): 30
+#export LINEAR_OAUTH_SKEW_SECONDS="30"
+
+# Optional: Linear GraphQL API endpoint URL.
+# Default (if unset): https://api.linear.app/graphql
+#export LINEAR_API_URL="https://api.linear.app/graphql"
+
+# Optional: shared default log level used by library-aware tools.
+# Valid values: DEBUG, INFO, WARNING, ERROR, OFF
+export LINEAR_LOG_LEVEL="ERROR"

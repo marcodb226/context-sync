@@ -39,6 +39,23 @@ python -m pip install "linear-client @ git+ssh://git@github.com/marcodb226/linea
 python -m pip install -e .
 ```
 
+Before running Linear-dependent commands, create and source a local env file
+from the tracked sample:
+
+```bash
+cp scripts/.linear_env.sh.sample scripts/.linear_env.sh
+$EDITOR scripts/.linear_env.sh
+source scripts/.linear_env.sh
+```
+
+`scripts/.linear_env.sh` is gitignored on purpose. Create it from
+[`scripts/.linear_env.sh.sample`](scripts/.linear_env.sh.sample), then source
+it into the same shell session you will use for Linear-dependent commands.
+That satisfies the credential/bootstrap side of
+[`M1-O1`](docs/planning/implementation-plan.md#m1-o1---live-linear-validation-environment-available);
+the remaining prerequisite is having `linear-client` installed in the repo-local
+`.venv`.
+
 `linear-client` lives in a private GitHub repo and is not published to PyPI.
 Agents should not try to bootstrap that dependency themselves. If the active
 project virtualenv does not already contain `linear-client`, ask a human to
