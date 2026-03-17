@@ -1,5 +1,6 @@
 .venv/
 .vscode/
+.claude/
 .pytest_cache/
 __pycache__/
 /site/
