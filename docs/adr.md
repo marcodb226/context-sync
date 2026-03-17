@@ -233,7 +233,24 @@ This is a deliberate architectural choice, not just an implementation convenienc
 - the repository conventions are Python-first and async-first;
 - the workload is dominated by I/O to Linear plus local file-system operations, which fits an async model well.
 
-`linear-client` is the mandatory foundation for Linear integration. The context-sync tool builds on top of it for authentication, domain-level access to Linear data, connection management, and rate-limit/backoff behavior. The tool should not create a parallel Linear integration stack unless a missing capability in `linear-client` forces a narrowly scoped extension.
+`linear-client` is the mandatory foundation for Linear integration. The
+context-sync tool builds on top of it for authentication, domain-level access
+to Linear data, connection management, and rate-limit/backoff behavior. The
+tool must not create a parallel Linear integration stack.
+
+`linear-client` is also a private GitHub repository dependency and is not
+vendored in this repo. Agent sessions must treat installation as a human-run
+environment bootstrap step: if the active virtualenv does not already contain
+`linear-client`, the agent should stop and ask a human to install it before
+attempting imports, CLI runs, or validations that require the library.
+
+Within `context-sync`, Linear access should use the `linear-client` domain
+layer by default. A `linear.gql.*` fallback is allowed only when the domain
+layer does not yet expose a required operation, and that fallback should remain
+inside a narrow adapter boundary. When such a gap is discovered, record the
+missing domain capability in the repository's authoritative planning or design
+artifacts so maintainers can extend the upstream `linear-client` roadmap
+instead of normalizing ad hoc GraphQL usage.
 
 All library entry points that can trigger remote or file I/O should be async functions, and the implementation should avoid introducing blocking I/O in the core sync path. The CLI may bridge into that async API with `asyncio.run()`, but synchronous wrappers are not the primary design center.
 

@@ -77,6 +77,25 @@ Traversal configuration consists of the per-dimension depths plus `max_tickets_p
 
 Traversal semantics and interface rationale live in [docs/adr.md](<../adr.md>).
 
+### 1.1 Linear Dependency Boundary
+
+`ContextSyncer` assumes the caller already has `linear-client` installed and
+can provide an authenticated `Linear` instance. The dependency is a private
+GitHub repository documented in
+[docs/design/linear-client.md](<linear-client.md>), so agent sessions must not
+treat installation as self-serve bootstrap work. If the project virtualenv
+does not already contain `linear-client`, ask a human to install it before
+running imports, CLI commands, or validations that depend on the library.
+
+Within `context-sync`, prefer the `linear-client` domain layer. Reach for
+`linear.gql.*` only when the domain layer does not yet expose a required
+operation, and keep that fallback behind a narrow adapter boundary so the rest
+of the tool does not grow direct GraphQL dependencies. Whenever such a gap is
+encountered, record the missing domain capability in an authoritative project
+artifact so maintainers can extend the upstream `linear-client` roadmap. If
+the gap is deferred rather than addressed immediately, track that follow-up in
+[docs/future-work.md](<../future-work.md>).
+
 ---
 
 ## 2. CLI Interface
@@ -270,7 +289,10 @@ The caller (agent loop or human) decides how to handle the `SyncResult`:
 The tool does **not** manage its own Linear authentication.
 
 - **Library mode**: Receives the caller's authenticated `Linear` client instance. The caller controls authentication, connection pooling, and lifecycle.
-- **CLI mode**: Reads the same environment variables as `linear-client` (`LINEAR_CLIENT_ID`, `LINEAR_CLIENT_SECRET`, etc.) and constructs its own client.
+- **CLI mode**: Requires `linear-client` to already be installed in the active
+  environment, reads the same environment variables as `linear-client`
+  (`LINEAR_CLIENT_ID`, `LINEAR_CLIENT_SECRET`, etc.), and constructs its own
+  client.
 
 ---
 

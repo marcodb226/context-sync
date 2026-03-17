@@ -11,6 +11,8 @@ See `docs/problem-statement.md` for the full motivation.
 - Python 3.13+
 - A local clone of the shared policy repository
   ([agent-policies](https://github.com/marcodb226/agent-policies))
+- SSH access to the private `linear-client` GitHub repository, or a human
+  operator who can install it into the project virtualenv
 
 ## Getting started
 
@@ -29,8 +31,21 @@ ln -s ../../../agent-policies-context-sync/docs/policies/common docs/policies/co
 # 4. Create and activate a virtualenv
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e .
+
+# 5. Human-only step: install the private linear-client dependency
+python -m pip install "linear-client @ git+ssh://git@github.com/marcodb226/linear-client.git@v1.0.0"
+
+# 6. Install this project
+python -m pip install -e .
 ```
+
+`linear-client` lives in a private GitHub repo and is not published to PyPI.
+Agents should not try to bootstrap that dependency themselves. If the active
+project virtualenv does not already contain `linear-client`, ask a human to
+install it before running imports, the CLI, or validations that depend on
+Linear access. See
+[`docs/design/linear-client.md`](docs/design/linear-client.md) for the
+repository's dependency-boundary and domain-layer guidance.
 
 ## Common policies
 

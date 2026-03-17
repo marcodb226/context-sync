@@ -1,36 +1,63 @@
 # linear-client: API Reference Summary
 
-> This document summarizes the public API surface of the `linear-client` async Python library, which is the framework's exclusive mechanism for all Linear API calls. It is a framework-internal reference, not user-facing documentation. The canonical source is the library's own MkDocs site; this file exists so agents can resolve API questions without leaving the repository.
+> This document summarizes the public API surface of the `linear-client` async
+> Python library as `context-sync` should use it. The canonical source is the
+> library's own documentation; this file exists so humans and agents can
+> resolve repository-level integration questions without leaving this repo.
 >
 > Wheel releases: https://github.com/marcodb226/linear-client/releases/tag/v1.0.0
+>
+> The installation and boundary guidance below adopts the private-dependency
+> handling pattern documented in
+> [`docs/external-sources/README.md`](<../external-sources/README.md>) and
+> [`docs/external-sources/coding-guidelines.md`](<../external-sources/coding-guidelines.md>).
 
 ---
 
 ## Installation
 
-`linear-client` is a private package hosted on GitHub. It is not published to PyPI.
+`linear-client` is a private GitHub repository/package. It is not published to
+PyPI and is not vendored in this repo.
+
+For `context-sync`, treat installation as a human-run environment bootstrap
+step. Agents should not attempt to install `linear-client` themselves. If the
+project virtualenv does not already contain it, ask a human to provision it
+before running imports, the CLI, or validations that depend on the library.
 
 ```bash
-# Requires SSH access to the repo
-pip install "linear-client @ git+ssh://git@github.com/marcodb226/linear-client.git@v1.0.0"
+# Human-only bootstrap step; requires SSH access to the private repo
+.venv/bin/python -m pip install "linear-client @ git+ssh://git@github.com/marcodb226/linear-client.git@v1.0.0"
 ```
 
-Once installed, install the control plane project itself (which declares `linear-client>=1.0.0` as a dependency):
+Once `linear-client` is present, install this repository itself:
 
 ```bash
-pip install -e ".[dev]"
+.venv/bin/python -m pip install -e .
 ```
 
 ---
 
 ## Architecture: Two Layers
 
-The library exposes two distinct layers. **Use the domain abstraction layer by default.** Drop to the GraphQL services layer only when a needed operation is not yet exposed by the domain layer.
+The library exposes two distinct layers. **Use the domain abstraction layer by
+default.** Drop to the GraphQL services layer only when a needed operation is
+not yet exposed by the domain layer.
 
 | Layer | Access path | When to use |
 |---|---|---|
 | Domain abstraction | `linear.issue(...)`, `team.search_issues(...)`, etc. | All routine workflow operations |
 | GraphQL services | `linear.gql.*` | Advanced filtering, schema-level control, or operations not yet in the domain layer |
+
+For `context-sync`, this boundary is part of the architectural contract:
+
+- prefer domain-layer functions whenever they can express the required
+  behavior;
+- keep any `linear.gql.*` fallback inside a narrow adapter boundary rather than
+  scattering GraphQL calls across the codebase;
+- when the domain layer lacks a required operation, record that missing
+  capability in an authoritative project artifact so maintainers can extend the
+  upstream `linear-client` roadmap instead of normalizing the fallback as the
+  default approach.
 
 ---
 
