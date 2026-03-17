@@ -68,6 +68,7 @@ outcomes while explicitly keeping the current `FW-*` backlog deferred.
 
 | Candidate | Decision | Draft plan destination | Notes |
 | --- | --- | --- | --- |
+| Live Linear validation environment bootstrap from [docs/design/0-top-level-design.md](../design/0-top-level-design.md#11-linear-dependency-boundary), [docs/design/linear-client.md](../design/linear-client.md#authentication), and direct human clarification during planning | Keep | [M1-O1](#m1-o1---live-linear-validation-environment-available) | Makes the human-provided runtime/bootstrap prerequisite for the release-gate spike explicit before [M1-D1](#m1-d1---refresh-freshness-validation-spike) begins. |
 | Refresh correctness gate from [OQ-1](../adr.md#oq-1-refresh-freshness-validation-against-live-linear-behavior) | Keep | [M1-D1](#m1-d1---refresh-freshness-validation-spike) | Must be settled before `refresh` can be considered implementation-complete. |
 | Linear domain-layer coverage audit and adapter-boundary definition from [docs/adr.md](../adr.md#31-foundation), [docs/design/0-top-level-design.md](../design/0-top-level-design.md#11-linear-dependency-boundary), and [docs/design/linear-client.md](../design/linear-client.md) | Keep | [M1-D2](#m1-d2---linear-domain-coverage-audit-and-adapter-boundary) | Makes the domain-vs-GraphQL fallback decision explicit before traversal, relation, and refresh tickets depend on it. |
 | Library API, runtime configuration, and package bootstrap from [docs/adr.md](../adr.md#31-foundation), [docs/design/0-top-level-design.md](../design/0-top-level-design.md#1-library-api), and [docs/design/linear-client.md](../design/linear-client.md) | Keep | [M1-1](#m1-1---project-scaffold-and-public-runtime-contracts) | Establishes the project layout, public interfaces, per-process concurrency controls, reusable test harness, and the narrow dependency boundary with `linear-client`. |
@@ -93,10 +94,15 @@ This artifact is a draft plan only. It does **not** yet activate
 [docs/policies/common/execution-model.md](../policies/common/execution-model.md).
 If Stage 2 review, Stage 3 owner response, and human acceptance promote this
 draft into [docs/implementation-plan.md](../implementation-plan.md), the active
-plan should explicitly adopt the execution model for the named tickets below.
+plan should explicitly adopt the execution model for the design and
+implementation tickets below. Operational prerequisite items remain activation
+or execution blockers for their dependent tickets, but do not themselves become
+Phase A/B/C execution tickets under
+[docs/policies/common/execution-model.md](../policies/common/execution-model.md).
 
 Planned ticket identifiers use these forms:
 
+- Operational prerequisites: `Mx-Oy`
 - Design tickets: `Mx-Dy`
 - Implementation tickets: `Mx-z`
 - Review finding IDs after activation: `<ticket-id>-Rn`
@@ -107,7 +113,7 @@ Planned ticket identifiers use these forms:
 
 | Milestone | Name | Primary deliverable |
 | --- | --- | --- |
-| M1 | Foundation and release-gate validation | Project scaffold, Linear adapter-boundary audit, shared persistence primitives, and an explicit `OQ-1` outcome |
+| M1 | Foundation and release-gate validation | Live validation bootstrap, project scaffold, Linear adapter-boundary audit, shared persistence primitives, and an explicit `OQ-1` outcome |
 | M2 | Full snapshot materialization | Deterministic traversal, rendering, and whole-snapshot `sync` |
 | M3 | Incremental maintenance and drift inspection | `refresh`, `add`, `remove-root`, and `diff` with the ADR's missing-root and lock semantics |
 | M4 | CLI and release readiness | Human-facing commands, operational logging, validation coverage, and onboarding docs |
@@ -121,29 +127,56 @@ or traversal foundations.
 
 ## 3. Milestone 1 - Foundation and Release-Gate Validation
 
-**Goal:** establish the package/runtime baseline, shared file-system helpers,
-and the refresh-correctness decision that later milestones depend on.
+**Goal:** establish the operational bootstrap for live validation, the
+package/runtime baseline, shared file-system helpers, and the
+refresh-correctness decision that later milestones depend on.
 
-### 3.1 Design Tickets
+### 3.1 Operational Prerequisites
+
+| # | Status | Item | Requirement | Unblocks | Verification | Source |
+| --- | --- | --- | --- | --- | --- | --- |
+| <a id="m1-o1---live-linear-validation-environment-available"></a>M1-O1 | Planned | Live Linear validation environment available | A human-prepared execution environment for the repository with the repo-local `.venv` available, `linear-client` installed in that environment, and the required Linear credential environment variables exposed to the same execution session that will run the release-gate spike | [M1-D1](#m1-d1---refresh-freshness-validation-spike) | Confirm the repo-local Python environment can import `linear_client` and that the same session can authenticate successfully before starting the spike | [docs/design/0-top-level-design.md](../design/0-top-level-design.md#11-linear-dependency-boundary), [docs/design/linear-client.md](../design/linear-client.md#authentication) |
+
+### 3.2 Design Tickets
 
 | # | Status | Ticket | Deliverable | Dependencies | Reviewers | Source |
 | --- | --- | --- | --- | --- | --- | --- |
-| <a id="m1-d1---refresh-freshness-validation-spike"></a>M1-D1 | Planned | Refresh freshness validation spike | A short repository artifact that records whether issue-level `updated_at` is sufficient for the v1 persisted snapshot contract and, if not, the exact amendment needed before `refresh` work proceeds | None | Independent Stage 2 review session | [OQ-1](../adr.md#oq-1-refresh-freshness-validation-against-live-linear-behavior) |
+| <a id="m1-d1---refresh-freshness-validation-spike"></a>M1-D1 | Planned | Refresh freshness validation spike | A short repository artifact that records whether issue-level `updated_at` is sufficient for the v1 persisted snapshot contract and, if not, the exact amendment needed before `refresh` work proceeds | [M1-O1](#m1-o1---live-linear-validation-environment-available) | Independent Stage 2 review session | [OQ-1](../adr.md#oq-1-refresh-freshness-validation-against-live-linear-behavior) |
 | <a id="m1-d2---linear-domain-coverage-audit-and-adapter-boundary"></a>M1-D2 | Planned | Linear domain-coverage audit and adapter boundary | A repository artifact that enumerates the v1 Linear operations required by traversal, fetch, and refresh, records whether the `linear-client` domain layer already covers each one, and defines any narrow `linear.gql.*` fallback boundary that implementation tickets may use | None | Independent Stage 2 review session | [docs/adr.md](../adr.md#31-foundation), [docs/design/0-top-level-design.md](../design/0-top-level-design.md#11-linear-dependency-boundary), [docs/design/linear-client.md](../design/linear-client.md) |
 
-### 3.2 Implementation Tickets
+### 3.3 Implementation Tickets
 
 | # | Status | Ticket | Description | Dependencies | Tests | Source |
 | --- | --- | --- | --- | --- | --- | --- |
 | <a id="m1-1---project-scaffold-and-public-runtime-contracts"></a>M1-1 | Planned | Project scaffold and public runtime contracts | Create the initial Python package layout, configuration surface, public async entry points, shared result/error models, reusable fake-client test harness, and the documented developer command set the rest of the plan will rely on | [M1-D2](#m1-d2---linear-domain-coverage-audit-and-adapter-boundary) | Unit tests for configuration parsing, result/error contracts, adapter/fake-client contracts, and package import boundaries | [docs/adr.md](../adr.md#31-foundation), [docs/design/0-top-level-design.md](../design/0-top-level-design.md#1-library-api), [docs/design/linear-client.md](../design/linear-client.md), [README.md](../../README.md) |
 | <a id="m1-2---manifest-lock-and-rendering-primitives"></a>M1-2 | Planned | Manifest, lock, and rendering primitives | Implement the manifest schema, deterministic YAML/Markdown rendering helpers, atomic per-file writes, lock metadata handling, and post-write verification utilities for later flows to reuse | [M1-1](#m1-1---project-scaffold-and-public-runtime-contracts) | Round-trip tests for manifest and ticket serialization, lock acquisition/preemption tests, and verification-failure tests | [docs/adr.md](../adr.md#2-persistence-format), [docs/design/0-top-level-design.md](../design/0-top-level-design.md#21-context-directory-contents), [docs/design/0-top-level-design.md](../design/0-top-level-design.md#22-ticket-file-rendering), [ADR-R2a](./26.03.15%20-%20ADR%20review.md#adr-r2a-done-stale-lock-recovery-and-lock-metadata) |
 
-### 3.3 Detailed Ticket Notes
+### 3.4 Detailed Ticket Notes
+
+#### M1-O1 - Live Linear validation environment available
+
+- This prerequisite exists so the repository can perform the live
+  [OQ-1](../adr.md#oq-1-refresh-freshness-validation-against-live-linear-behavior)
+  spike without depending on future scaffold work to invent a launcher or
+  bootstrap story first.
+- The human-provided prerequisite is operational, not product scope. Completing
+  it makes the live spike runnable but does not itself answer
+  [OQ-1](../adr.md#oq-1-refresh-freshness-validation-against-live-linear-behavior).
+- If the repository later standardizes a launcher or env-loading convention in
+  [M1-1](#m1-1---project-scaffold-and-public-runtime-contracts), that later
+  workflow should replace this ad hoc prerequisite for routine execution, but
+  [M1-O1](#m1-o1---live-linear-validation-environment-available) is still the
+  explicit precondition for the first live validation pass.
 
 #### M1-D1 - Refresh freshness validation spike
 
 - Record the outcome in a durable repository artifact rather than in chat-only
   notes so later sessions can decide whether `refresh` is still on-plan.
+- Do not start the spike until
+  [M1-O1](#m1-o1---live-linear-validation-environment-available) is complete in
+  the same execution session, so the ticket does not rely on undocumented
+  bootstrap assumptions about `linear-client` installation or credential
+  exposure.
 - If the issue-level `updated_at` contract fails for any v1-persisted field,
   stop and route that change through a plan amendment before
   [M3-1](#m3-1---incremental-refresh-and-quarantined-root-recovery) begins.
@@ -185,7 +218,7 @@ and the refresh-correctness decision that later milestones depend on.
   intact: individual file writes should be atomic, but the milestone should not
   try to invent whole-directory staging semantics.
 
-### 3.4 Exit Criteria
+### 3.5 Exit Criteria
 
 1. The repository has a runnable package scaffold and documented validation
    command set.
@@ -415,7 +448,7 @@ scope.
 
 | Item | Blocks | Resolution path |
 | --- | --- | --- |
-| Availability of a live Linear workspace or fixture strategy for [M1-D1](#m1-d1---refresh-freshness-validation-spike) | [M3-1](#m3-1---incremental-refresh-and-quarantined-root-recovery) | Confirm whether the refresh validation spike can run against real credentials/workspace data or whether a narrower pre-implementation probe artifact is needed first |
+| Availability of a live Linear workspace or fixture strategy for [M1-D1](#m1-d1---refresh-freshness-validation-spike) | [M1-D1](#m1-d1---refresh-freshness-validation-spike), [M3-1](#m3-1---incremental-refresh-and-quarantined-root-recovery) | After [M1-O1](#m1-o1---live-linear-validation-environment-available) makes the execution environment available, confirm whether the refresh validation spike can run against real workspace data or whether a narrower pre-implementation probe artifact is needed first |
 
 ---
 
