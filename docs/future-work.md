@@ -1,7 +1,7 @@
 # Future Work
 
 > **Status**: Draft
-> **Date**: 2026-03-13
+> **Date**: 2026-03-17
 
 ---
 
@@ -166,6 +166,38 @@ to `Next release` yet.
 - Callers can inspect a ticket, and optionally a bounded nearby neighborhood,
   without writing to `context_dir`, and that preview behavior is documented as
   distinct from `diff`.
+
+<a id="fw-7-label-based-graph-ticket-filters"></a>
+### FW-7 - Label-Based Graph Ticket Filters
+
+**Why deferred**
+- The first release persists labels on ticket files, but graph construction is
+  driven only by roots, traversal dimensions, and the per-root ticket cap.
+- Some workflows will want to keep only tickets with a specific label, or to
+  exclude tickets with a specific label, without rebuilding that intent by hand
+  after every refresh.
+- Because the manifest is the authoritative source for directory-level
+  traversal state, label-filter behavior needs deliberate persistence semantics
+  rather than an ad hoc one-off refresh flag.
+
+**Scope**
+- Support a graph-level label filter that can run in either include
+  (whitelist) or exclude (blacklist) mode against the normalized label display
+  strings already stored in ticket snapshots.
+- Store the active label-filter configuration in `.context-sync.yml` alongside
+  the existing traversal configuration so future `refresh` runs continue to
+  respect it.
+- Apply the filter consistently across `sync`, `refresh`, `add`,
+  `remove-root`, and `diff`, including pruning tickets that no longer satisfy
+  the configured filter.
+- Define how label filters interact with roots and traversal semantics, such as
+  whether a filtered-out root is rejected, quarantined, or retained only as a
+  traversal anchor.
+
+**Completion signal**
+- A context directory can persist an include or exclude label filter in its
+  manifest, and subsequent snapshot operations keep only the tickets permitted
+  by that stored filter under documented root and pruning rules.
 
 ## Historical
 
