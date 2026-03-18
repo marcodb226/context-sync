@@ -453,3 +453,13 @@ For many intended callers, the snapshot lives in git-managed files, which gives 
   This assumption must be validated against live Linear behavior before `refresh` is considered implementation-complete. That validation does not require the full tool to exist first; a focused probe or spike against Linear behavior is sufficient.
 
   If the assumption holds, the current batch `updated_at` freshness design can proceed. If it does not hold, the refresh design must be revised before release, for example by using richer freshness cursors or by narrowing the supported v1 refresh contract.
+
+  Validation outcome on 2026-03-17:
+  live probes recorded in
+  [docs/design/refresh-freshness-validation.md](design/refresh-freshness-validation.md)
+  showed that comment creation and comment edit do **not** advance the parent
+  issue `updatedAt`, so issue-level `updated_at` is not sufficient for the v1
+  refresh contract. The refresh design therefore requires a richer composite
+  freshness cursor before
+  [M3-1](implementation-plan.md#m3-1---incremental-refresh-and-quarantined-root-recovery)
+  may begin.
