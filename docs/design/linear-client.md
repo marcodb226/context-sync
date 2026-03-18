@@ -105,6 +105,23 @@ Setting `LINEAR_ENV_PREFIX=PM_` makes `PM_LINEAR_CLIENT_ID` resolve as the clien
 
 ---
 
+## Live Validation Workspace
+
+Use the `ARK` Linear project/team as the designated safe workspace for
+experimentation, disposable validation spikes, and test-harness issues. When a
+human or agent needs to verify live Linear behavior, prefer `ARK` over active
+delivery projects such as `ACP`.
+
+For hygiene:
+
+- prefix disposable issue titles with a clear marker such as
+  `[Linear-client test harness]`;
+- keep probe scope narrow and avoid editing unrelated live issues; and
+- archive or otherwise clean up disposable probe artifacts once validation is
+  complete.
+
+---
+
 ## Entrypoint
 
 ```python
