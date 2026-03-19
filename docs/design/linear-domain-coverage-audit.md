@@ -23,7 +23,7 @@ relation reads and for the composite refresh-cursor metadata pass adopted by
 | Area | Required operation | Current best surface | Coverage | Notes |
 | --- | --- | --- | --- | --- |
 | Root and ticket resolution | Fetch one issue by `issue_id` or `issue_key`, including scalar issue metadata and `updated_at` | `linear.issue(...).fetch()` or `linear.gql.issues.get(...)` | Covered by domain layer | This is sufficient for explicit root resolution, single-ticket fallback fetches, and ordinary scalar issue reads. |
-| Team-scoped discovery | Search issues within one team by documented filters | `team.search_issues(...)` | Covered by domain layer | Useful for discovery or team-scoped lookups, but not a substitute for arbitrary tracked-id refresh reads. |
+| Workspace identity validation | Read stable workspace id plus workspace slug for a fetched ticket and compare them against the manifest workspace | None in the audited surface | Missing | This is a required v1 read for the single-workspace manifest contract used by `sync` and `add`. The audited issue, team, user, and viewer surfaces do not expose workspace-parent identity. |
 | Full ticket fetch | Assemble one renderable ticket bundle for v1 persisted fields | `Issue.fetch()` + `await issue.comments` + `await issue.attachments` | Partially covered | Scalar issue fields, comment bodies, and attachment metadata are available. Relations are not. A full render bundle therefore still needs a separate relation-read step. |
 | Comment rendering and `ticket_ref` scan | Fetch full comments for one issue, including body text | `await issue.comments` | Covered by domain layer | The current package already implements this with internal raw GraphQL and returns comment `id`, `body`, `createdAt`, and author. That is enough for rendering and URL extraction, but not for `comments_signature`. |
 | Attachment rendering | Fetch attachment metadata for one issue | `await issue.attachments` | Covered by domain layer | The current package already implements this with internal raw GraphQL and returns attachment `id`, `title`, `url`, `createdAt`, and creator. This is enough for the v1 metadata-only attachment contract. |
@@ -31,6 +31,11 @@ relation reads and for the composite refresh-cursor metadata pass adopted by
 | Refresh issue cursor | Batch-read issue identity plus `updated_at` for the tracked reachable set | None in the audited surface | Missing | The installed surfaces expose single-issue `get(...)` and filtered search, but not the by-id batch metadata read needed by [docs/design/0-top-level-design.md](0-top-level-design.md#62-refresh-flow). |
 | Refresh comment cursor | Batch-read comment and thread metadata for `comments_signature` | None in the audited surface | Missing | The installed comment surfaces omit comment `updatedAt`, parent/root topology, thread `resolved`, and deletion or tombstone state. The metadata-only refresh path therefore needs a new raw-GraphQL helper if the accepted v1 contract is kept intact. |
 | Refresh relation cursor | Batch-read relation metadata for `relations_signature` | None in the audited surface | Missing | The same relation-read gap that blocks traversal also blocks refresh, and refresh needs it in batched metadata form across the tracked reachable set. |
+
+The installed package also exposes `team.search_issues(...)`, but no current
+v1 `sync`, `refresh`, `add`, `remove-root`, or `diff` flow requires team-
+scoped issue search. It is therefore not part of the required-operation matrix
+or the approved v1 adapter boundary.
 
 ## 2. Boundary Decision
 
@@ -41,12 +46,13 @@ That means later implementation tickets should keep using domain objects for:
 - issue resolution and scalar issue fetches
 - full comment-body fetches used for rendering and `ticket_ref` URL scanning
 - attachment metadata fetches
-- team issue search when a ticket genuinely needs a team-scoped discovery path
 
 Raw `linear.gql.*` usage is allowed only inside one narrow local adapter
 module, and only for the following read helpers unless a later accepted design
 ticket widens the boundary:
 
+- `get_issue_workspace_identity(issue_id)` for stable workspace id plus slug
+  lookup during manifest workspace validation in `sync` and `add`
 - `get_ticket_relations(issue_ids)` for traversal and rendered `relations`
 - `get_refresh_issue_metadata(issue_ids)` for batched `issue_updated_at` and
   visibility checks across the tracked reachable set
@@ -58,6 +64,15 @@ Later traversal, refresh, serializer, and CLI orchestration code should call
 those adapter helpers rather than calling `linear.gql.query(...)` directly.
 This keeps the local GraphQL escape hatch explicit, reviewable, and replaceable
 if upstream `linear-client` grows the missing domain features later.
+
+These helpers are read-only adapter helpers. They must never call
+`linear.gql.gql(...)` or `linear.gql.mutate(...)`. Use
+`linear.gql.query(...)` for non-connection documents and use
+`linear.gql.paginate_connection(...)` or an equivalent exhaustive internal
+cursor loop for connection-backed reads. Callers should receive fully
+materialized results, not cursors. Pagination and aggregation belong inside the
+helper implementation, and single-query truncation is not an accepted risk for
+required v1 flows.
 
 ## 3. Recorded Missing Upstream Capabilities
 
@@ -71,6 +86,8 @@ The inspected `linear-client` package is missing several read capabilities that
   topology, thread `resolved`, and any deletion or tombstone signal
 - a batched issue-metadata read API for an arbitrary tracked-id set rather than
   only single-issue fetches and team-scoped search
+- a stable workspace-identity read surface that exposes workspace id plus slug
+  or equivalent canonical identity during root-ticket workspace validation
 
 These gaps should remain visible as upstream `linear-client` follow-up targets
 even if `context-sync` ships a narrow local raw-GraphQL fallback first.
@@ -84,16 +101,25 @@ even if `context-sync` ships a narrow local raw-GraphQL fallback first.
   implementation confirms that this path is materially more expensive than
   intended, record that as a design or adapter risk rather than silently
   weakening the default v1 refresh contract.
-- This audit could not confirm from the installed package whether
-  comment-level `updatedAt` both exists in the available raw GraphQL shape and
-  advances on comment edit. The installed domain and repository surfaces expose
-  only `createdAt` for comments. Before [M3-1](../implementation-plan.md#m3-1---incremental-refresh-and-quarantined-root-recovery)
-  hardcodes `comments_signature` around comment `updated_at`, implementation
-  work must either validate that signal live or record the accepted fallback
-  input explicitly.
-- The audited package surface does not clearly expose workspace identity
-  metadata such as workspace id or slug on the issue/team/user paths inspected
-  for this ticket. If later tickets need an authoritative fetched-workspace
-  identity to satisfy the manifest contract, that check will require either a
-  narrow raw-GraphQL helper or an accepted design clarification that team-level
-  identity is sufficient for v1.
+- Workspace-identity validation is a required v1 capability, not a conditional
+  future need. The audited package surfaces inspected for this ticket do not
+  expose stable workspace id plus slug on the issue, team, user, or viewer
+  paths, so `sync` and `add` must plan for
+  `get_issue_workspace_identity(...)` or an equivalent narrow helper rather
+  than treating team identity as an implicit proxy.
+
+## 5. Explicit Pre-[M3-1](../implementation-plan.md#m3-1---incremental-refresh-and-quarantined-root-recovery) Gate
+
+- The audited package cannot confirm from its installed surfaces whether raw
+  GraphQL exposes comment-level `updatedAt` and whether that signal advances on
+  comment edit. The installed domain and repository surfaces expose only
+  `createdAt` for comments.
+- Before
+  [M3-1](../implementation-plan.md#m3-1---incremental-refresh-and-quarantined-root-recovery)
+  begins, repository artifacts must record one of the following accepted
+  `comments_signature` inputs:
+  probe-backed confirmation that raw GraphQL exposes comment `updatedAt` and
+  that it advances on edit, or a later accepted design amendment that names the
+  replacement freshness input and any resulting contract or cost change.
+- [M3-1](../implementation-plan.md#m3-1---incremental-refresh-and-quarantined-root-recovery)
+  must not invent this decision during implementation-time adapter work.

@@ -392,6 +392,13 @@ rather than reopen the refresh design during implementation.
   required composite freshness query path, especially the mandatory
   relation-freshness mechanism, rather than widening the Linear boundary during
   implementation.
+- Do not begin [M3-1](#m3-1---incremental-refresh-and-quarantined-root-recovery)
+  until repository artifacts record the accepted `comments_signature` input:
+  either probe-backed confirmation that comment-level `updated_at` advances on
+  edit, or a later accepted design amendment that names the replacement input.
+  This is a pre-implementation gate carried forward from
+  [M1-D2](#m1-d2---linear-domain-coverage-audit-and-adapter-boundary), not an
+  implementation-time choice.
 - Keep the accepted v1 attachment-freshness narrowing intact. Attachment-only
   drift does not become first-release refresh scope unless a later accepted
   plan amendment changes that contract.
