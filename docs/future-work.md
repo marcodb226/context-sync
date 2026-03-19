@@ -51,9 +51,11 @@ to `Next release` yet.
   read-only, predictable, and simpler to ship.
 - The first release narrows incremental refresh correctness so attachment-only
   metadata drift is not guaranteed to be detected during selective refresh.
-  That tradeoff keeps the first amendment focused on comment and relation
-  freshness, which have higher impact on graph correctness and day-to-day
-  context quality.
+  That tradeoff is the accepted outcome of
+  [M1-D3](implementation-plan.md#m1-d3---refresh-composite-freshness-contract-amendment)
+  and keeps the first amendment focused on comment and relation freshness,
+  which have higher impact on graph correctness and day-to-day context
+  quality.
 
 **Scope**
 - Inline text-based attachment content when it is safe and useful.

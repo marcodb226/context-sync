@@ -380,18 +380,19 @@ refresh()
   │   ├─ Clear the quarantined state and treat it as active again
   │   └─ Rewrite the local ticket file so the quarantine markers are removed
   ├─ Recompute the reachable graph from active non-quarantined roots
-  ├─ Batch-query Linear for per-ticket updated_at values via `linear-client`
-  ├─ Treat issue-level updated_at as the freshness cursor for the v1
-  │   base ticket snapshot (metadata, description, comments)
-  ├─ Before treating this design as correct, validate that issue-level
-  │   updated_at advances when any of those v1-persisted fields change,
-  │   especially when comments are added or edited
-  ├─ Treat that validation as an explicit release gate from
-  │   [docs/adr.md](<../adr.md#oq-1-refresh-freshness-validation-against-live-linear-behavior>);
-  │   `refresh` is not implementation-complete until it is resolved
+  ├─ Batch-query Linear for the remote composite refresh cursor of each
+  │   tracked reachable ticket via `linear-client`
+  ├─ Load the local `refresh_cursor` metadata from each tracked reachable
+  │   ticket file
+  ├─ Treat a tracked reachable ticket as stale when no local file exists or
+  │   when any composite-cursor component differs exactly:
+  │   ├─ `issue_updated_at`
+  │   ├─ `comments_signature`
+  │   └─ `relations_signature`
+  ├─ Do not treat attachment-only metadata drift as part of the v1 selective
+  │   refresh cursor
   │
-  ├─ For each reachable ticket where updated_at > last_synced_at
-  │   │  or where no local file exists:
+  ├─ For each stale or newly discovered reachable ticket:
   │   ├─ Re-fetch full ticket data
   │   ├─ Update manifest UUID/current-key/path mappings
   │   ├─ Preserve any superseded issue key as a manifest alias
@@ -406,7 +407,67 @@ refresh()
   └─ Return SyncResult
 ```
 
-Adding a new root to an existing context directory should use this same whole-snapshot refresh flow after recording the new root. The design intentionally avoids root-local refresh because overlapping root graphs would otherwise produce mixed-time snapshots. The `missing_root_policy` knob applies only to already-tracked roots during `refresh`; it does not weaken the strict behavior of `sync` or `add` for explicitly requested roots.
+The live validation outcome recorded in
+[docs/design/refresh-freshness-validation.md](refresh-freshness-validation.md)
+invalidated the earlier single-cursor design: issue-level `updated_at` is not
+enough to keep persisted comments fresh. The first-release `refresh` contract
+therefore uses a per-ticket composite cursor rather than comparing remote
+issue timestamps against local `last_synced_at`.
+
+The v1 composite cursor has three components:
+
+- `issue_updated_at`: the issue-level timestamp used for native issue fields
+  rendered in the ticket file, including description and other persisted
+  issue metadata.
+- `comments_signature`: a deterministic digest over the visible comment/thread
+  metadata that can change the rendered comments section. The canonical input
+  must include each visible comment's stable ID, parent/root relationship,
+  `updated_at`, and the per-thread `resolved` flag.
+- `relations_signature`: a deterministic digest over the visible persisted
+  issue relations used by the snapshot and traversal logic. The canonical
+  input must include the relation dimension, relation type, and target
+  identity; when a stable target UUID is available it should drive canonical
+  ordering, but the current human-readable target key must still be included
+  because that value is rendered locally.
+
+Each ticket file stores the last accepted remote cursor in frontmatter under a
+machine-readable `refresh_cursor` mapping. `refresh` compares the remote and
+local composite cursors by exact equality. A mismatch in any component marks
+the ticket stale and forces a full re-fetch. `last_synced_at` remains useful
+for humans and logs, but it is no longer the correctness check for deciding
+whether a tracked ticket is fresh.
+
+This amendment intentionally does **not** assume that relation changes advance
+the parent issue `updated_at`. No additional live relation probe was run as
+part of this ticket, so the first release takes the conservative path:
+relations get their own cursor component and must be compared explicitly.
+
+Attachment metadata stays persisted in the main ticket file, but attachment-
+only drift is not part of the v1 selective-refresh correctness contract. A
+ticket re-fetch caused by another cursor component will still refresh
+attachments opportunistically, while richer attachment freshness handling
+remains deferred to [FW-2](<../future-work.md#fw-2-attachment-content-handling>).
+
+The resulting remote-data requirement for
+[M1-D2](../implementation-plan.md#m1-d2---linear-domain-coverage-audit-and-adapter-boundary)
+is explicit. The refresh adapter must be able to obtain, in one logical
+batched metadata pass across the tracked reachable set:
+
+- issue identity plus issue `updated_at` for native-field freshness
+- comment/thread metadata sufficient to build `comments_signature`
+- relation metadata sufficient to build `relations_signature`
+
+That batched metadata pass may be implemented as one composite operation or as
+a small fixed set of batched subqueries behind one narrow adapter boundary, but
+it must not degrade into one full ticket fetch per tracked issue just to decide
+freshness.
+
+Adding a new root to an existing context directory should use this same
+whole-snapshot refresh flow after recording the new root. The design
+intentionally avoids root-local refresh because overlapping root graphs would
+otherwise produce mixed-time snapshots. The `missing_root_policy` knob applies
+only to already-tracked roots during `refresh`; it does not weaken the strict
+behavior of `sync` or `add` for explicitly requested roots.
 
 The first release does not treat a richer activity or history timeline as part of this base refresh contract. If that data is added later, it may need its own persistence shape and freshness semantics as described in [FW-5](<../future-work.md#fw-5-ticket-history-and-sectioned-ticket-artifacts>).
 

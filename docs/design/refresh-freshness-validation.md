@@ -82,3 +82,9 @@ in the child-backed portions of the v1 ticket snapshot.
 - Until that amendment is captured in the governing design/plan, treat
   [M3-1](../implementation-plan.md#m3-1---incremental-refresh-and-quarantined-root-recovery)
   as blocked.
+- The follow-on governing amendment was later accepted in
+  [M1-D3](../implementation-plan.md#m1-d3---refresh-composite-freshness-contract-amendment)
+  and is now recorded in
+  [docs/design/0-top-level-design.md](0-top-level-design.md#62-refresh-flow)
+  and
+  [docs/adr.md](../adr.md#52-refresh-incremental-whole-snapshot-update).

@@ -141,6 +141,10 @@ labels:
 last_synced_at: "2026-03-13T10:00:00Z"
 parent_ticket_key: "ACP-100"
 priority: 2
+refresh_cursor:
+  comments_signature: "v1:8f4c..."
+  issue_updated_at: "2026-03-13T09:15:00Z"
+  relations_signature: "v1:22ab..."
 relations:
   - dimension: "blocks"
     ticket_key: "ACP-120"
@@ -165,6 +169,12 @@ For the first release, each ticket file includes the full comment history return
 The first release does not include a separate ticket activity or history timeline beyond the comments returned with the ticket. Richer history capture is deferred to [FW-5](<future-work.md#fw-5-ticket-history-and-sectioned-ticket-artifacts>). If that richer history is added later and proves too bulky for the main ticket file, it may be stored in adjacent section files rather than forcing every consumer to open one very large document.
 
 For the first release, attachment handling is metadata-only. Ticket files include attachment metadata and URLs, but do not inline or download attachment contents, and they do not attempt to project repo-hosted URLs into local filesystem paths. Richer handling for text attachments, images, other file types, and best-effort local path projection for repo-hosted resources is deferred and tracked in [FW-2](<future-work.md#fw-2-attachment-content-handling>).
+
+Incremental refresh also stores machine-readable freshness metadata in
+frontmatter under `refresh_cursor`. That metadata is not part of the human-
+facing ticket narrative; it records the remote freshness markers captured when
+the ticket was last fully fetched so a later `refresh` run can decide whether
+the local snapshot is still current without re-fetching every ticket body.
 
 Every file includes `format_version`. When the file format changes, the tool increments the version and re-syncs old files rather than depending on implicit compatibility.
 
@@ -358,25 +368,64 @@ The manifest records snapshot-pass metadata so humans and callers can see when t
 
 Stronger whole-snapshot atomic commit semantics, where an interrupted run would not leave a partially applied directory update behind, are explicitly deferred to [FW-3](<future-work.md#fw-3-whole-snapshot-atomic-commit>).
 
-Freshness is determined from information stored in the files themselves. Each ticket file carries `last_synced_at`, and the remote source of truth carries issue-level `updated_at`.
+Freshness is determined from information stored in the files themselves. Each
+ticket file carries `last_synced_at` for human/operator visibility plus a
+persisted `refresh_cursor` describing the remote freshness markers captured
+when that ticket was last fully fetched.
 
-For the first release, the base ticket snapshot that `refresh` is responsible for keeping current consists of the persisted ticket metadata, description, and full comment history stored in the main ticket file. Richer activity or history timelines are outside that v1 refresh contract and remain deferred to [FW-5](<future-work.md#fw-5-ticket-history-and-sectioned-ticket-artifacts>).
+For the first release, the main ticket file persists ticket metadata,
+description, full comment history, attachment metadata, and relations. The v1
+selective-refresh correctness contract is intentionally narrower in one place:
+attachment-only metadata drift is **not** guaranteed to be detected during
+incremental refresh and remains deferred to
+[FW-2](<future-work.md#fw-2-attachment-content-handling>). Comments and
+relations remain part of the first-release refresh-correctness contract.
 
 On refresh:
 
 1. identify all root tickets in the context directory;
 2. recompute the currently reachable graph from those roots;
-3. compare local `last_synced_at` values against remote `updated_at` values;
-4. re-fetch only stale or newly discovered tickets;
-5. prune derived tickets that are no longer reachable.
+3. obtain the remote composite refresh cursor for each tracked reachable
+   ticket;
+4. compare the local and remote cursor values for exact equality;
+5. re-fetch only stale or newly discovered tickets;
+6. prune derived tickets that are no longer reachable.
 
-This approach avoids a separate state store and supports efficient incremental refreshes. The steady-state goal is a lightweight refresh path that scales primarily with changed tickets rather than the full size of the context directory, aside from the bounded metadata work required to determine freshness. In other words, the common case should be "check many, fully re-fetch few."
+The v1 composite cursor has three components:
 
-The refresh path uses a batched GraphQL freshness query via `linear-client` rather than one remote call per ticket. The query should include each tracked reachable ticket with its own `updated_at` value, so refresh can compare remote freshness markers against local `last_synced_at` values and then fully re-fetch only the changed or newly discovered tickets. This batch-by-ticket `updated_at` check is the default refresh mechanism, not an optional optimization.
+- `issue_updated_at` for native issue fields rendered in the snapshot,
+  including description and other persisted issue metadata;
+- `comments_signature`, a deterministic digest over the visible comment/thread
+  metadata required to render the comments section. The canonical input must
+  include each visible comment's stable ID, parent/root relationship,
+  `updated_at`, and the per-thread `resolved` flag;
+- `relations_signature`, a deterministic digest over the visible persisted
+  issue relations that affect rendered frontmatter and traversal results. The
+  canonical input must include relation dimension, relation type, and target
+  identity. When a stable target UUID is available it should drive canonical
+  ordering, but the current rendered target key must still be included because
+  that value can change independently of the source ticket's own issue fields.
 
-This refresh decision carries one explicit validation requirement before implementation is considered correct: confirm that issue-level `updated_at` advances for every v1-persisted field the main ticket file depends on, especially when comments are added or edited. If that validation fails for any part of the v1 snapshot contract, the refresh design must be revised before low-level design proceeds; a plain issue-level `updated_at` check would not be sufficient.
+This approach avoids a separate state store and supports efficient incremental
+refreshes. The steady-state goal is still a lightweight refresh path that
+scales primarily with changed tickets rather than the full size of the context
+directory, aside from the bounded metadata work required to determine
+freshness. In other words, the common case should still be "check many, fully
+re-fetch few."
 
-This is a release-gating validation requirement, not post-release future work. Until it is resolved, `refresh` should be treated as provisionally designed rather than as a settled correctness contract.
+The refresh path still uses batched remote metadata queries via
+`linear-client` rather than one remote call per ticket. The adapter may
+satisfy the composite cursor through one batched query or through a small fixed
+set of batched metadata subqueries behind one narrow adapter boundary, but it
+must not degrade into one full ticket fetch per tracked issue just to decide
+freshness. Auditing whether the domain layer already exposes those batched
+operations, or where a narrow `linear.gql.*` fallback is required, belongs to
+[M1-D2](<implementation-plan.md#m1-d2---linear-domain-coverage-audit-and-adapter-boundary>).
+
+No additional live relation probe was run as part of this amendment, so the
+first release does **not** assume relation changes advance the parent issue
+`updated_at`. Relation freshness is therefore an explicit independent cursor
+component unless later validation proves otherwise.
 
 The tool also supports a diff mode that compares the current context directory against live Linear data without modifying local files. Diff mode exists for both human debugging and pre-refresh validation.
 
