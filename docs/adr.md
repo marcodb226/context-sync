@@ -395,10 +395,15 @@ The v1 composite cursor has three components:
 
 - `issue_updated_at` for native issue fields rendered in the snapshot,
   including description and other persisted issue metadata;
-- `comments_signature`, a deterministic digest over the visible comment/thread
-  metadata required to render the comments section. The canonical input must
-  include each visible comment's stable ID, parent/root relationship,
-  `updated_at`, and the per-thread `resolved` flag;
+- `comments_signature`, a deterministic digest computed locally from the
+  visible comment/thread metadata required to render the comments section. The
+  design does not assume Linear returns this digest directly. The canonical
+  input must include each visible comment's stable ID, parent/root
+  relationship, `updated_at`, and the per-thread `resolved` flag. If the
+  remote metadata exposes deleted or tombstoned comments, include that
+  deletion state in the canonical input as well. If no reliable deletion
+  signal exists, deletion detection is best effort through visible-set changes
+  and disappearing stable IDs;
 - `relations_signature`, a deterministic digest over the visible persisted
   issue relations that affect rendered frontmatter and traversal results. The
   canonical input must include relation dimension, relation type, and target
@@ -421,6 +426,14 @@ must not degrade into one full ticket fetch per tracked issue just to decide
 freshness. Auditing whether the domain layer already exposes those batched
 operations, or where a narrow `linear.gql.*` fallback is required, belongs to
 [M1-D2](<implementation-plan.md#m1-d2---linear-domain-coverage-audit-and-adapter-boundary>).
+
+For comments specifically, the intended freshness path is metadata-only: obtain
+the fields needed to build `comments_signature` without downloading full
+comment bodies during the freshness pass. If
+[M1-D2](<implementation-plan.md#m1-d2---linear-domain-coverage-audit-and-adapter-boundary>)
+finds that the available Linear surface cannot provide that cheaper metadata
+shape, it should record that explicitly as an adapter or design risk rather
+than silently widening the freshness pass into full comment downloads.
 
 No additional live relation probe was run as part of this amendment, so the
 first release does **not** assume relation changes advance the parent issue

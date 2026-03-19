@@ -419,10 +419,15 @@ The v1 composite cursor has three components:
 - `issue_updated_at`: the issue-level timestamp used for native issue fields
   rendered in the ticket file, including description and other persisted
   issue metadata.
-- `comments_signature`: a deterministic digest over the visible comment/thread
-  metadata that can change the rendered comments section. The canonical input
-  must include each visible comment's stable ID, parent/root relationship,
-  `updated_at`, and the per-thread `resolved` flag.
+- `comments_signature`: a deterministic digest computed locally from the
+  visible comment/thread metadata that can change the rendered comments
+  section. The design does not assume Linear returns this digest directly. The
+  canonical input must include each visible comment's stable ID, parent/root
+  relationship, `updated_at`, and the per-thread `resolved` flag. If the
+  remote metadata exposes deleted or tombstoned comments, include that
+  deletion state in the canonical input as well. If no reliable deletion
+  signal exists, deletion detection is best effort through visible-set changes
+  and disappearing stable IDs.
 - `relations_signature`: a deterministic digest over the visible persisted
   issue relations used by the snapshot and traversal logic. The canonical
   input must include the relation dimension, relation type, and target
@@ -454,13 +459,20 @@ is explicit. The refresh adapter must be able to obtain, in one logical
 batched metadata pass across the tracked reachable set:
 
 - issue identity plus issue `updated_at` for native-field freshness
-- comment/thread metadata sufficient to build `comments_signature`
+- comment/thread metadata sufficient to build `comments_signature` without
+  downloading full comment bodies during the freshness pass
 - relation metadata sufficient to build `relations_signature`
 
 That batched metadata pass may be implemented as one composite operation or as
 a small fixed set of batched subqueries behind one narrow adapter boundary, but
 it must not degrade into one full ticket fetch per tracked issue just to decide
 freshness.
+
+If
+[M1-D2](../implementation-plan.md#m1-d2---linear-domain-coverage-audit-and-adapter-boundary)
+finds that the available Linear surface cannot provide metadata-only comment
+freshness inputs, it should record that explicitly as an adapter or design risk
+rather than silently widening the freshness pass into full comment downloads.
 
 Adding a new root to an existing context directory should use this same
 whole-snapshot refresh flow after recording the new root. The design

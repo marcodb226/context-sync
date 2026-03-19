@@ -231,6 +231,14 @@ refresh-correctness decision that later milestones depend on.
   expose one of those operations, record the expected `linear.gql.*` fallback
   shape inside the narrow adapter boundary so later tickets do not rediscover
   it ad hoc.
+- Evaluate whether the accepted metadata-only comment freshness path remains
+  operationally cheap enough for the default `refresh` contract. If the
+  available Linear surface would make `comments_signature` materially more
+  expensive than intended, record that explicitly as an adapter/design risk
+  instead of silently weakening the default correctness contract. A degraded
+  append-only or "new comments only" fast mode may be proposed as a follow-on
+  option, but it must not replace the default first-release refresh semantics
+  without an explicit accepted plan/design change.
 - Record any newly discovered missing domain capabilities in an authoritative
   repository artifact so maintainers have a durable upstream follow-up target.
 - This dependency chain is intentional. The plan prefers one coherent audit
