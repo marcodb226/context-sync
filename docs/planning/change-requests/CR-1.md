@@ -22,6 +22,7 @@
 | Add a follow-on Milestone 1 design ticket that owns the actual refresh-contract rewrite after [M1-D1](../../implementation-plan.md#m1-d1---refresh-freshness-validation-spike) | Keep | Add `M1-D3 - Refresh composite freshness contract amendment` | This keeps the spike/result ticket separate from the governing-design amendment and makes the post-spike design work explicit, reviewable, and dependency-visible. |
 | Leave [M1-D2](../../implementation-plan.md#m1-d2---linear-domain-coverage-audit-and-adapter-boundary) unchanged even though the refresh contract it must audit has changed | Drop | Update [M1-D2](../../implementation-plan.md#m1-d2---linear-domain-coverage-audit-and-adapter-boundary) so it depends on the new design amendment | The adapter audit should enumerate the operations required by the settled refresh contract, not by the invalidated single-cursor assumption. |
 | Keep [M3-1](../../implementation-plan.md#m3-1---incremental-refresh-and-quarantined-root-recovery) directly gated on [M1-D1](../../implementation-plan.md#m1-d1---refresh-freshness-validation-spike) alone | Drop | Gate [M3-1](../../implementation-plan.md#m3-1---incremental-refresh-and-quarantined-root-recovery) on the new amendment ticket instead | [M1-D1](../../implementation-plan.md#m1-d1---refresh-freshness-validation-spike) proves the old design is insufficient. [M3-1](../../implementation-plan.md#m3-1---incremental-refresh-and-quarantined-root-recovery) needs the replacement contract, not just the proof that a replacement is needed. |
+| Keep one vague shared disposition for attachment freshness and relation freshness in the amendment ticket | Drop | Make relation freshness mandatory v1 scope, and defer attachment freshness out of the v1 incremental-refresh correctness contract into future work | Relation changes materially affect graph construction, root reachability, and local snapshot correctness, so [M3-1](../../implementation-plan.md#m3-1---incremental-refresh-and-quarantined-root-recovery) must know when relations changed. Attachment metadata matters less to the first release and already sits adjacent to existing attachment deferrals in [FW-2](../../future-work.md#fw-2-attachment-content-handling). |
 
 ## Proposed Amendment Summary
 
@@ -39,6 +40,10 @@ If accepted, this amendment would:
 4. Gate [M3-1](../../implementation-plan.md#m3-1---incremental-refresh-and-quarantined-root-recovery)
    on the new design-amendment ticket instead of treating the spike ticket as
    sufficient by itself.
+5. Make relation freshness a required part of the first-release amendment, and
+   explicitly narrow attachment freshness out of the v1 incremental-refresh
+   correctness contract rather than leaving both field groups in one unresolved
+   bucket.
 
 ## Proposed Active-Plan Changes
 
@@ -51,7 +56,7 @@ Add this row to the Milestone 1 design-ticket table in
 
 | # | Status | Ticket | Deliverable | Dependencies | Reviewers | Source |
 | --- | --- | --- | --- | --- | --- | --- |
-| `M1-D3` | Planned | Refresh composite freshness contract amendment | A governing design amendment that replaces the single issue-level `updated_at` refresh assumption with the v1 per-ticket composite freshness contract required after [M1-D1](../../implementation-plan.md#m1-d1---refresh-freshness-validation-spike), including the exact comment-change signal to support comment creation and comment edits, the required local freshness metadata/comparison contract, and the explicit v1 disposition for attachments and relations | [M1-D1](../../implementation-plan.md#m1-d1---refresh-freshness-validation-spike) | Independent Stage 2 review session | [docs/design/refresh-freshness-validation.md](../../design/refresh-freshness-validation.md), [docs/design/0-top-level-design.md](../../design/0-top-level-design.md#62-refresh-flow), [OQ-1](../../adr.md#oq-1-refresh-freshness-validation-against-live-linear-behavior) |
+| `M1-D3` | Planned | Refresh composite freshness contract amendment | A governing design amendment that replaces the single issue-level `updated_at` refresh assumption with the v1 per-ticket composite freshness contract required after [M1-D1](../../implementation-plan.md#m1-d1---refresh-freshness-validation-spike), including the exact comment-change signal to support comment creation and comment edits, the mandatory first-release relation freshness contract needed to keep graph state correct, the required local freshness metadata/comparison contract, and the explicit narrowing of attachment freshness out of the v1 incremental-refresh correctness contract into future work | [M1-D1](../../implementation-plan.md#m1-d1---refresh-freshness-validation-spike) | Independent Stage 2 review session | [docs/design/refresh-freshness-validation.md](../../design/refresh-freshness-validation.md), [docs/design/0-top-level-design.md](../../design/0-top-level-design.md#62-refresh-flow), [OQ-1](../../adr.md#oq-1-refresh-freshness-validation-against-live-linear-behavior), [FW-2](../../future-work.md#fw-2-attachment-content-handling) |
 
 ### 2. Add detailed notes for `M1-D3`
 
@@ -63,14 +68,21 @@ Add a new detailed-ticket subsection with points in this shape:
   freshness cursor.
 - Define the minimum v1 composite freshness contract needed to detect comment
   creation and comment edits before a ticket is treated as fresh.
-- Decide and document the v1 handling for persisted attachments and relations:
-  either prove the parent issue cursor is sufficient for them or include them
-  in the same composite freshness design.
-- Treat empirical attachment/relation probing as a recommended input to that
-  design decision. If the amendment owner does not run those additional live
-  probes, the design should say so explicitly and make the conservative
-  inclusion-or-exclusion choice visible rather than leaving the field groups
-  implicit.
+- Define the first-release relation freshness contract explicitly. Because
+  relation changes affect graph construction and tracked-ticket reachability,
+  [M1-D3](#cr-1-proposed-m1-d3) must require `refresh` to detect relation
+  changes and must not defer relation freshness out of v1 scope.
+- Treat empirical relation probing as a recommended input to that design. If
+  the amendment owner does not run additional live relation probes, the design
+  should say so explicitly and still choose a conservative relation-freshness
+  mechanism that keeps graph state correct.
+- Narrow attachment freshness out of the first-release incremental-refresh
+  correctness contract. If attachment metadata remains persisted in ticket
+  files, the amendment should say explicitly that v1 selective refresh does not
+  promise to detect attachment-only drift, and it should route richer
+  attachment freshness handling to future work under
+  [FW-2](../../future-work.md#fw-2-attachment-content-handling) or a direct
+  successor item.
 - Record the exact remote data requirements that
   [M1-D2](../../implementation-plan.md#m1-d2---linear-domain-coverage-audit-and-adapter-boundary)
   must audit so the adapter-boundary ticket can settle the final Linear
@@ -94,8 +106,9 @@ to depend on
 [M1-D3](#cr-1-proposed-m1-d3).
 
 Adjust its deliverable and notes so the refresh portion reads as an audit of
-the operations required by the amended composite-freshness design, not just the
-original batched `updated_at` query.
+the operations required by the amended composite-freshness design, especially
+the mandatory relation-freshness path, not just the original batched
+`updated_at` query.
 
 ### 5. Re-gate `M3-1`
 
@@ -125,6 +138,9 @@ clear:
   revise it so the mitigation chain is [M1-D1](../../implementation-plan.md#m1-d1---refresh-freshness-validation-spike)
   for validation plus [M1-D3](#cr-1-proposed-m1-d3)
   for the governing design response.
+- If the amendment is accepted, update attachment-related future-work linkage
+  so the active plan and [FW-2](../../future-work.md#fw-2-attachment-content-handling)
+  make the attachment-freshness deferral visible from both sides.
 
 ## Why This Amendment Fits the Planning Model
 
