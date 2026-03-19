@@ -49,6 +49,11 @@ to `Next release` yet.
   resource URLs into local filesystem paths, even when the same file may
   already exist in a checked-out project clone. That keeps the sync tool
   read-only, predictable, and simpler to ship.
+- The first release narrows incremental refresh correctness so attachment-only
+  metadata drift is not guaranteed to be detected during selective refresh.
+  That tradeoff keeps the first amendment focused on comment and relation
+  freshness, which have higher impact on graph correctness and day-to-day
+  context quality.
 
 **Scope**
 - Inline text-based attachment content when it is safe and useful.
@@ -58,13 +63,17 @@ to `Next release` yet.
   resource URLs when the corresponding repository is already cloned and
   available locally, while keeping the original URL authoritative.
 - Add type-specific handling for images or other rich media.
+- Define and implement attachment freshness semantics for incremental refresh
+  so attachment-only upstream changes can be detected or intentionally
+  reconciled under a documented contract.
 - Define size, type, and safety limits so attachment handling does not bloat
   snapshots or introduce surprising network cost.
 
 **Completion signal**
 - The snapshot can preserve authoritative source URLs while also exposing the
   selected attachment content or advisory local-path metadata within documented
-  size, type, and safety limits.
+  size, type, and safety limits, and the incremental-refresh contract explains
+  how attachment-only changes are detected or intentionally deferred.
 
 <a id="fw-3-whole-snapshot-atomic-commit"></a>
 ### FW-3 - Whole-Snapshot Atomic Commit

@@ -1,6 +1,6 @@
 # Review: [CR-1](CR-1.md)
 
-> **Status**: Stage 2 review complete
+> **Status**: Stage 2 review complete; Stage 3 owner response accepted and amendment applied on 2026-03-18
 > **Reviewed change request**:
 > [docs/planning/change-requests/CR-1.md](CR-1.md)
 > **Target active plan**:
@@ -54,6 +54,14 @@ change request.
   as the sole refresh gate.
 - This was planning-only review work, so no repository lint, format, or test
   commands were run.
+
+## Ticket Owner Response
+
+| ID | Verdict | Rationale |
+| --- | --- | --- |
+| CR-1-R1 | Fix now | Updated [docs/planning/change-requests/CR-1.md](CR-1.md) so the proposed active-plan edits now explicitly replace the Milestone 1 design-ticket table row for [M1-D1](../../implementation-plan.md#m1-d1---refresh-freshness-validation-spike). The draft no longer relies only on detailed-note edits to re-scope [M1-D1](../../implementation-plan.md#m1-d1---refresh-freshness-validation-spike). |
+| CR-1-R2 | Fix now | Updated [docs/planning/change-requests/CR-1.md](CR-1.md) to make the serialization choice explicit rather than implicit. The draft now says the [M1-D2](../../implementation-plan.md#m1-d2---linear-domain-coverage-audit-and-adapter-boundary) dependency on the proposed [M1-D3](CR-1.md#cr-1-proposed-m1-d3) is an intentional plan-level tradeoff in favor of one coherent audit artifact against the settled refresh contract. |
+| CR-1-R3 | Fix now | Updated [docs/planning/change-requests/CR-1.md](CR-1.md) so the proposed [M1-D3](CR-1.md#cr-1-proposed-m1-d3) notes now explicitly require a decision about whether [docs/adr.md](../../adr.md#52-refresh-incremental-whole-snapshot-update) section 6.1 should be rewritten or whether the existing [OQ-1](../../adr.md#oq-1-refresh-freshness-validation-against-live-linear-behavior) annotation plus the top-level design rewrite is sufficient. |
 
 ---
 
@@ -118,3 +126,10 @@ This pass was requested as an additional independent review of
   correctness concern.
 - This was planning-only review work, so no repository lint, format, or test
   commands were run.
+
+## Ticket Owner Response (Second Pass)
+
+| ID | Verdict | Rationale |
+| --- | --- | --- |
+| CR-1-R2 | Fix now | [docs/planning/change-requests/CR-1.md](CR-1.md) already makes the serialization choice explicit rather than leaving it implicit. The proposed amendment says the [M1-D2](../../implementation-plan.md#m1-d2---linear-domain-coverage-audit-and-adapter-boundary) dependency on [M1-D3](CR-1.md#cr-1-proposed-m1-d3) is an intentional tradeoff in favor of one coherent adapter audit against the settled refresh contract, and the active plan now reflects that same dependency and rationale. |
+| CR-1-R3 | Fix now | [docs/planning/change-requests/CR-1.md](CR-1.md) already requires [M1-D3](CR-1.md#cr-1-proposed-m1-d3) to decide whether [docs/adr.md](../../adr.md#52-refresh-incremental-whole-snapshot-update) section 6.1 is rewritten or whether the existing [OQ-1](../../adr.md#oq-1-refresh-freshness-validation-against-live-linear-behavior) annotation plus the top-level design rewrite is sufficient. The active plan now carries that scope requirement forward in the detailed notes for [M1-D3](../../implementation-plan.md#m1-d3---refresh-composite-freshness-contract-amendment). |

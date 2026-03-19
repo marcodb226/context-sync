@@ -1,6 +1,6 @@
 # CR-1 - Split the Refresh-Contract Amendment out of M1-D1
 
-> **Status**: Stage 1 draft
+> **Status**: Reviewed draft accepted and applied to the active plan on 2026-03-18
 > **Target active plan**:
 > [docs/implementation-plan.md](../../implementation-plan.md)
 > **Governing process**:
@@ -31,9 +31,12 @@ If accepted, this amendment would:
 1. Add a new Milestone 1 design ticket, `M1-D3`, that owns the actual refresh
    design extension required after the negative [M1-D1](../../implementation-plan.md#m1-d1---refresh-freshness-validation-spike)
    result.
-2. Clarify that [M1-D1](../../implementation-plan.md#m1-d1---refresh-freshness-validation-spike)
-   stops at recording the spike result and the minimum amendment shape; it does
-   not itself rewrite the governing refresh design.
+2. Rewrite the main Milestone 1 design-ticket row for
+   [M1-D1](../../implementation-plan.md#m1-d1---refresh-freshness-validation-spike)
+   so the planning table agrees with the detailed notes that
+   [M1-D1](../../implementation-plan.md#m1-d1---refresh-freshness-validation-spike)
+   is the spike/result ticket rather than the ticket that owns the full
+   replacement refresh contract.
 3. Re-sequence [M1-D2](../../implementation-plan.md#m1-d2---linear-domain-coverage-audit-and-adapter-boundary)
    so its refresh-operation audit uses the amended design contract rather than
    the invalidated single-cursor assumption.
@@ -49,7 +52,17 @@ If accepted, this amendment would:
 
 <a id="cr-1-proposed-m1-d3"></a>
 
-### 1. Add a new Milestone 1 design ticket
+### 1. Rewrite the existing `M1-D1` design-ticket table row
+
+Replace the current Milestone 1 design-ticket table row for
+[M1-D1](../../implementation-plan.md#m1-d1---refresh-freshness-validation-spike)
+with this text:
+
+| # | Status | Ticket | Deliverable | Dependencies | Reviewers | Source |
+| --- | --- | --- | --- | --- | --- | --- |
+| `M1-D1` | Planned | Refresh freshness validation spike | A short repository artifact that records whether issue-level `updated_at` is sufficient for the v1 persisted snapshot contract and, if not, the minimum amendment shape plus the need for a follow-on plan/design update before `refresh` work proceeds | [M1-O1](../../implementation-plan.md#m1-o1---live-linear-validation-environment-available) | Independent Stage 2 review session | [OQ-1](../../adr.md#oq-1-refresh-freshness-validation-against-live-linear-behavior) |
+
+### 2. Add a new Milestone 1 design ticket
 
 Add this row to the Milestone 1 design-ticket table in
 [docs/implementation-plan.md](../../implementation-plan.md):
@@ -58,7 +71,7 @@ Add this row to the Milestone 1 design-ticket table in
 | --- | --- | --- | --- | --- | --- | --- |
 | `M1-D3` | Planned | Refresh composite freshness contract amendment | A governing design amendment that replaces the single issue-level `updated_at` refresh assumption with the v1 per-ticket composite freshness contract required after [M1-D1](../../implementation-plan.md#m1-d1---refresh-freshness-validation-spike), including the exact comment-change signal to support comment creation and comment edits, the mandatory first-release relation freshness contract needed to keep graph state correct, the required local freshness metadata/comparison contract, and the explicit narrowing of attachment freshness out of the v1 incremental-refresh correctness contract into future work | [M1-D1](../../implementation-plan.md#m1-d1---refresh-freshness-validation-spike) | Independent Stage 2 review session | [docs/design/refresh-freshness-validation.md](../../design/refresh-freshness-validation.md), [docs/design/0-top-level-design.md](../../design/0-top-level-design.md#62-refresh-flow), [OQ-1](../../adr.md#oq-1-refresh-freshness-validation-against-live-linear-behavior), [FW-2](../../future-work.md#fw-2-attachment-content-handling) |
 
-### 2. Add detailed notes for `M1-D3`
+### 3. Add detailed notes for `M1-D3`
 
 Add a new detailed-ticket subsection with points in this shape:
 
@@ -66,6 +79,13 @@ Add a new detailed-ticket subsection with points in this shape:
   [docs/design/0-top-level-design.md](../../design/0-top-level-design.md#62-refresh-flow)
   so `refresh` no longer relies on issue-level `updated_at` as the sole
   freshness cursor.
+- Decide and document whether
+  [docs/adr.md](../../adr.md#52-refresh-incremental-whole-snapshot-update)
+  section 6.1 should also be rewritten as part of
+  [M1-D3](#cr-1-proposed-m1-d3), or whether the existing
+  [OQ-1](../../adr.md#oq-1-refresh-freshness-validation-against-live-linear-behavior)
+  annotation plus the top-level design rewrite is sufficient. The ticket
+  should not leave the ADR-update scope implicit.
 - Define the minimum v1 composite freshness contract needed to detect comment
   creation and comment edits before a ticket is treated as fresh.
 - Define the first-release relation freshness contract explicitly. Because
@@ -88,7 +108,7 @@ Add a new detailed-ticket subsection with points in this shape:
   must audit so the adapter-boundary ticket can settle the final Linear
   operation set against the amended contract rather than the invalidated one.
 
-### 3. Narrow `M1-D1` to spike-and-record scope
+### 4. Narrow `M1-D1` to spike-and-record scope
 
 Amend the detailed notes for
 [M1-D1](../../implementation-plan.md#m1-d1---refresh-freshness-validation-spike)
@@ -99,7 +119,7 @@ so they explicitly say:
   refresh-design rewrite is performed in [M1-D3](#cr-1-proposed-m1-d3) rather
   than inside the spike ticket itself.
 
-### 4. Re-sequence `M1-D2`
+### 5. Re-sequence `M1-D2`
 
 Update [M1-D2](../../implementation-plan.md#m1-d2---linear-domain-coverage-audit-and-adapter-boundary)
 to depend on
@@ -110,7 +130,14 @@ the operations required by the amended composite-freshness design, especially
 the mandatory relation-freshness path, not just the original batched
 `updated_at` query.
 
-### 5. Re-gate `M3-1`
+Note that this is an intentional plan-level serialization choice. The plan
+prefers one coherent audit artifact against the settled refresh contract over
+partial-completion semantics inside a single named ticket, and
+[M1-D2](../../implementation-plan.md#m1-d2---linear-domain-coverage-audit-and-adapter-boundary)
+is expected to remain a short-duration design item once
+[M1-D3](#cr-1-proposed-m1-d3) is settled.
+
+### 6. Re-gate `M3-1`
 
 Update [M3-1](../../implementation-plan.md#m3-1---incremental-refresh-and-quarantined-root-recovery)
 so its refresh-design dependency is
@@ -121,7 +148,7 @@ Update the Milestone 3 preface and the [M3-1](../../implementation-plan.md#m3-1-
 detailed notes so they refer to the amended refresh contract rather than only
 to the release-gate spike.
 
-### 6. Update cross-plan wording
+### 7. Update cross-plan wording
 
 If accepted, update the following active-plan text so the new ownership is
 clear:
@@ -138,6 +165,10 @@ clear:
   revise it so the mitigation chain is [M1-D1](../../implementation-plan.md#m1-d1---refresh-freshness-validation-spike)
   for validation plus [M1-D3](#cr-1-proposed-m1-d3)
   for the governing design response.
+- If [M1-D3](#cr-1-proposed-m1-d3) rewrites the ADR refresh-strategy prose in
+  [docs/adr.md](../../adr.md#52-refresh-incremental-whole-snapshot-update),
+  reflect that scope explicitly in the active-plan notes so later sessions do
+  not assume the ADR update is optional by omission.
 - If the amendment is accepted, update attachment-related future-work linkage
   so the active plan and [FW-2](../../future-work.md#fw-2-attachment-content-handling)
   make the attachment-freshness deferral visible from both sides.
@@ -153,7 +184,7 @@ the amendment into [docs/implementation-plan.md](../../implementation-plan.md).
 
 ## Drafting Notes
 
-- This change request does **not** modify the active plan yet.
-- If you accept this direction, the next step is an independent Stage 2 review
-  of this change request, followed by an owner response and then promotion of
-  the accepted amendment into [docs/implementation-plan.md](../../implementation-plan.md).
+- This change request has been accepted and applied to
+  [docs/implementation-plan.md](../../implementation-plan.md).
+- The review and owner-response record remains in
+  [docs/planning/change-requests/CR-1-review.md](CR-1-review.md).

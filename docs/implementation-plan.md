@@ -72,6 +72,7 @@ deferred.
 | --- | --- | --- | --- |
 | Live Linear validation environment bootstrap from [docs/design/0-top-level-design.md](design/0-top-level-design.md#11-linear-dependency-boundary), [docs/design/linear-client.md](design/linear-client.md#authentication), and direct human clarification during planning | Keep | [M1-O1](#m1-o1---live-linear-validation-environment-available) | Makes the human-provided runtime/bootstrap prerequisite for the release-gate spike explicit before [M1-D1](#m1-d1---refresh-freshness-validation-spike) begins. |
 | Refresh correctness gate from [OQ-1](adr.md#oq-1-refresh-freshness-validation-against-live-linear-behavior) | Keep | [M1-D1](#m1-d1---refresh-freshness-validation-spike) | Must be settled before `refresh` can be considered implementation-complete. |
+| Post-spike refresh-contract amendment from [docs/design/refresh-freshness-validation.md](design/refresh-freshness-validation.md) and [docs/planning/change-requests/CR-1.md](planning/change-requests/CR-1.md) | Keep | [M1-D3](#m1-d3---refresh-composite-freshness-contract-amendment) | Separates the release-gate spike from the governing design rewrite, makes relation freshness mandatory first-release scope, and narrows attachment freshness out of the v1 incremental-refresh correctness contract. |
 | Linear domain-layer coverage audit and adapter-boundary definition from [docs/adr.md](adr.md#31-foundation), [docs/design/0-top-level-design.md](design/0-top-level-design.md#11-linear-dependency-boundary), and [docs/design/linear-client.md](design/linear-client.md) | Keep | [M1-D2](#m1-d2---linear-domain-coverage-audit-and-adapter-boundary) | Makes the domain-vs-GraphQL fallback decision explicit before traversal, relation, and refresh tickets depend on it. |
 | Library API, runtime configuration, and package bootstrap from [docs/adr.md](adr.md#31-foundation), [docs/design/0-top-level-design.md](design/0-top-level-design.md#1-library-api), and [docs/design/linear-client.md](design/linear-client.md) | Keep | [M1-1](#m1-1---project-scaffold-and-public-runtime-contracts) | Establishes the project layout, public interfaces, per-process concurrency controls, reusable test harness, and the narrow dependency boundary with `linear-client`. |
 | Manifest, deterministic ticket rendering, and lock metadata from [docs/adr.md](adr.md#2-persistence-format), [docs/design/0-top-level-design.md](design/0-top-level-design.md#21-context-directory-contents), and [ADR-R2a](planning/26.03.15%20-%20ADR%20review.md#adr-r2a-done-stale-lock-recovery-and-lock-metadata) | Keep | [M1-2](#m1-2---manifest-lock-and-rendering-primitives) | Shared persistence helpers should land before the flow-specific tickets. |
@@ -82,7 +83,7 @@ deferred.
 | Non-mutating drift inspection from [docs/adr.md](adr.md#53-diff-non-mutating-drift-inspection) and [docs/design/0-top-level-design.md](design/0-top-level-design.md#64-diff-flow) | Keep | [M3-3](#m3-3---diff-mode-and-lock-aware-drift-reporting) | Must preserve the read-only lock behavior described in the ADR. |
 | CLI packaging and operator-facing runtime docs from [docs/design/0-top-level-design.md](design/0-top-level-design.md#2-cli-interface), [README.md](../README.md), and [docs/policies/common/coding-guidelines.md](policies/common/coding-guidelines.md) | Keep | [M4-1](#m4-1---cli-surface-and-command-output-contracts), [M4-2](#m4-2---operational-logging-validation-hardening-and-user-docs) | The repo currently has no runtime scaffold, so the first implementation pass must also define how humans run and validate the tool. |
 | [FW-1](future-work.md#fw-1-comment-storage-optimizations) | Defer | None in this plan | Keep the first-release full-comment-history contract. |
-| [FW-2](future-work.md#fw-2-attachment-content-handling) | Defer | None in this plan | Attachment and resource handling remains metadata-only in v1. |
+| [FW-2](future-work.md#fw-2-attachment-content-handling) | Defer | None in this plan | Attachment and resource handling remains metadata-only in v1, and attachment-only freshness drift is not part of the first-release incremental-refresh correctness contract. |
 | [FW-3](future-work.md#fw-3-whole-snapshot-atomic-commit) | Defer | None in this plan | Preserve atomic file writes, but defer whole-directory atomic commit. |
 | [FW-4](future-work.md#fw-4-historical-ticket-alias-import) | Defer | None in this plan | Offline alias resolution is limited to aliases observed after tracking begins. |
 | [FW-5](future-work.md#fw-5-ticket-history-and-sectioned-ticket-artifacts) | Defer | None in this plan | The v1 base snapshot is limited to metadata, description, and comments. |
@@ -140,8 +141,9 @@ refresh-correctness decision that later milestones depend on.
 
 | # | Status | Ticket | Deliverable | Dependencies | Reviewers | Source |
 | --- | --- | --- | --- | --- | --- | --- |
-| <a id="m1-d1---refresh-freshness-validation-spike"></a>M1-D1 | Planned | Refresh freshness validation spike | A short repository artifact that records whether issue-level `updated_at` is sufficient for the v1 persisted snapshot contract and, if not, the exact amendment needed before `refresh` work proceeds | [M1-O1](#m1-o1---live-linear-validation-environment-available) | Independent Stage 2 review session | [OQ-1](adr.md#oq-1-refresh-freshness-validation-against-live-linear-behavior) |
-| <a id="m1-d2---linear-domain-coverage-audit-and-adapter-boundary"></a>M1-D2 | Planned | Linear domain-coverage audit and adapter boundary | A repository artifact that enumerates the v1 Linear operations required by traversal, fetch, and refresh, records whether the `linear-client` domain layer already covers each one, and defines any narrow `linear.gql.*` fallback boundary that implementation tickets may use | None | Independent Stage 2 review session | [docs/adr.md](adr.md#31-foundation), [docs/design/0-top-level-design.md](design/0-top-level-design.md#11-linear-dependency-boundary), [docs/design/linear-client.md](design/linear-client.md) |
+| <a id="m1-d1---refresh-freshness-validation-spike"></a>M1-D1 | Planned | Refresh freshness validation spike | A short repository artifact that records whether issue-level `updated_at` is sufficient for the v1 persisted snapshot contract and, if not, the minimum amendment shape plus the need for a follow-on plan/design update before `refresh` work proceeds | [M1-O1](#m1-o1---live-linear-validation-environment-available) | Independent Stage 2 review session | [OQ-1](adr.md#oq-1-refresh-freshness-validation-against-live-linear-behavior) |
+| <a id="m1-d3---refresh-composite-freshness-contract-amendment"></a>M1-D3 | Planned | Refresh composite freshness contract amendment | A governing design amendment that replaces the single issue-level `updated_at` refresh assumption with the v1 per-ticket composite freshness contract required after [M1-D1](#m1-d1---refresh-freshness-validation-spike), including the exact comment-change signal to support comment creation and comment edits, the mandatory first-release relation freshness contract needed to keep graph state correct, the required local freshness metadata/comparison contract, and the explicit narrowing of attachment freshness out of the v1 incremental-refresh correctness contract into future work | [M1-D1](#m1-d1---refresh-freshness-validation-spike) | Independent Stage 2 review session | [docs/design/refresh-freshness-validation.md](design/refresh-freshness-validation.md), [docs/design/0-top-level-design.md](design/0-top-level-design.md#62-refresh-flow), [OQ-1](adr.md#oq-1-refresh-freshness-validation-against-live-linear-behavior), [FW-2](future-work.md#fw-2-attachment-content-handling) |
+| <a id="m1-d2---linear-domain-coverage-audit-and-adapter-boundary"></a>M1-D2 | Planned | Linear domain-coverage audit and adapter boundary | A repository artifact that enumerates the v1 Linear operations required by traversal, fetch, and the amended refresh contract, records whether the `linear-client` domain layer already covers each one, and defines any narrow `linear.gql.*` fallback boundary that implementation tickets may use | [M1-D3](#m1-d3---refresh-composite-freshness-contract-amendment) | Independent Stage 2 review session | [docs/adr.md](adr.md#31-foundation), [docs/design/0-top-level-design.md](design/0-top-level-design.md#11-linear-dependency-boundary), [docs/design/linear-client.md](design/linear-client.md) |
 
 ### 3.3 Implementation Tickets
 
@@ -177,20 +179,66 @@ refresh-correctness decision that later milestones depend on.
   bootstrap assumptions about `linear-client` installation or credential
   exposure.
 - If the issue-level `updated_at` contract fails for any v1-persisted field,
-  stop and route that change through a plan amendment before
+  stop, record the evidence and minimum amendment shape, and route that change
+  through
+  [M1-D3](#m1-d3---refresh-composite-freshness-contract-amendment) before
   [M3-1](#m3-1---incremental-refresh-and-quarantined-root-recovery) begins.
+
+#### M1-D3 - Refresh composite freshness contract amendment
+
+- Rewrite the governing refresh design in
+  [docs/design/0-top-level-design.md](design/0-top-level-design.md#62-refresh-flow)
+  so `refresh` no longer relies on issue-level `updated_at` as the sole
+  freshness cursor.
+- Decide and document whether
+  [docs/adr.md](adr.md#52-refresh-incremental-whole-snapshot-update) section
+  6.1 should also be rewritten as part of
+  [M1-D3](#m1-d3---refresh-composite-freshness-contract-amendment), or whether
+  the existing
+  [OQ-1](adr.md#oq-1-refresh-freshness-validation-against-live-linear-behavior)
+  annotation plus the top-level design rewrite is sufficient. Do not leave the
+  ADR-update scope implicit.
+- Define the minimum v1 composite freshness contract needed to detect comment
+  creation and comment edits before a ticket is treated as fresh.
+- Define the first-release relation freshness contract explicitly. Because
+  relation changes affect graph construction and tracked-ticket reachability,
+  the amendment must require `refresh` to detect relation changes and must not
+  defer relation freshness out of v1 scope.
+- Treat empirical relation probing as a recommended input to that design. If
+  the amendment owner does not run additional live relation probes, the design
+  should say so explicitly and still choose a conservative
+  relation-freshness mechanism that keeps graph state correct.
+- Narrow attachment freshness out of the first-release incremental-refresh
+  correctness contract. If attachment metadata remains persisted in ticket
+  files, the amendment should say explicitly that v1 selective refresh does not
+  promise to detect attachment-only drift, and it should route richer
+  attachment freshness handling to
+  [FW-2](future-work.md#fw-2-attachment-content-handling) or a direct
+  successor item.
+- Record the exact remote data requirements that
+  [M1-D2](#m1-d2---linear-domain-coverage-audit-and-adapter-boundary) must
+  audit so the adapter-boundary ticket can settle the final Linear operation
+  set against the amended contract rather than the invalidated one.
 
 #### M1-D2 - Linear domain-coverage audit and adapter boundary
 
 - Audit the exact v1 read operations needed for traversal, relation discovery,
-  ticket fetch, and refresh freshness checks before implementation tickets
-  widen the `linear-client` adapter by accident.
-- Call out the batched per-ticket `updated_at` freshness query explicitly. If
-  the `linear-client` domain layer does not already expose that operation,
-  record the expected `linear.gql.*` fallback shape inside the narrow adapter
-  boundary so later tickets do not rediscover it ad hoc.
+  ticket fetch, and the amended refresh freshness checks before implementation
+  tickets widen the `linear-client` adapter by accident.
+- Call out the refresh-operation path explicitly, especially the mandatory
+  relation-freshness mechanism and any remaining batched issue/comment
+  freshness queries. If the `linear-client` domain layer does not already
+  expose one of those operations, record the expected `linear.gql.*` fallback
+  shape inside the narrow adapter boundary so later tickets do not rediscover
+  it ad hoc.
 - Record any newly discovered missing domain capabilities in an authoritative
   repository artifact so maintainers have a durable upstream follow-up target.
+- This dependency chain is intentional. The plan prefers one coherent audit
+  artifact against the settled refresh contract over partial-completion
+  semantics inside a single named ticket, and
+  [M1-D2](#m1-d2---linear-domain-coverage-audit-and-adapter-boundary) is
+  expected to remain a short-duration design item once
+  [M1-D3](#m1-d3---refresh-composite-freshness-contract-amendment) is settled.
 
 #### M1-1 - Project scaffold and public runtime contracts
 
@@ -226,8 +274,9 @@ refresh-correctness decision that later milestones depend on.
    traversal or refresh work begins.
 3. Manifest, lock, and ticket-render helpers exist with deterministic
    round-trip coverage.
-4. The `OQ-1` outcome is recorded in-repo and any blocking amendment is visible
-   before incremental refresh work starts.
+4. The `OQ-1` outcome is recorded in-repo and any blocking refresh-contract
+   amendment is owned by a named design artifact before incremental refresh
+   work starts.
 
 ---
 
@@ -239,9 +288,9 @@ from one or more roots using the agreed v1 traversal and persistence contracts.
 ### 4.1 Design Tickets
 
 No additional milestone-specific design tickets are planned once
-[M1-D1](#m1-d1---refresh-freshness-validation-spike) settles the release gate.
-Milestone 2 should implement the already-adopted ADR/design behavior rather
-than reopen it.
+[M1-D3](#m1-d3---refresh-composite-freshness-contract-amendment) settles the
+accepted refresh contract. Milestone 2 should implement the already-adopted
+ADR/design behavior rather than reopen it.
 
 ### 4.2 Implementation Tickets
 
@@ -300,17 +349,20 @@ existing snapshot without always paying for a full rebuild.
 
 ### 5.1 Design Tickets
 
-No new design tickets are planned here, but this milestone remains explicitly
-gated on the result of
-[M1-D1](#m1-d1---refresh-freshness-validation-spike).
-If that ticket changes the freshness-cursor contract, Stage 1 planning must be
-reopened before this milestone is activated.
+No new milestone-specific design tickets are planned here, but this milestone
+remains explicitly gated on the resolved Milestone 1 refresh-design chain:
+[M1-D1](#m1-d1---refresh-freshness-validation-spike) for the release-gate
+evidence, [M1-D3](#m1-d3---refresh-composite-freshness-contract-amendment) for
+the accepted replacement contract, and
+[M1-D2](#m1-d2---linear-domain-coverage-audit-and-adapter-boundary) for the
+matching adapter audit. Milestone 3 should implement that adopted contract
+rather than reopen the refresh design during implementation.
 
 ### 5.2 Implementation Tickets
 
 | # | Status | Ticket | Description | Dependencies | Tests | Source |
 | --- | --- | --- | --- | --- | --- | --- |
-| <a id="m3-1---incremental-refresh-and-quarantined-root-recovery"></a>M3-1 | Planned | Incremental `refresh` and quarantined-root recovery | Recompute reachability from active roots, batch-check freshness, re-fetch only stale or newly discovered tickets, quarantine or remove unavailable roots per policy, and recover quarantined roots when they become visible again | [M1-D1](#m1-d1---refresh-freshness-validation-spike), [M1-D2](#m1-d2---linear-domain-coverage-audit-and-adapter-boundary), [M2-2](#m2-2---ticket-fetch-normalization-and-render-pipeline), [M2-3](#m2-3---full-snapshot-sync-flow) | Integration tests for stale-vs-fresh refresh, unchanged-upstream no-op refresh/no rewrite, root quarantine, root reactivation, explicit remove policy, and changed-ticket selective rewrite behavior | [docs/adr.md](adr.md#52-refresh-incremental-whole-snapshot-update), [docs/adr.md](adr.md#61-snapshot-consistency-contract), [docs/design/0-top-level-design.md](design/0-top-level-design.md#62-refresh-flow), [ADR-R4](planning/26.03.15%20-%20ADR%20review.md#adr-r4-done-terminal-root-fragility) |
+| <a id="m3-1---incremental-refresh-and-quarantined-root-recovery"></a>M3-1 | Planned | Incremental `refresh` and quarantined-root recovery | Recompute reachability from active roots, batch-check freshness, re-fetch only stale or newly discovered tickets, quarantine or remove unavailable roots per policy, and recover quarantined roots when they become visible again | [M1-D3](#m1-d3---refresh-composite-freshness-contract-amendment), [M1-D2](#m1-d2---linear-domain-coverage-audit-and-adapter-boundary), [M2-2](#m2-2---ticket-fetch-normalization-and-render-pipeline), [M2-3](#m2-3---full-snapshot-sync-flow) | Integration tests for stale-vs-fresh refresh, unchanged-upstream no-op refresh/no rewrite, root quarantine, root reactivation, explicit remove policy, and changed-ticket selective rewrite behavior | [docs/adr.md](adr.md#52-refresh-incremental-whole-snapshot-update), [docs/adr.md](adr.md#61-snapshot-consistency-contract), [docs/design/0-top-level-design.md](design/0-top-level-design.md#62-refresh-flow), [ADR-R4](planning/26.03.15%20-%20ADR%20review.md#adr-r4-done-terminal-root-fragility) |
 | <a id="m3-2---add-and-remove-root-whole-snapshot-flows"></a>M3-2 | Planned | `add` and `remove-root` whole-snapshot flows | Implement root-set mutation through alias-aware ticket resolution, workspace checks, manifest updates, and reuse of the whole-snapshot refresh behavior under the same writer lock | [M3-1](#m3-1---incremental-refresh-and-quarantined-root-recovery) | Integration tests for adding by issue key and URL, overlapping-root refresh behavior, and failing `remove-root` for non-roots | [docs/design/0-top-level-design.md](design/0-top-level-design.md#63-add-flow), [docs/design/0-top-level-design.md](design/0-top-level-design.md#65-remove-root-flow), [docs/adr.md](adr.md#14-root-vs-derived-tickets) |
 | <a id="m3-3---diff-mode-and-lock-aware-drift-reporting"></a>M3-3 | Planned | `diff` mode and lock-aware drift reporting | Implement the non-mutating drift inspection path, including tracked-ticket comparison, `missing_remotely` classification, changed-field reporting, and refusal to run when a non-stale writer lock exists | [M2-2](#m2-2---ticket-fetch-normalization-and-render-pipeline), [M2-3](#m2-3---full-snapshot-sync-flow) | Integration tests for lock refusal, stale-lock observation without mutation, changed-field reporting, and unavailable-ticket classification | [docs/adr.md](adr.md#53-diff-non-mutating-drift-inspection), [docs/design/0-top-level-design.md](design/0-top-level-design.md#64-diff-flow), [docs/design/0-top-level-design.md](design/0-top-level-design.md#4-error-handling) |
 
@@ -318,14 +370,18 @@ reopened before this milestone is activated.
 
 #### M3-1 - Incremental `refresh` and quarantined-root recovery
 
-- If
-  [M1-D1](#m1-d1---refresh-freshness-validation-spike)
-  invalidates issue-level `updated_at`, this ticket must not improvise a silent
-  workaround. Update the plan first so the new cursor contract is explicit.
+- Implement the refresh-contract defined by
+  [M1-D3](#m1-d3---refresh-composite-freshness-contract-amendment) exactly. Do
+  not improvise a silent workaround or quietly widen the accepted contract
+  during implementation.
 - Use the adapter contract from
   [M1-D2](#m1-d2---linear-domain-coverage-audit-and-adapter-boundary) for the
-  batched freshness query rather than widening the Linear boundary during
+  required composite freshness query path, especially the mandatory
+  relation-freshness mechanism, rather than widening the Linear boundary during
   implementation.
+- Keep the accepted v1 attachment-freshness narrowing intact. Attachment-only
+  drift does not become first-release refresh scope unless a later accepted
+  plan amendment changes that contract.
 - Keep the default missing-root policy as `quarantine`; destructive removal
   remains opt-in.
 
@@ -455,7 +511,7 @@ scope.
 
 | Risk | Impact | Mitigation |
 | --- | --- | --- |
-| [OQ-1](adr.md#oq-1-refresh-freshness-validation-against-live-linear-behavior) invalidates issue-level `updated_at` as the refresh cursor | High | Front-load [M1-D1](#m1-d1---refresh-freshness-validation-spike) and require a plan amendment before incremental refresh work if the assumption fails |
+| [OQ-1](adr.md#oq-1-refresh-freshness-validation-against-live-linear-behavior) invalidates issue-level `updated_at` as the refresh cursor | High | Front-load [M1-D1](#m1-d1---refresh-freshness-validation-spike), route the governing design response through [M1-D3](#m1-d3---refresh-composite-freshness-contract-amendment), and keep [M3-1](#m3-1---incremental-refresh-and-quarantined-root-recovery) blocked until [M1-D2](#m1-d2---linear-domain-coverage-audit-and-adapter-boundary) audits the required refresh operations against that accepted contract |
 | `linear-client` lacks one or more required domain operations for v1 | Medium | Audit the required operations in [M1-D2](#m1-d2---linear-domain-coverage-audit-and-adapter-boundary), keep a narrow adapter boundary in [M1-1](#m1-1---project-scaffold-and-public-runtime-contracts), and explicitly document any GraphQL fallbacks instead of scattering them across later tickets |
 | Deterministic rendering or alias-renaming bugs produce misleading local context | Medium | Centralize rendering/verification in [M1-2](#m1-2---manifest-lock-and-rendering-primitives) and cover rename/threading cases in [M2-2](#m2-2---ticket-fetch-normalization-and-render-pipeline) |
 | Interrupted runs still leave a partially updated directory at snapshot scope in v1 | Medium | Preserve atomic per-file writes, document the limitation clearly, and keep stronger directory-level atomicity deferred to [FW-3](future-work.md#fw-3-whole-snapshot-atomic-commit) |
@@ -469,6 +525,9 @@ scope.
   [docs/policies/common/planning-model.md](policies/common/planning-model.md).
   The activation review record remains in
   [docs/planning/implementation-plan-review.md](planning/implementation-plan-review.md).
+- The active plan was materially amended on 2026-03-18 by accepting and
+  applying
+  [docs/planning/change-requests/CR-1.md](planning/change-requests/CR-1.md).
 - If future work currently deferred in
   [docs/future-work.md](future-work.md)
   is pulled into this release, treat that as a material planning change rather
