@@ -66,6 +66,11 @@ Add a new detailed-ticket subsection with points in this shape:
 - Decide and document the v1 handling for persisted attachments and relations:
   either prove the parent issue cursor is sufficient for them or include them
   in the same composite freshness design.
+- Treat empirical attachment/relation probing as a recommended input to that
+  design decision. If the amendment owner does not run those additional live
+  probes, the design should say so explicitly and make the conservative
+  inclusion-or-exclusion choice visible rather than leaving the field groups
+  implicit.
 - Record the exact remote data requirements that
   [M1-D2](../../implementation-plan.md#m1-d2---linear-domain-coverage-audit-and-adapter-boundary)
   must audit so the adapter-boundary ticket can settle the final Linear
