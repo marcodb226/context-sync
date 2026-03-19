@@ -63,6 +63,10 @@ For `context-sync`, this boundary is part of the architectural contract:
   upstream `linear-client` roadmap instead of normalizing the fallback as the
   default approach.
 
+For the repository-specific v1 coverage decision and the allowed local
+raw-GraphQL exceptions, see
+[docs/design/linear-domain-coverage-audit.md](linear-domain-coverage-audit.md).
+
 ---
 
 ## Authentication
