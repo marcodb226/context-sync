@@ -175,6 +175,9 @@ frontmatter under `refresh_cursor`. That metadata is not part of the human-
 facing ticket narrative; it records the remote freshness markers captured when
 the ticket was last fully fetched so a later `refresh` run can decide whether
 the local snapshot is still current without re-fetching every ticket body.
+Any mutating flow that writes a ticket file must also persist the current
+`refresh_cursor` for that file so a subsequent `refresh` has a valid local
+baseline.
 
 Every file includes `format_version`. When the file format changes, the tool increments the version and re-syncs old files rather than depending on implicit compatibility.
 
@@ -397,19 +400,32 @@ The v1 composite cursor has three components:
   including description and other persisted issue metadata;
 - `comments_signature`, a deterministic digest computed locally from the
   visible comment/thread metadata required to render the comments section. The
-  design does not assume Linear returns this digest directly. The canonical
-  input must include each visible comment's stable ID, parent/root
-  relationship, `updated_at`, and the per-thread `resolved` flag. If the
-  remote metadata exposes deleted or tombstoned comments, include that
-  deletion state in the canonical input as well. If no reliable deletion
-  signal exists, deletion detection is best effort through visible-set changes
-  and disappearing stable IDs;
+  design does not assume Linear returns this digest directly. For v1, this
+  signature is SHA-256 over canonical UTF-8 records encoded as lower-case
+  hexadecimal with a mandatory `v1:` prefix. The canonical input has two
+  record types:
+  `thread|<root_comment_id>|resolved=<bool>` for each visible thread and
+  `comment|<comment_id>|root=<root_comment_id>|parent=<parent_or_none>|updated_at=<timestamp>|deleted=<bool_or_unknown>`
+  for each visible comment. Sort thread records lexicographically by stable
+  root-comment ID and sort comment records lexicographically by stable comment
+  ID before hashing. If the remote metadata exposes deleted or tombstoned
+  comments, include that deletion state in the canonical input as well. If no
+  reliable deletion signal exists, deletion detection is best effort through
+  visible-set changes and disappearing stable IDs;
 - `relations_signature`, a deterministic digest over the visible persisted
   issue relations that affect rendered frontmatter and traversal results. The
   canonical input must include relation dimension, relation type, and target
-  identity. When a stable target UUID is available it should drive canonical
-  ordering, but the current rendered target key must still be included because
-  that value can change independently of the source ticket's own issue fields.
+  identity. For v1, this signature uses the same SHA-256 / UTF-8 /
+  lower-case-hex / mandatory-`v1:` format as `comments_signature`; canonical
+  relation records are sorted lexicographically by relation dimension, relation
+  type, stable target UUID when available, and then rendered target key. The
+  current rendered target key must still be included because that value can
+  change independently of the source ticket's own issue fields.
+
+The `v1:` prefix is normative. It versions the signature-canonicalization
+contract independently from file `format_version`, so a future release may
+change the digest input rules without overloading the broader on-disk file
+schema version.
 
 This approach avoids a separate state store and supports efficient incremental
 refreshes. The steady-state goal is still a lightweight refresh path that
@@ -434,6 +450,13 @@ comment bodies during the freshness pass. If
 finds that the available Linear surface cannot provide that cheaper metadata
 shape, it should record that explicitly as an adapter or design risk rather
 than silently widening the freshness pass into full comment downloads.
+
+A tracked file with a missing, partial, invalid, or format-incompatible
+`refresh_cursor` is not fresh. If the tool can still resolve the ticket's
+identity from the manifest/frontmatter, `refresh` must fully re-fetch and
+rewrite that ticket in the current format rather than treating it as a hard
+failure. Only unrecoverable file corruption that prevents ticket resolution is
+an explicit validation error.
 
 No additional live relation probe was run as part of this amendment, so the
 first release does **not** assume relation changes advance the parent issue

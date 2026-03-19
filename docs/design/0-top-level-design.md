@@ -341,6 +341,7 @@ sync(root_ticket_id, max_tickets_per_root, dimensions)
   │   ├─ Update manifest UUID/current-key/path mappings
   │   ├─ Preserve any superseded issue key as a manifest alias
   │   ├─ Rename the local file if the current issue key changed
+  │   ├─ Compute and persist the current `refresh_cursor`
   │   └─ Rewrite the ticket file regardless of local freshness
   │
   ├─ Prune derived tickets no longer reachable
@@ -384,8 +385,11 @@ refresh()
   │   tracked reachable ticket via `linear-client`
   ├─ Load the local `refresh_cursor` metadata from each tracked reachable
   │   ticket file
-  ├─ Treat a tracked reachable ticket as stale when no local file exists or
-  │   when any composite-cursor component differs exactly:
+  ├─ Treat a tracked reachable ticket as stale when no local file exists, when
+  │   the local file's `format_version` predates the accepted
+  │   `refresh_cursor` contract, when the local `refresh_cursor` is missing,
+  │   partial, or otherwise invalid, or when any composite-cursor component
+  │   differs exactly:
   │   ├─ `issue_updated_at`
   │   ├─ `comments_signature`
   │   └─ `relations_signature`
@@ -421,19 +425,27 @@ The v1 composite cursor has three components:
   issue metadata.
 - `comments_signature`: a deterministic digest computed locally from the
   visible comment/thread metadata that can change the rendered comments
-  section. The design does not assume Linear returns this digest directly. The
-  canonical input must include each visible comment's stable ID, parent/root
-  relationship, `updated_at`, and the per-thread `resolved` flag. If the
-  remote metadata exposes deleted or tombstoned comments, include that
-  deletion state in the canonical input as well. If no reliable deletion
-  signal exists, deletion detection is best effort through visible-set changes
-  and disappearing stable IDs.
+  section. The design does not assume Linear returns this digest directly. For
+  v1, this signature is SHA-256 over canonical UTF-8 records encoded as
+  lower-case hexadecimal with a mandatory `v1:` prefix. The canonical input has
+  two record types:
+  `thread|<root_comment_id>|resolved=<bool>` for each visible thread and
+  `comment|<comment_id>|root=<root_comment_id>|parent=<parent_or_none>|updated_at=<timestamp>|deleted=<bool_or_unknown>`
+  for each visible comment. Sort thread records lexicographically by stable
+  root-comment ID and sort comment records lexicographically by stable comment
+  ID before hashing. If the remote metadata exposes deleted or tombstoned
+  comments, include that deletion state in the canonical input as well. If no
+  reliable deletion signal exists, deletion detection is best effort through
+  visible-set changes and disappearing stable IDs.
 - `relations_signature`: a deterministic digest over the visible persisted
   issue relations used by the snapshot and traversal logic. The canonical
   input must include the relation dimension, relation type, and target
-  identity; when a stable target UUID is available it should drive canonical
-  ordering, but the current human-readable target key must still be included
-  because that value is rendered locally.
+  identity. For v1, this signature uses the same SHA-256 / UTF-8 /
+  lower-case-hex / mandatory-`v1:` format as `comments_signature`; canonical
+  relation records are sorted lexicographically by relation dimension, relation
+  type, stable target UUID when available, and then rendered target key. The
+  current human-readable target key must still be included in the canonical
+  record because that value is rendered locally.
 
 Each ticket file stores the last accepted remote cursor in frontmatter under a
 machine-readable `refresh_cursor` mapping. `refresh` compares the remote and
@@ -441,6 +453,17 @@ local composite cursors by exact equality. A mismatch in any component marks
 the ticket stale and forces a full re-fetch. `last_synced_at` remains useful
 for humans and logs, but it is no longer the correctness check for deciding
 whether a tracked ticket is fresh.
+
+The `v1:` prefix is normative. It versions the signature-canonicalization
+contract independently from file `format_version`, so a future release may
+change the digest input rules without overloading the broader on-disk file
+schema version. Any mutating flow that writes a ticket file must persist the
+current `refresh_cursor` for that file. If a tracked file's `refresh_cursor` is
+missing, partial, invalid, or from a file format too old to satisfy the
+accepted cursor contract, `refresh` must treat that file as not fresh and
+re-fetch it rather than trying to prove freshness from incomplete local data.
+Only unrecoverable file corruption that prevents resolving the tracked ticket
+identity should be treated as a validation error instead of a stale-file case.
 
 This amendment intentionally does **not** assume that relation changes advance
 the parent issue `updated_at`. No additional live relation probe was run as

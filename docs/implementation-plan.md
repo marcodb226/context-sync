@@ -239,6 +239,11 @@ refresh-correctness decision that later milestones depend on.
   append-only or "new comments only" fast mode may be proposed as a follow-on
   option, but it must not replace the default first-release refresh semantics
   without an explicit accepted plan/design change.
+- Confirm whether comment-level `updated_at` advances on comment edits in the
+  available Linear surface. If that assumption cannot be confirmed, record the
+  gap explicitly and define the fallback remote input or follow-on design work
+  needed for `comments_signature` before
+  [M3-1](#m3-1---incremental-refresh-and-quarantined-root-recovery) begins.
 - Record any newly discovered missing domain capabilities in an authoritative
   repository artifact so maintainers have a durable upstream follow-up target.
 - This dependency chain is intentional. The plan prefers one coherent audit
