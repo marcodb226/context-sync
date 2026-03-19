@@ -12,7 +12,7 @@
 > [docs/adr.md](../adr.md#oq-1-refresh-freshness-validation-against-live-linear-behavior),
 > [docs/design/0-top-level-design.md](../design/0-top-level-design.md#62-refresh-flow),
 > [docs/design/refresh-freshness-validation.md](../design/refresh-freshness-validation.md),
-> [docs/planning/change-requests/CR-1.md](../planning/change-requests/CR-1.md)
+> [docs/planning/change-requests/CR-26.03.18.md](../planning/change-requests/CR-26.03.18.md)
 
 ## Findings
 
@@ -35,7 +35,7 @@
   the governing design rewrite through the planning workspace rather than
   silently widening the Phase A deliverable. Supporting context:
   [docs/execution/M1-D1.md:93](M1-D1.md),
-  [docs/planning/change-requests/CR-1.md](../planning/change-requests/CR-1.md).
+  [docs/planning/change-requests/CR-26.03.18.md](../planning/change-requests/CR-26.03.18.md).
 - I did not find any evidence that secrets or credential values were written
   into the repository artifacts. The ticket records probe behavior and probe
   issue cleanup, but not sensitive runtime material. Evidence:
@@ -67,7 +67,7 @@ This pass was requested as an additional independent Phase B review of
 
 | ID | Severity | Status | Area | Finding | Evidence | Impact | Recommendation |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| M1-D1-R2 | Low | Deferred (Milestone 1) | Testing and Validation | The spike probed only 2 of the 4 v1-persisted field categories against `updatedAt`: metadata (title/description) as positive controls and comments (create/edit) as the release-gate discriminator. Attachments and relations were not probed. The design artifact's recommendation for those fields ("either validate that their changes advance the parent issue `updatedAt` or include freshness signals for them") is therefore based on structural reasoning rather than empirical evidence. | [docs/design/refresh-freshness-validation.md:19-24](../design/refresh-freshness-validation.md), [docs/design/refresh-freshness-validation.md:76-81](../design/refresh-freshness-validation.md), [docs/execution/M1-D1.md:47-49](M1-D1.md) | When [M1-D3](../planning/change-requests/CR-1.md#cr-1-proposed-m1-d3) (via [CR-1](../planning/change-requests/CR-1.md)) designs the composite freshness contract, it will need to either run additional live probes for attachments and relations or make a conservative design choice to include them in the composite signal without empirical confirmation. Neither path is blocked, but the design artifact does not flag this as an explicit input for the follow-on ticket. | If [CR-1](../planning/change-requests/CR-1.md) is accepted, consider noting in [M1-D3](../planning/change-requests/CR-1.md#cr-1-proposed-m1-d3)'s detailed ticket notes that empirical attachment/relation probing is a recommended input, not just the disposition decision. |
+| M1-D1-R2 | Low | Deferred (Milestone 1) | Testing and Validation | The spike probed only 2 of the 4 v1-persisted field categories against `updatedAt`: metadata (title/description) as positive controls and comments (create/edit) as the release-gate discriminator. Attachments and relations were not probed. The design artifact's recommendation for those fields ("either validate that their changes advance the parent issue `updatedAt` or include freshness signals for them") is therefore based on structural reasoning rather than empirical evidence. | [docs/design/refresh-freshness-validation.md:19-24](../design/refresh-freshness-validation.md), [docs/design/refresh-freshness-validation.md:76-81](../design/refresh-freshness-validation.md), [docs/execution/M1-D1.md:47-49](M1-D1.md) | When [M1-D3](../planning/change-requests/CR-26.03.18.md#cr-26.03.18-proposed-m1-d3) (via [CR-26.03.18](../planning/change-requests/CR-26.03.18.md)) designs the composite freshness contract, it will need to either run additional live probes for attachments and relations or make a conservative design choice to include them in the composite signal without empirical confirmation. Neither path is blocked, but the design artifact does not flag this as an explicit input for the follow-on ticket. | If [CR-26.03.18](../planning/change-requests/CR-26.03.18.md) is accepted, consider noting in [M1-D3](../planning/change-requests/CR-26.03.18.md#cr-26.03.18-proposed-m1-d3)'s detailed ticket notes that empirical attachment/relation probing is a recommended input, not just the disposition decision. |
 
 ### Second-Pass Reviewer Notes
 
@@ -76,7 +76,7 @@ This pass was requested as an additional independent Phase B review of
   remains the primary concern from this ticket. The deliverable gap between the
   plan table row's "exact amendment needed" language and the actual "minimum
   amendment shape" delivered is real but is being addressed through the
-  [CR-1](../planning/change-requests/CR-1.md) amendment path. This second pass
+  [CR-26.03.18](../planning/change-requests/CR-26.03.18.md) amendment path. This second pass
   concurs with that assessment.
 - The probe methodology is sound: using disposable issues, positive controls
   first, then the release-gate discriminator, with a delayed follow-up to rule
@@ -88,7 +88,7 @@ This pass was requested as an additional independent Phase B review of
   and route that change through a plan amendment before
   [M3-1](../implementation-plan.md#m3-1---incremental-refresh-and-quarantined-root-recovery)
   begins," and the execution record does exactly that by creating
-  [CR-1](../planning/change-requests/CR-1.md) rather than silently extending
+  [CR-26.03.18](../planning/change-requests/CR-26.03.18.md) rather than silently extending
   the spike into a design rewrite.
 - The design artifact at
   [docs/design/refresh-freshness-validation.md](../design/refresh-freshness-validation.md)
@@ -101,7 +101,7 @@ This pass was requested as an additional independent Phase B review of
   already describes itself as provisional pending this validation, so the
   combination of the existing caveat and the OQ-1 annotation is sufficient for
   now. The governing design rewrite belongs to
-  [M1-D3](../planning/change-requests/CR-1.md#cr-1-proposed-m1-d3).
+  [M1-D3](../planning/change-requests/CR-26.03.18.md#cr-26.03.18-proposed-m1-d3).
 - No secrets or credential values were found in the repository artifacts. The
   probe issues were archived after use.
 
@@ -111,20 +111,20 @@ This pass was requested as an additional independent Phase B review of
   before
   [M3-1](../implementation-plan.md#m3-1---incremental-refresh-and-quarantined-root-recovery))
   remains.
-  [CR-1](../planning/change-requests/CR-1.md) acceptance and
-  [M1-D3](../planning/change-requests/CR-1.md#cr-1-proposed-m1-d3) execution
+  [CR-26.03.18](../planning/change-requests/CR-26.03.18.md) acceptance and
+  [M1-D3](../planning/change-requests/CR-26.03.18.md#cr-26.03.18-proposed-m1-d3) execution
   are the resolution path.
 - [M1-D1-R2](#additional-findings) adds a minor gap: when
-  [M1-D3](../planning/change-requests/CR-1.md#cr-1-proposed-m1-d3) designs the
+  [M1-D3](../planning/change-requests/CR-26.03.18.md#cr-26.03.18-proposed-m1-d3) designs the
   composite contract, it will need to decide whether to run live probes for
   attachments/relations or to conservatively include them without probing. That
   decision should be explicit in the
-  [M1-D3](../planning/change-requests/CR-1.md#cr-1-proposed-m1-d3) execution
+  [M1-D3](../planning/change-requests/CR-26.03.18.md#cr-26.03.18-proposed-m1-d3) execution
   record.
 
 ## Ticket Owner Response
 
 | ID | Verdict | Rationale |
 | --- | --- | --- |
-| M1-D1-R1 | Defer to Milestone 1 | The scope-boundary concern is valid, but the chosen resolution path is now explicit: [docs/execution/M1-D1.md](M1-D1.md) states that [M1-D1](../implementation-plan.md#m1-d1---refresh-freshness-validation-spike) intentionally stopped at recording the failed assumption and minimum amendment shape, and the governing refresh-contract rewrite is being handled through the Milestone 1 planning amendment draft [docs/planning/change-requests/CR-1.md](../planning/change-requests/CR-1.md). The human has accepted that route in principle, so the remaining work belongs to the Milestone 1 plan-amendment flow rather than retroactively widening the completed spike ticket. |
-| M1-D1-R2 | Defer to Milestone 1 | This is a real follow-on input for the amendment work, but not a reason to reopen the spike itself. If [docs/planning/change-requests/CR-1.md](../planning/change-requests/CR-1.md) is accepted, the resulting Milestone 1 design ticket should explicitly decide whether to run attachment/relation probes or to conservatively include those field groups in the composite freshness signal without additional live validation. |
+| M1-D1-R1 | Defer to Milestone 1 | The scope-boundary concern is valid, but the chosen resolution path is now explicit: [docs/execution/M1-D1.md](M1-D1.md) states that [M1-D1](../implementation-plan.md#m1-d1---refresh-freshness-validation-spike) intentionally stopped at recording the failed assumption and minimum amendment shape, and the governing refresh-contract rewrite is being handled through the Milestone 1 planning amendment draft [docs/planning/change-requests/CR-26.03.18.md](../planning/change-requests/CR-26.03.18.md). The human has accepted that route in principle, so the remaining work belongs to the Milestone 1 plan-amendment flow rather than retroactively widening the completed spike ticket. |
+| M1-D1-R2 | Defer to Milestone 1 | This is a real follow-on input for the amendment work, but not a reason to reopen the spike itself. If [docs/planning/change-requests/CR-26.03.18.md](../planning/change-requests/CR-26.03.18.md) is accepted, the resulting Milestone 1 design ticket should explicitly decide whether to run attachment/relation probes or to conservatively include those field groups in the composite freshness signal without additional live validation. |
