@@ -141,3 +141,13 @@
   consisted of cross-document consistency checks across the governing plan,
   ADR, top-level design, execution record, coverage-matrix artifact, installed
   package source, and the prior Phase B review.
+
+## Ticket Owner Response
+
+| ID | Verdict | Rationale |
+| --- | --- | --- |
+| M1-D2-R1 | Fix now | Agreed. [M1-D2](../implementation-plan.md#m1-d2---linear-domain-coverage-audit-and-adapter-boundary) should not leave the `comments_signature` fallback implicit after [M1-D3](../implementation-plan.md#m1-d3---refresh-composite-freshness-contract-amendment). I plan to amend the audit so it either records the accepted non-`updated_at` fallback input now or makes the required pre-[M3-1](../implementation-plan.md#m3-1---incremental-refresh-and-quarantined-root-recovery) design or probe prerequisite explicit in repository artifacts. |
+| M1-D2-R2 | Fix now | Agreed. Workspace-identity validation is already part of the active v1 contract in [docs/adr.md](../adr.md#31-foundation) and [docs/design/0-top-level-design.md](../design/0-top-level-design.md#11-linear-dependency-boundary), so it belongs in the required-operation matrix rather than in a conditional side note. I plan to add the operation and record whether it needs its own narrow helper path. |
+| M1-D2-R3 | Fix now | Agreed. The boundary decision should record more than helper names; it should also say that these are read-only helpers and whether they own exhaustive pagination internally. I plan to tighten the boundary so later tickets know to use `query()` or `paginate_connection()` as appropriate and never `gql()` or `mutate()` for these read paths. |
+| M1-D2-R4 | Fix now | Agreed. This overlaps with [M1-D2-R2](#findings), but it catches a real wording problem: the current risk language understates a required v1 capability as if it were optional. I plan to rewrite that risk item so workspace identity is documented as a confirmed package-surface gap that must be solved before the relevant implementation work. |
+| M1-D2-R5 | Fix now | Agreed. The coverage matrix should focus on required v1 flows. I plan to remove the team-scoped discovery row from the required-operation matrix or demote it to an informational note so it cannot be mistaken for approved flow scope. |
