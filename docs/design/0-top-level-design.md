@@ -11,9 +11,9 @@
 The primary interface is an async Python class that receives an authenticated `Linear` client and a target directory:
 
 ```python
-from context_sync import ContextSyncer
+from context_sync import ContextSync
 
-syncer = ContextSyncer(
+syncer = ContextSync(
     linear=linear_client_instance,  # reuse the caller's authenticated client
     context_dir=Path("/work/repo/linear-context"),
     dimensions={
@@ -26,7 +26,7 @@ syncer = ContextSyncer(
     },
 )
 
-class ContextSyncer:
+class ContextSync:
     async def sync(
         self,
         root_ticket_id: str,
@@ -79,7 +79,7 @@ Traversal semantics and interface rationale live in [docs/adr.md](<../adr.md>).
 
 ### 1.1 Linear Dependency Boundary
 
-`ContextSyncer` assumes the caller already has `linear-client` installed and
+`ContextSync` assumes the caller already has `linear-client` installed and
 can provide an authenticated `Linear` instance. The dependency is a private
 GitHub repository documented in
 [docs/design/linear-client.md](<linear-client.md>), so agent sessions must not
