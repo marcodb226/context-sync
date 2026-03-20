@@ -97,14 +97,32 @@ def expected_frontmatter_fields(
 
 
 def expected_markers(bundle: TicketBundle) -> list[str]:
-    """Return the structural HTML comment markers for post-write verification."""
+    """
+    Return the structural HTML comment markers for post-write verification.
+
+    Includes section markers for description and comments, plus thread and
+    comment markers for every thread/comment in the bundle.
+    """
     uid = bundle.issue.issue_id
-    return [
+    markers = [
         f"<!-- context-sync:section id=description-{uid} start -->",
         f"<!-- context-sync:section id=description-{uid} end -->",
         f"<!-- context-sync:section id=comments-{uid} start -->",
         f"<!-- context-sync:section id=comments-{uid} end -->",
     ]
+    for thread in bundle.threads:
+        rid = thread.root_comment_id
+        resolved_str = "true" if thread.resolved else "false"
+        markers.append(f"<!-- context-sync:thread id={rid} resolved={resolved_str} start -->")
+        markers.append(f"<!-- context-sync:thread id={rid} end -->")
+    for comment in bundle.comments:
+        if comment.parent_comment_id is not None:
+            markers.append(
+                f"<!-- context-sync:comment id={comment.comment_id} "
+                f"parent={comment.parent_comment_id} start -->"
+            )
+            markers.append(f"<!-- context-sync:comment id={comment.comment_id} end -->")
+    return markers
 
 
 # ---------------------------------------------------------------------------
@@ -314,22 +332,27 @@ def _render_thread(
     thread_meta: ThreadData | None,
 ) -> str:
     """
-    Render one thread: thread markers, root comment inline, replies with
-    comment markers.
+    Render one thread with nested reply structure.
+
+    The root comment is rendered inline inside thread markers.  Replies
+    are nested under their parent comment, preserving chronological order
+    within each sibling set.
     """
     resolved = thread_meta.resolved if thread_meta else False
     resolved_str = "true" if resolved else "false"
 
+    children: dict[str, list[CommentData]] = {}
     root_comment: CommentData | None = None
-    replies: list[CommentData] = []
     for c in comments:
         if c.comment_id == root_id:
             root_comment = c
         else:
-            replies.append(c)
+            parent = c.parent_comment_id or root_id
+            children.setdefault(parent, []).append(c)
 
-    # Sort replies chronologically.
-    replies.sort(key=lambda c: c.created_at)
+    # Sort each sibling set chronologically.
+    for siblings in children.values():
+        siblings.sort(key=lambda c: c.created_at)
 
     parts: list[str] = []
     parts.append(f"<!-- context-sync:thread id={root_id} resolved={resolved_str} start -->")
@@ -338,17 +361,30 @@ def _render_thread(
         author = root_comment.author or "Unknown"
         parts.append(f"### Thread by {author} at {root_comment.created_at}\n")
         parts.append(root_comment.body)
-
-    for reply in replies:
-        parent = reply.parent_comment_id or root_id
-        parts.append(f"<!-- context-sync:comment id={reply.comment_id} parent={parent} start -->")
-        author = reply.author or "Unknown"
-        parts.append(f"**{author}** at {reply.created_at}\n")
-        parts.append(reply.body)
-        parts.append(f"<!-- context-sync:comment id={reply.comment_id} end -->")
+        # Render children of root recursively.
+        _render_children(root_id, children, parts)
 
     parts.append(f"<!-- context-sync:thread id={root_id} end -->")
     return "\n".join(parts)
+
+
+def _render_children(
+    parent_id: str,
+    children: dict[str, list[CommentData]],
+    parts: list[str],
+) -> None:
+    """Recursively render child comments nested under *parent_id*."""
+    for child in children.get(parent_id, []):
+        parts.append(
+            f"<!-- context-sync:comment id={child.comment_id} "
+            f"parent={child.parent_comment_id or parent_id} start -->"
+        )
+        author = child.author or "Unknown"
+        parts.append(f"**{author}** at {child.created_at}\n")
+        parts.append(child.body)
+        # Recurse into this child's replies before closing the marker.
+        _render_children(child.comment_id, children, parts)
+        parts.append(f"<!-- context-sync:comment id={child.comment_id} end -->")
 
 
 # ---------------------------------------------------------------------------

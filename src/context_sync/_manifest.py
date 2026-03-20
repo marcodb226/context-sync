@@ -11,16 +11,16 @@ disk, read back and validated).
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from context_sync._config import FORMAT_VERSION
 from context_sync._errors import ManifestError
 from context_sync._gateway import WorkspaceIdentity
 from context_sync._io import atomic_write
-from context_sync._yaml import dump_yaml, strip_empty
+from context_sync._yaml import dump_yaml
 
 MANIFEST_FILENAME: str = ".context-sync.yml"
 
@@ -45,7 +45,7 @@ class ManifestRootEntry(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    state: str
+    state: Literal["active", "quarantined"]
     quarantined_reason: str | None = None
 
 
@@ -87,7 +87,7 @@ class ManifestSnapshot(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    mode: str
+    mode: Literal["sync", "refresh", "add", "remove-root"]
     started_at: str
     completed_at: str | None = None
     completed_successfully: bool | None = None
@@ -185,7 +185,7 @@ def load_manifest(context_dir: Path) -> Manifest:
 
     try:
         return Manifest.model_validate(raw)
-    except Exception as exc:
+    except ValidationError as exc:
         raise ManifestError(f"Invalid manifest: {exc}") from exc
 
 
@@ -198,5 +198,5 @@ def save_manifest(manifest: Manifest, context_dir: Path) -> None:
     """
     path = context_dir / MANIFEST_FILENAME
     data = manifest.model_dump(mode="json")
-    content = dump_yaml(strip_empty(data))
+    content = dump_yaml(data)
     atomic_write(path, content)

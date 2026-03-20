@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 import yaml
 from pydantic import ValidationError
@@ -40,6 +42,10 @@ class TestManifestModels:
         assert entry.state == "quarantined"
         assert entry.quarantined_reason == "not_available_in_visible_view"
 
+    def test_root_entry_rejects_invalid_state(self) -> None:
+        with pytest.raises(ValueError):
+            ManifestRootEntry(state="bogus")  # type: ignore[arg-type]
+
     def test_root_entry_rejects_extra_fields(self) -> None:
         with pytest.raises(ValidationError, match="extra"):
             ManifestRootEntry(state="active", bogus="x")  # type: ignore[call-arg]
@@ -73,6 +79,10 @@ class TestManifestModels:
         )
         assert snap.completed_at == "2026-01-01T00:01:00Z"
         assert snap.completed_successfully is True
+
+    def test_snapshot_rejects_invalid_mode(self) -> None:
+        with pytest.raises(ValueError):
+            ManifestSnapshot(mode="bogus", started_at="t")  # type: ignore[arg-type]
 
     def test_snapshot_rejects_extra_fields(self) -> None:
         with pytest.raises(ValidationError, match="extra"):
@@ -155,68 +165,47 @@ class TestInitializeManifest:
 
 
 class TestSaveAndLoadManifest:
-    def test_round_trip(self, tmp_path: object) -> None:
-        from pathlib import Path
-
-        ctx = Path(str(tmp_path))
+    def test_round_trip(self, tmp_path: Path) -> None:
         original = make_manifest()
-        save_manifest(original, ctx)
-        loaded = load_manifest(ctx)
+        save_manifest(original, tmp_path)
+        loaded = load_manifest(tmp_path)
         assert loaded == original
 
-    def test_yaml_keys_are_sorted(self, tmp_path: object) -> None:
-        from pathlib import Path
-
-        ctx = Path(str(tmp_path))
-        save_manifest(make_manifest(), ctx)
-        text = (ctx / MANIFEST_FILENAME).read_text(encoding="utf-8")
+    def test_yaml_keys_are_sorted(self, tmp_path: Path) -> None:
+        save_manifest(make_manifest(), tmp_path)
+        text = (tmp_path / MANIFEST_FILENAME).read_text(encoding="utf-8")
         keys = [line.split(":")[0] for line in text.splitlines() if not line.startswith(" ")]
         assert keys == sorted(keys)
 
-    def test_empty_collections_omitted(self, tmp_path: object) -> None:
-        from pathlib import Path
-
-        ctx = Path(str(tmp_path))
+    def test_empty_collections_omitted(self, tmp_path: Path) -> None:
         m = make_manifest()
         # Defaults have empty roots, tickets, aliases and no snapshot.
-        save_manifest(m, ctx)
-        text = (ctx / MANIFEST_FILENAME).read_text(encoding="utf-8")
+        save_manifest(m, tmp_path)
+        text = (tmp_path / MANIFEST_FILENAME).read_text(encoding="utf-8")
         assert "roots:" not in text
         assert "tickets:" not in text
         assert "aliases:" not in text
         assert "snapshot:" not in text
 
-    def test_load_missing_file_raises(self, tmp_path: object) -> None:
-        from pathlib import Path
-
-        ctx = Path(str(tmp_path))
+    def test_load_missing_file_raises(self, tmp_path: Path) -> None:
         with pytest.raises(ManifestError, match="not found"):
-            load_manifest(ctx)
+            load_manifest(tmp_path)
 
-    def test_load_corrupt_yaml_raises(self, tmp_path: object) -> None:
-        from pathlib import Path
-
-        ctx = Path(str(tmp_path))
-        (ctx / MANIFEST_FILENAME).write_text("{{bad yaml", encoding="utf-8")
+    def test_load_corrupt_yaml_raises(self, tmp_path: Path) -> None:
+        (tmp_path / MANIFEST_FILENAME).write_text("{{bad yaml", encoding="utf-8")
         with pytest.raises(ManifestError, match="[Mm]alformed|[Mm]apping"):
-            load_manifest(ctx)
+            load_manifest(tmp_path)
 
-    def test_load_non_mapping_raises(self, tmp_path: object) -> None:
-        from pathlib import Path
-
-        ctx = Path(str(tmp_path))
-        (ctx / MANIFEST_FILENAME).write_text("- just\n- a\n- list\n", encoding="utf-8")
+    def test_load_non_mapping_raises(self, tmp_path: Path) -> None:
+        (tmp_path / MANIFEST_FILENAME).write_text("- just\n- a\n- list\n", encoding="utf-8")
         with pytest.raises(ManifestError, match="mapping"):
-            load_manifest(ctx)
+            load_manifest(tmp_path)
 
-    def test_load_wrong_format_version_raises(self, tmp_path: object) -> None:
-        from pathlib import Path
-
-        ctx = Path(str(tmp_path))
+    def test_load_wrong_format_version_raises(self, tmp_path: Path) -> None:
         m = make_manifest()
-        save_manifest(m, ctx)
+        save_manifest(m, tmp_path)
         # Patch the format_version in the file on disk.
-        path = ctx / MANIFEST_FILENAME
+        path = tmp_path / MANIFEST_FILENAME
         raw = yaml.safe_load(path.read_text(encoding="utf-8"))
         raw["format_version"] = 9999
         path.write_text(
@@ -224,7 +213,7 @@ class TestSaveAndLoadManifest:
             encoding="utf-8",
         )
         with pytest.raises(ManifestError, match="format_version"):
-            load_manifest(ctx)
+            load_manifest(tmp_path)
 
 
 # ---------------------------------------------------------------------------
@@ -233,10 +222,7 @@ class TestSaveAndLoadManifest:
 
 
 class TestManifestWithData:
-    def test_manifest_with_roots_and_tickets(self, tmp_path: object) -> None:
-        from pathlib import Path
-
-        ctx = Path(str(tmp_path))
+    def test_manifest_with_roots_and_tickets(self, tmp_path: Path) -> None:
         m = make_manifest()
         m = m.model_copy(
             update={
@@ -256,18 +242,15 @@ class TestManifestWithData:
                 "aliases": {"OLD-1": "ACP-1"},
             },
         )
-        save_manifest(m, ctx)
-        loaded = load_manifest(ctx)
+        save_manifest(m, tmp_path)
+        loaded = load_manifest(tmp_path)
         assert loaded.roots["uuid-1"].state == "active"
         assert loaded.roots["uuid-2"].state == "quarantined"
         assert loaded.roots["uuid-2"].quarantined_reason == "not_available_in_visible_view"
         assert loaded.tickets["uuid-1"].current_key == "ACP-1"
         assert loaded.aliases["OLD-1"] == "ACP-1"
 
-    def test_manifest_with_snapshot(self, tmp_path: object) -> None:
-        from pathlib import Path
-
-        ctx = Path(str(tmp_path))
+    def test_manifest_with_snapshot(self, tmp_path: Path) -> None:
         snap = ManifestSnapshot(
             mode="sync",
             started_at="2026-01-01T00:00:00Z",
@@ -275,22 +258,19 @@ class TestManifestWithData:
             completed_successfully=True,
         )
         m = make_manifest(snapshot=snap)
-        save_manifest(m, ctx)
-        loaded = load_manifest(ctx)
+        save_manifest(m, tmp_path)
+        loaded = load_manifest(tmp_path)
         assert loaded.snapshot is not None
         assert loaded.snapshot.mode == "sync"
         assert loaded.snapshot.started_at == "2026-01-01T00:00:00Z"
         assert loaded.snapshot.completed_at == "2026-01-01T00:01:00Z"
         assert loaded.snapshot.completed_successfully is True
 
-    def test_snapshot_without_completion(self, tmp_path: object) -> None:
-        from pathlib import Path
-
-        ctx = Path(str(tmp_path))
+    def test_snapshot_without_completion(self, tmp_path: Path) -> None:
         snap = ManifestSnapshot(mode="add", started_at="2026-03-01T12:00:00Z")
         m = make_manifest(snapshot=snap)
-        save_manifest(m, ctx)
-        loaded = load_manifest(ctx)
+        save_manifest(m, tmp_path)
+        loaded = load_manifest(tmp_path)
         assert loaded.snapshot is not None
         assert loaded.snapshot.completed_at is None
         assert loaded.snapshot.completed_successfully is None

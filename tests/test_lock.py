@@ -60,6 +60,16 @@ class TestLockRecord:
         )
         assert record.pid is None
 
+    def test_rejects_invalid_mode(self) -> None:
+        with pytest.raises(ValueError):
+            LockRecord(
+                writer_id="abc",
+                host="h",
+                pid=1,
+                acquired_at="t",
+                mode="bogus",  # type: ignore[arg-type]
+            )
+
 
 # ---------------------------------------------------------------------------
 # TestAcquireLock
@@ -120,12 +130,17 @@ class TestReleaseLock:
         acquire_lock(tmp_path, "sync", writer_id="w1")
         lock_path = tmp_path / LOCK_FILENAME
         assert lock_path.is_file()
-        release_lock(tmp_path)
+        release_lock(tmp_path, "w1")
         assert not lock_path.exists()
 
     def test_idempotent_when_already_gone(self, tmp_path: Path) -> None:
-        release_lock(tmp_path)  # no file at all — should not raise
-        release_lock(tmp_path)  # still fine
+        release_lock(tmp_path, "w1")  # no file at all — should not raise
+        release_lock(tmp_path, "w1")  # still fine
+
+    def test_release_with_wrong_writer_raises(self, tmp_path: Path) -> None:
+        acquire_lock(tmp_path, "sync", writer_id="w1")
+        with pytest.raises(ActiveLockError):
+            release_lock(tmp_path, "w2")
 
 
 # ---------------------------------------------------------------------------
@@ -159,6 +174,13 @@ class TestInspectLock:
     def test_raises_stale_lock_error_for_invalid_schema(self, tmp_path: Path) -> None:
         lock_path = tmp_path / LOCK_FILENAME
         lock_path.write_text("unrelated_key: value\n", encoding="utf-8")
+        with pytest.raises(StaleLockError):
+            inspect_lock(tmp_path)
+
+    def test_inspect_unreadable_raises(self, tmp_path: Path) -> None:
+        lock_path = tmp_path / LOCK_FILENAME
+        lock_path.write_text("placeholder", encoding="utf-8")
+        os.chmod(lock_path, 0)
         with pytest.raises(StaleLockError):
             inspect_lock(tmp_path)
 

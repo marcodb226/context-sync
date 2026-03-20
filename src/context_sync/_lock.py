@@ -18,9 +18,10 @@ import os
 import platform
 import uuid
 from pathlib import Path
+from typing import Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from context_sync._errors import ActiveLockError, StaleLockError
 from context_sync._yaml import dump_yaml
@@ -28,6 +29,9 @@ from context_sync._yaml import dump_yaml
 logger = logging.getLogger(__name__)
 
 LOCK_FILENAME: str = ".context-sync.lock"
+
+LOCK_MODES = Literal["sync", "refresh", "add", "remove-root"]
+"""Allowed mutating operation modes for the writer lock."""
 
 
 # ---------------------------------------------------------------------------
@@ -60,7 +64,7 @@ class LockRecord(BaseModel):
     host: str
     pid: int | None = None
     acquired_at: str
-    mode: str
+    mode: LOCK_MODES
 
 
 # ---------------------------------------------------------------------------
@@ -114,7 +118,7 @@ def _check_pid_alive(pid: int) -> bool:
 
 def acquire_lock(
     context_dir: Path,
-    mode: str,
+    mode: LOCK_MODES,
     *,
     writer_id: str | None = None,
     acquired_at: str | None = None,
@@ -191,6 +195,23 @@ def acquire_lock(
             existing.pid,
             existing.mode,
         )
+        # Re-read before unlinking to narrow the TOCTOU window (M1-2-R10).
+        current = inspect_lock(context_dir)
+        if current is not None and current.writer_id != existing.writer_id:
+            # Another process preempted first — re-evaluate the new lock.
+            new_stale = is_lock_stale(current)
+            if new_stale is True:
+                pass  # Still stale under the new writer, proceed to unlink.
+            elif new_stale is False:
+                raise ActiveLockError(
+                    f"Lock held by active process: writer_id={current.writer_id}, "
+                    f"host={current.host}, pid={current.pid}, mode={current.mode}"
+                )
+            else:
+                raise StaleLockError(
+                    f"Cannot determine lock staleness: writer_id={current.writer_id}, "
+                    f"host={current.host}, pid={current.pid}, mode={current.mode}"
+                )
         try:
             lock_path.unlink()
         except FileNotFoundError:
@@ -212,13 +233,31 @@ def acquire_lock(
         )
 
 
-def release_lock(context_dir: Path) -> None:
+def release_lock(context_dir: Path, writer_id: str) -> None:
     """
-    Remove the lock file.
+    Remove the lock file after verifying ownership.
 
-    Idempotent — does not raise if the file is already gone.
+    Parameters
+    ----------
+    context_dir:
+        The context directory.
+    writer_id:
+        The writer identity that must match the on-disk lock record.
+
+    Raises
+    ------
+    ActiveLockError
+        If the on-disk lock belongs to a different writer.
     """
     lock_path = context_dir / LOCK_FILENAME
+    current = inspect_lock(context_dir)
+    if current is None:
+        return  # Already gone.
+    if current.writer_id != writer_id:
+        raise ActiveLockError(
+            f"Cannot release lock owned by writer_id={current.writer_id} "
+            f"(caller writer_id={writer_id})"
+        )
     try:
         lock_path.unlink()
     except FileNotFoundError:
@@ -230,7 +269,8 @@ def inspect_lock(context_dir: Path) -> LockRecord | None:
     Read and parse the lock file without modifying it.
 
     Returns ``None`` if no lock file exists.  Raises
-    :class:`StaleLockError` if the file exists but cannot be parsed.
+    :class:`StaleLockError` if the file exists but cannot be read or
+    parsed.
     """
     lock_path = context_dir / LOCK_FILENAME
     if not lock_path.is_file():
@@ -238,8 +278,8 @@ def inspect_lock(context_dir: Path) -> LockRecord | None:
 
     try:
         raw_text = lock_path.read_text(encoding="utf-8")
-    except OSError:
-        return None
+    except OSError as exc:
+        raise StaleLockError(f"Lock file is unreadable: {lock_path}") from exc
 
     try:
         raw = yaml.safe_load(raw_text)
@@ -251,7 +291,7 @@ def inspect_lock(context_dir: Path) -> LockRecord | None:
 
     try:
         return LockRecord.model_validate(raw)
-    except Exception as exc:
+    except ValidationError as exc:
         raise StaleLockError(f"Lock file has invalid schema: {lock_path}") from exc
 
 
@@ -264,12 +304,20 @@ def _atomic_create_lock(path: Path, record: LockRecord) -> None:
     """
     Create the lock file atomically using ``O_CREAT | O_EXCL``.
 
-    Raises ``FileExistsError`` if the file already exists.
+    Raises ``FileExistsError`` if the file already exists.  Cleans up
+    the partially written file on write/sync failure.
     """
     content = dump_yaml(record.model_dump(mode="json"))
     fd = os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
     try:
         os.write(fd, content.encode("utf-8"))
         os.fsync(fd)
-    finally:
+    except OSError:
+        os.close(fd)
+        try:
+            os.unlink(str(path))
+        except OSError:
+            pass
+        raise
+    else:
         os.close(fd)

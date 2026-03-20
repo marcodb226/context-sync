@@ -2,8 +2,14 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
+import pytest
+
 from context_sync._config import FORMAT_VERSION
+from context_sync._errors import WriteError
 from context_sync._gateway import AttachmentData, CommentData, RelationData, ThreadData
+from context_sync._io import write_and_verify_ticket
 from context_sync._renderer import (
     expected_frontmatter_fields,
     expected_markers,
@@ -515,3 +521,63 @@ class TestResolveRootComment:
         }
         # c-missing is not in parent_map, so .get returns None => c-missing is root.
         assert resolve_root_comment("c-orphan", parent_map) == "c-missing"
+
+
+# =========================================================================
+# 7. TestRenderWriteVerifyIntegration
+# =========================================================================
+
+
+class TestRenderWriteVerifyIntegration:
+    """Integration: render -> write -> verify pipeline."""
+
+    def test_full_pipeline_succeeds(self, tmp_path: Path) -> None:
+        # Build a ticket with comments and relations
+        bundle = make_issue(
+            issue_id="uuid-int",
+            issue_key="INT-1",
+            comments=[
+                CommentData("c1", "root body", "alice", "2026-01-01T00:00:00Z", None, None),
+                CommentData("c2", "reply body", "bob", "2026-01-02T00:00:00Z", None, "c1"),
+            ],
+            threads=[ThreadData("c1", resolved=False)],
+            relations=[RelationData("blocks", "blocks", "uid-other", "OTHER-1")],
+        )
+        content = render_ticket_file(
+            bundle,
+            root_state="active",
+            last_synced_at="2026-01-01T00:00:00Z",
+            refresh_cursor={
+                "issue_updated_at": "2026-01-01T00:00:00Z",
+                "comments_signature": "v1:abc",
+                "relations_signature": "v1:def",
+            },
+        )
+        fm_fields = expected_frontmatter_fields(bundle, root_state="active")
+        markers = expected_markers(bundle)
+        path = tmp_path / "INT-1.md"
+        # Should succeed without raising
+        write_and_verify_ticket(path, content, fm_fields, markers)
+
+    def test_mutated_field_caught_by_verification(self, tmp_path: Path) -> None:
+        bundle = make_issue(issue_id="uuid-neg", issue_key="NEG-1")
+        content = render_ticket_file(
+            bundle,
+            last_synced_at="2026-01-01T00:00:00Z",
+            refresh_cursor={
+                "issue_updated_at": "2026-01-01T00:00:00Z",
+                "comments_signature": "v1:abc",
+                "relations_signature": "v1:def",
+            },
+        )
+        # Provide wrong expected values to trigger verification failure
+        wrong_fields = {
+            "format_version": 999,
+            "ticket_uuid": "uuid-neg",
+            "ticket_key": "NEG-1",
+            "root": False,
+        }
+        markers = expected_markers(bundle)
+        path = tmp_path / "NEG-1.md"
+        with pytest.raises(WriteError):
+            write_and_verify_ticket(path, content, wrong_fields, markers)

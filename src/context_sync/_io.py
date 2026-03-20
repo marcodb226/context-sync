@@ -16,7 +16,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from context_sync._errors import WriteError
+from context_sync._errors import ManifestError, WriteError
 from context_sync._yaml import parse_frontmatter
 
 logger = logging.getLogger(__name__)
@@ -117,7 +117,11 @@ def write_and_verify_ticket(
     except OSError as exc:
         raise WriteError(f"Cannot re-read {path} for verification: {exc}") from exc
 
-    fm_mismatches = _verify_frontmatter(parse_frontmatter(written), expected_frontmatter)
+    try:
+        parsed_fm = parse_frontmatter(written)
+    except ManifestError as exc:
+        raise WriteError(f"Post-write frontmatter parse failed for {path}: {exc}") from exc
+    fm_mismatches = _verify_frontmatter(parsed_fm, expected_frontmatter)
     marker_mismatches = _verify_markers(written, expected_markers)
 
     errors = fm_mismatches + marker_mismatches
