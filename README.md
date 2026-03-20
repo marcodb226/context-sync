@@ -35,8 +35,8 @@ source .venv/bin/activate
 # 5. Human-only step: install the private linear-client dependency
 python -m pip install "linear-client @ git+ssh://git@github.com/marcodb226/linear-client.git@v1.0.0"
 
-# 6. Install this project
-python -m pip install -e .
+# 6. Install this project (with dev dependencies for lint/test)
+python -m pip install -e ".[dev]"
 ```
 
 Before running Linear-dependent commands, create and source a local env file
@@ -106,10 +106,40 @@ Add the following to `.claude/settings.json`:
 Read access is allowed by default across the filesystem; only write access
 needs to be explicitly granted for paths outside the project.
 
+## Developer commands
+
+The repository uses [Ruff](https://docs.astral.sh/ruff/) for linting and
+formatting, and [pytest](https://docs.pytest.org/) with
+[pytest-asyncio](https://github.com/pytest-dev/pytest-asyncio) for testing.
+Install dev dependencies with `pip install -e ".[dev]"`.
+
+```bash
+# Lint (check only)
+.venv/bin/ruff check src/ tests/
+
+# Format (check only)
+.venv/bin/ruff format --check src/ tests/
+
+# Format (apply)
+.venv/bin/ruff format src/ tests/
+
+# Run all tests
+.venv/bin/pytest
+
+# Run tests with verbose output
+.venv/bin/pytest -v
+```
+
+All three commands (lint, format check, test) must pass before a ticket can be
+marked complete.
+
 ## Project layout
 
 | Path | Purpose |
 |------|---------|
+| `src/context_sync/` | Package source |
+| `tests/` | Test suite |
+| `pyproject.toml` | Package metadata, dependencies, and tool configuration |
 | `docs/problem-statement.md` | Motivation and scope |
 | `docs/adr.md` | Architecture decision records |
 | `docs/future-work.md` | Planned future work |
