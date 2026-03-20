@@ -113,21 +113,23 @@ formatting, and [pytest](https://docs.pytest.org/) with
 [pytest-asyncio](https://github.com/pytest-dev/pytest-asyncio) for testing.
 Install dev dependencies with `pip install -e ".[dev]"`.
 
+Make sure the project virtualenv is active before running these commands:
+
 ```bash
 # Lint (check only)
-.venv/bin/ruff check src/ tests/
+ruff check src/ tests/
 
 # Format (check only)
-.venv/bin/ruff format --check src/ tests/
+ruff format --check src/ tests/
 
 # Format (apply)
-.venv/bin/ruff format src/ tests/
+ruff format src/ tests/
 
 # Run all tests
-.venv/bin/pytest
+pytest
 
 # Run tests with verbose output
-.venv/bin/pytest -v
+pytest -v
 ```
 
 All three commands (lint, format check, test) must pass before a ticket can be
