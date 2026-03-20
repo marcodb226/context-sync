@@ -1,6 +1,6 @@
 # Review: [M2-1](../implementation-plan.md#m2-1---reachable-graph-builder-and-tiered-per-root-traversal)
 
-> **Status**: Phase B complete
+> **Status**: Phase C complete
 > **Plan ticket**:
 > [M2-1](../implementation-plan.md#m2-1---reachable-graph-builder-and-tiered-per-root-traversal)
 > **Execution record**:
@@ -105,3 +105,18 @@
 - No Linear-boundary violations were found. The module correctly limits all
   Linear-side reads to `gateway.get_ticket_relations()` and leaves Tier 3
   discovery entirely to the caller-supplied `ticket_ref_fn`.
+
+---
+
+## Ticket Owner Response
+
+> **Status**: Phase C complete
+
+| ID | Verdict | Disposition | Notes |
+| --- | --- | --- | --- |
+| M2-1-R1 | Fix now | Accepted | Sort same-tier relation edges by `target_issue_id` and Tier 3 targets by `(target_id, target_key)` before cap decisions. Add same-tier ordering stability test that reverses relation order and asserts identical reachable sets. |
+| M2-1-R2 | Fix now | Accepted | Break the outer BFS loop when `cap_remaining == 0` after the tier pass — no further gateway calls are possible. Add a call-tracking test that confirms no `get_ticket_relations` call occurs after the budget is exactly exhausted. |
+| M2-1-R3 | Fix now | Accepted | Add `ValueError` guard at the start of `build_reachable_graph` for `max_tickets_per_root < 1`. Add invalid-input test. |
+| M2-1-R4 | Fix now (docstring) | Accepted with narrowed scope | The existing `SyncResult` pattern uses plain lists similarly without MappingProxyType; wrapping would diverge from that convention. Instead, add a `Notes` section to the `TraversalResult` docstring explicitly warning callers that the dict fields must not be mutated in place. |
+| M2-1-R5 | Fix now | Accepted | Replace the inline `tier12_active` comprehension with a call to `_active_dims_for_tier` so the depth-boundary predicate lives in one place. |
+| M2-1-R6 | Fix now | Accepted | Replace the vacuous loop assertion with `assert len(call_log) == 1` and `assert call_log[0] == ["r1"]`, which directly verify call isolation. |

@@ -100,6 +100,12 @@ class TraversalResult:
         Frozenset of root UUIDs that hit the per-root ticket cap during
         traversal.  Lower-priority tiers and deeper depths may have been
         excluded for those roots.
+
+    Notes
+    -----
+    ``per_root_tickets`` and ``tickets`` are plain dicts; ``frozen=True``
+    prevents rebinding these attributes but does not prevent in-place mutation
+    of the dict contents.  Callers should treat both fields as read-only.
     """
 
     per_root_tickets: dict[str, frozenset[str]]
@@ -203,10 +209,9 @@ async def _traverse_single_root(
         # Tier 3 (ticket_ref) uses a separate provider path below.
         tier12_active = frozenset(
             d
-            for tier in TRAVERSAL_TIERS
-            if Dimension.TICKET_REF not in tier
-            for d in tier
-            if dimensions.get(d, 0) > current_depth
+            for t in TRAVERSAL_TIERS
+            if Dimension.TICKET_REF not in t
+            for d in _active_dims_for_tier(t, dimensions, current_depth)
         )
         relation_map: dict[str, list[RelationData]] = (
             await gateway.get_ticket_relations(frontier_ids) if tier12_active else {}
@@ -227,7 +232,7 @@ async def _traverse_single_root(
 
                 ref_map = await ticket_ref_fn(frontier_ids)
                 for fid in frontier_ids:
-                    for target_id, target_key in ref_map.get(fid, []):
+                    for target_id, target_key in sorted(ref_map.get(fid, [])):
                         if target_id in visited_depth:
                             continue
                         if cap_remaining > 0:
@@ -254,7 +259,10 @@ async def _traverse_single_root(
                     continue
 
                 for fid in frontier_ids:
-                    for rel in relation_map.get(fid, []):
+                    for rel in sorted(
+                        relation_map.get(fid, []),
+                        key=lambda r: r.target_issue_id,
+                    ):
                         if rel.dimension not in active_dims:
                             continue
                         if rel.target_issue_id in visited_depth:
@@ -282,6 +290,11 @@ async def _traverse_single_root(
                             break
                     if at_cap:
                         break
+
+        # Stop expanding if the budget is now exactly exhausted — no further
+        # tickets can be admitted, so skip the next-depth gateway fetch.
+        if cap_remaining == 0:
+            break
 
         frontier = next_frontier
 
@@ -340,6 +353,9 @@ async def build_reachable_graph(
         Any exception raised by *gateway* or *ticket_ref_fn* propagates
         unchanged to the caller.
     """
+    if max_tickets_per_root < 1:
+        raise ValueError(f"max_tickets_per_root must be at least 1, got {max_tickets_per_root}")
+
     per_root_tickets: dict[str, frozenset[str]] = {}
     roots_at_cap: set[str] = set()
 

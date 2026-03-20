@@ -86,6 +86,16 @@ class TestEmptyAndTrivial:
         )
         assert result.roots_at_cap == frozenset()
 
+    async def test_invalid_max_tickets_per_root_raises(self) -> None:
+        gw = FakeLinearGateway()
+        with pytest.raises(ValueError, match="max_tickets_per_root"):
+            await build_reachable_graph(
+                roots={},
+                dimensions=DEFAULT_DIMENSIONS,
+                max_tickets_per_root=0,
+                gateway=gw,
+            )
+
     async def test_single_root_tier1_edge_discovered(self) -> None:
         gw = FakeLinearGateway()
         gw.add_issue(
@@ -161,6 +171,49 @@ class TestPerRootCap:
 
         assert result.per_root_tickets["r1"] == frozenset({"r1"})
         assert "r1" in result.roots_at_cap
+
+    async def test_no_gateway_calls_after_budget_exhausted(self) -> None:
+        # Budget exactly filled at depth 0 (root + 1 derived).  With the fix,
+        # no get_ticket_relations call should be made for the depth-1 frontier.
+        gw = FakeLinearGateway()
+        gw.add_issue(
+            make_issue(
+                issue_id="r1",
+                issue_key="T-1",
+                relations=[_rel("blocks", "d1", "T-2")],
+            )
+        )
+        gw.add_issue(
+            make_issue(
+                issue_id="d1",
+                issue_key="T-2",
+                relations=[_rel("blocks", "e1", "T-3")],  # depth-1 edge; must not be fetched
+            )
+        )
+        gw.add_issue(make_issue(issue_id="e1", issue_key="T-3"))
+
+        relation_call_ids: list[list[str]] = []
+        original = gw.get_ticket_relations
+
+        async def tracking(issue_ids: Sequence[str]) -> dict[str, list[RelationData]]:
+            relation_call_ids.append(list(issue_ids))
+            return await original(issue_ids)
+
+        gw.get_ticket_relations = tracking  # type: ignore[method-assign]
+
+        result = await build_reachable_graph(
+            roots={"r1": "T-1"},
+            dimensions=DEFAULT_DIMENSIONS,  # blocks=3
+            max_tickets_per_root=2,  # root + exactly 1 derived; budget exhausted without rejection
+            gateway=gw,
+        )
+
+        # Budget exactly filled: r1 + d1.  No rejection, so roots_at_cap is empty.
+        assert result.per_root_tickets["r1"] == frozenset({"r1", "d1"})
+        assert result.roots_at_cap == frozenset()
+        # Only one gateway call at depth 0 for r1; no call at depth 1 for d1.
+        assert len(relation_call_ids) == 1
+        assert relation_call_ids[0] == ["r1"]
 
     async def test_no_cap_hit_when_graph_fits(self) -> None:
         gw = FakeLinearGateway()
@@ -244,6 +297,53 @@ class TestTierPriority:
         assert "d2" in result.per_root_tickets["r1"]
         assert "d3" not in result.per_root_tickets["r1"]
         assert "r1" in result.roots_at_cap
+
+    async def test_same_tier_order_independence_under_cap(self) -> None:
+        # With a tight cap, the admitted derived ticket must be the same
+        # regardless of the order the adapter returns same-tier relations.
+        # Forward order: blocks→zzz first, then blocks→aaa.
+        gw_fwd = FakeLinearGateway()
+        gw_fwd.add_issue(
+            make_issue(
+                issue_id="r1",
+                issue_key="T-1",
+                relations=[
+                    _rel("blocks", "zzz", "T-Z"),
+                    _rel("blocks", "aaa", "T-A"),
+                ],
+            )
+        )
+        # Reversed order: blocks→aaa first, then blocks→zzz.
+        gw_rev = FakeLinearGateway()
+        gw_rev.add_issue(
+            make_issue(
+                issue_id="r1",
+                issue_key="T-1",
+                relations=[
+                    _rel("blocks", "aaa", "T-A"),
+                    _rel("blocks", "zzz", "T-Z"),
+                ],
+            )
+        )
+
+        result_fwd = await build_reachable_graph(
+            roots={"r1": "T-1"},
+            dimensions=DEFAULT_DIMENSIONS,
+            max_tickets_per_root=2,
+            gateway=gw_fwd,
+        )
+        result_rev = await build_reachable_graph(
+            roots={"r1": "T-1"},
+            dimensions=DEFAULT_DIMENSIONS,
+            max_tickets_per_root=2,
+            gateway=gw_rev,
+        )
+
+        # Both orderings must produce identical reachable sets.
+        assert result_fwd.per_root_tickets["r1"] == result_rev.per_root_tickets["r1"]
+        # Deterministic sort by target_issue_id means "aaa" < "zzz" wins.
+        assert "aaa" in result_fwd.per_root_tickets["r1"]
+        assert "zzz" not in result_fwd.per_root_tickets["r1"]
 
     async def test_all_tiers_included_when_cap_not_hit(self) -> None:
         # When cap is not a constraint, all three tiers contribute.
@@ -641,10 +741,10 @@ class TestTicketRefFn:
             ticket_ref_fn=tracking_refs,
         )
 
-        # Only r1 (depth 0) should trigger ticket_ref expansion.
-        for call in call_log:
-            assert "d1" not in call or "e1" not in result.tickets
-
+        # ticket_ref_fn must have been called exactly once, at depth 0 with
+        # only r1.  It must not be called again at depth 1 for d1.
+        assert len(call_log) == 1
+        assert call_log[0] == ["r1"]
         assert "e1" not in result.tickets
 
 
