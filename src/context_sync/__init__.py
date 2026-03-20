@@ -83,6 +83,12 @@ from context_sync._models import DiffEntry, DiffResult, SyncError, SyncResult
 from context_sync._renderer import render_ticket_file
 from context_sync._signatures import compute_comments_signature, compute_relations_signature
 from context_sync._sync import ContextSync
+from context_sync._traversal import (
+    TicketRefProvider,
+    TraversalResult,
+    TraversedTicket,
+    build_reachable_graph,
+)
 from context_sync.version import __version__ as __version__
 
 # Prevent the 'version' submodule from appearing as a public attribute.
@@ -155,6 +161,11 @@ __all__ = [
     "TRAVERSAL_TIERS",
     "Dimension",
     "resolve_dimensions",
+    # Traversal
+    "TicketRefProvider",
+    "TraversalResult",
+    "TraversedTicket",
+    "build_reachable_graph",
     # Version
     "__version__",
 ]

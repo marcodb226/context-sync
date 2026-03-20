@@ -167,6 +167,19 @@ class TestPublicImports:
         for fn in (atomic_write, write_and_verify_ticket):
             assert callable(fn)
 
+    def test_traversal_types(self) -> None:
+        from context_sync import (
+            TicketRefProvider,
+            TraversalResult,
+            TraversedTicket,
+            build_reachable_graph,
+        )
+
+        assert TicketRefProvider is not None
+        assert TraversedTicket is not None
+        assert TraversalResult is not None
+        assert callable(build_reachable_graph)
+
     def test_version(self) -> None:
         from context_sync import __version__
 
