@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 # ---------------------------------------------------------------------------
 # Gateway data types
@@ -295,6 +295,7 @@ class RefreshThreadMeta:
 # ---------------------------------------------------------------------------
 
 
+@runtime_checkable
 class LinearGateway(Protocol):
     """
     Contract for the subset of Linear operations that context-sync requires.

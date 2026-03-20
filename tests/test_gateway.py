@@ -186,11 +186,11 @@ class TestMakeIssue:
 
 
 class TestFakeLinearGatewayProtocol:
-    """The fake must satisfy the LinearGateway protocol structurally."""
+    """The fake must satisfy the LinearGateway protocol at runtime."""
 
     def test_satisfies_protocol(self) -> None:
-        gw: LinearGateway = FakeLinearGateway()
-        assert gw is not None  # structural check passed at type level
+        gw = FakeLinearGateway()
+        assert isinstance(gw, LinearGateway)
 
 
 class TestFakeLinearGatewayFetchIssue:
@@ -205,6 +205,21 @@ class TestFakeLinearGatewayFetchIssue:
     async def test_fetch_missing_raises(self, fake_gateway: FakeLinearGateway) -> None:
         with pytest.raises(RootNotFoundError):
             await fake_gateway.fetch_issue("MISSING-1")
+
+    async def test_fetch_hidden_raises(self) -> None:
+        gw = FakeLinearGateway()
+        gw.add_issue(make_issue(issue_id="uid-vis"))
+        gw.hide_issue("uid-vis")
+        with pytest.raises(RootNotFoundError):
+            await gw.fetch_issue("uid-vis")
+
+    async def test_unhide_restores_fetch(self) -> None:
+        gw = FakeLinearGateway()
+        gw.add_issue(make_issue(issue_id="uid-vis", issue_key="VIS-1"))
+        gw.hide_issue("uid-vis")
+        gw.unhide_issue("uid-vis")
+        bundle = await gw.fetch_issue("uid-vis")
+        assert bundle.issue.issue_key == "VIS-1"
 
 
 class TestFakeLinearGatewayWorkspace:
@@ -265,6 +280,66 @@ class TestFakeLinearGatewayRefreshMeta:
         assert comments[0].updated_at == "2026-01-02T00:00:00Z"
         assert len(threads) == 1
         assert threads[0].resolved is True
+
+    async def test_hidden_issue_metadata_visible_false(self) -> None:
+        gw = FakeLinearGateway()
+        gw.add_issue(make_issue(issue_id="uid-h", issue_key="HIDE-1"))
+        gw.hide_issue("uid-h")
+        result = await gw.get_refresh_issue_metadata(["uid-h"])
+        assert "uid-h" in result
+        assert result["uid-h"].visible is False
+        assert result["uid-h"].issue_key == "HIDE-1"
+
+    async def test_unhidden_issue_metadata_visible_true(self) -> None:
+        gw = FakeLinearGateway()
+        gw.add_issue(make_issue(issue_id="uid-h"))
+        gw.hide_issue("uid-h")
+        gw.unhide_issue("uid-h")
+        result = await gw.get_refresh_issue_metadata(["uid-h"])
+        assert result["uid-h"].visible is True
+
+    async def test_nested_reply_root_comment_id(self) -> None:
+        """root_comment_id must resolve to the thread root, not the direct parent."""
+        root_comment = CommentData(
+            "c-root",
+            "root body",
+            "alice",
+            "2026-01-01T00:00:00Z",
+            None,
+            None,
+        )
+        reply = CommentData(
+            "c-reply",
+            "reply body",
+            "bob",
+            "2026-01-01T01:00:00Z",
+            None,
+            "c-root",
+        )
+        nested_reply = CommentData(
+            "c-nested",
+            "nested body",
+            "carol",
+            "2026-01-01T02:00:00Z",
+            None,
+            "c-reply",
+        )
+        thread = ThreadData("c-root", resolved=False)
+        gw = FakeLinearGateway()
+        gw.add_issue(
+            make_issue(
+                issue_id="uid-t",
+                comments=[root_comment, reply, nested_reply],
+                threads=[thread],
+            )
+        )
+        result = await gw.get_refresh_comment_metadata(["uid-t"])
+        comments, _threads = result["uid-t"]
+        by_id = {c.comment_id: c for c in comments}
+        # All three should resolve to the same thread root.
+        assert by_id["c-root"].root_comment_id == "c-root"
+        assert by_id["c-reply"].root_comment_id == "c-root"
+        assert by_id["c-nested"].root_comment_id == "c-root"
 
     async def test_relation_metadata_delegates(self, populated_gateway: FakeLinearGateway) -> None:
         result = await populated_gateway.get_refresh_relation_metadata(["uuid-1"])

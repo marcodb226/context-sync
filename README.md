@@ -52,7 +52,7 @@ source scripts/.linear_env.sh
 [`scripts/.linear_env.sh.sample`](scripts/.linear_env.sh.sample), then source
 it into the same shell session you will use for Linear-dependent commands.
 That satisfies the credential/bootstrap side of
-[`M1-O1`](docs/planning/implementation-plan.md#m1-o1---live-linear-validation-environment-available);
+[`M1-O1`](docs/implementation-plan.md#m1-o1---live-linear-validation-environment-available);
 the remaining prerequisite is having `linear-client` installed in the repo-local
 `.venv`.
 

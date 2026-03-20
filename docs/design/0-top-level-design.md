@@ -24,13 +24,14 @@ syncer = ContextSync(
         "relates_to": 1,
         "ticket_ref": 1,
     },
+    max_tickets_per_root=200,  # constructor default; overridable per-call
 )
 
 class ContextSync:
     async def sync(
         self,
         root_ticket_id: str,
-        max_tickets_per_root: int = 200,
+        max_tickets_per_root: int | None = None,
         dimensions: dict[str, int] | None = None,
     ) -> SyncResult: ...
 
