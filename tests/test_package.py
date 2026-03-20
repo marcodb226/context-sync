@@ -113,6 +113,60 @@ class TestPublicImports:
         assert Dimension is not None
         assert callable(resolve_dimensions)
 
+    def test_manifest_types(self) -> None:
+        from context_sync import (
+            MANIFEST_FILENAME,
+            Manifest,
+            ManifestRootEntry,
+            ManifestSnapshot,
+            ManifestTicketEntry,
+            initialize_manifest,
+            load_manifest,
+            save_manifest,
+        )
+
+        for name in (
+            MANIFEST_FILENAME,
+            Manifest,
+            ManifestRootEntry,
+            ManifestSnapshot,
+            ManifestTicketEntry,
+        ):
+            assert name is not None
+        for fn in (initialize_manifest, load_manifest, save_manifest):
+            assert callable(fn)
+
+    def test_lock_types(self) -> None:
+        from context_sync import (
+            LOCK_FILENAME,
+            LockRecord,
+            acquire_lock,
+            inspect_lock,
+            is_lock_stale,
+            release_lock,
+        )
+
+        assert LOCK_FILENAME is not None
+        assert LockRecord is not None
+        for fn in (acquire_lock, inspect_lock, is_lock_stale, release_lock):
+            assert callable(fn)
+
+    def test_renderer_and_signatures(self) -> None:
+        from context_sync import (
+            compute_comments_signature,
+            compute_relations_signature,
+            render_ticket_file,
+        )
+
+        for fn in (render_ticket_file, compute_comments_signature, compute_relations_signature):
+            assert callable(fn)
+
+    def test_io_utilities(self) -> None:
+        from context_sync import atomic_write, write_and_verify_ticket
+
+        for fn in (atomic_write, write_and_verify_ticket):
+            assert callable(fn)
+
     def test_version(self) -> None:
         from context_sync import __version__
 

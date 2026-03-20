@@ -19,6 +19,7 @@ from pathlib import Path
 
 from context_sync._config import (
     DEFAULT_CONCURRENCY_LIMIT,
+    DEFAULT_DIMENSIONS,
     DEFAULT_MAX_TICKETS_PER_ROOT,
 )
 from context_sync._errors import RootNotFoundError
@@ -34,6 +35,8 @@ from context_sync._gateway import (
     TicketBundle,
     WorkspaceIdentity,
 )
+from context_sync._manifest import Manifest, ManifestSnapshot, initialize_manifest
+from context_sync._renderer import resolve_root_comment
 from context_sync._sync import ContextSync
 
 # ---------------------------------------------------------------------------
@@ -217,7 +220,7 @@ class FakeLinearGateway:
             comment_metas = [
                 RefreshCommentMeta(
                     comment_id=c.comment_id,
-                    root_comment_id=_resolve_root_comment(c.comment_id, parent_map),
+                    root_comment_id=resolve_root_comment(c.comment_id, parent_map),
                     parent_comment_id=c.parent_comment_id,
                     updated_at=c.updated_at,
                     deleted=False,
@@ -241,18 +244,34 @@ class FakeLinearGateway:
         return await self.get_ticket_relations(issue_ids)
 
 
-def _resolve_root_comment(comment_id: str, parent_map: dict[str, str | None]) -> str:
-    """Walk the parent chain to find the thread root comment."""
-    current = comment_id
-    seen: set[str] = set()
-    while True:
-        parent = parent_map.get(current)
-        if parent is None:
-            return current
-        if parent in seen:
-            return current  # cycle safety
-        seen.add(current)
-        current = parent
+# ---------------------------------------------------------------------------
+# Manifest factory for tests
+# ---------------------------------------------------------------------------
+
+
+def make_manifest(
+    *,
+    workspace: WorkspaceIdentity | None = None,
+    dimensions: dict[str, int] | None = None,
+    max_tickets_per_root: int = 200,
+    snapshot: ManifestSnapshot | None = None,
+) -> Manifest:
+    """
+    Build a :class:`Manifest` with sensible defaults for testing.
+
+    Returns
+    -------
+    Manifest
+    """
+    ws = workspace or DEFAULT_FAKE_WORKSPACE
+    m = initialize_manifest(
+        workspace=ws,
+        dimensions=dimensions or dict(DEFAULT_DIMENSIONS),
+        max_tickets_per_root=max_tickets_per_root,
+    )
+    if snapshot is not None:
+        m = m.model_copy(update={"snapshot": snapshot})
+    return m
 
 
 # ---------------------------------------------------------------------------

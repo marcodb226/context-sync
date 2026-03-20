@@ -9,6 +9,7 @@ description = "Deterministic Linear ticket neighborhood snapshots for agents and
 requires-python = ">=3.13"
 dependencies = [
     "pydantic>=2.0",
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]

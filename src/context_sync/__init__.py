@@ -60,7 +60,28 @@ from context_sync._gateway import (
     TicketBundle,
     WorkspaceIdentity,
 )
+from context_sync._io import atomic_write, write_and_verify_ticket
+from context_sync._lock import (
+    LOCK_FILENAME,
+    LockRecord,
+    acquire_lock,
+    inspect_lock,
+    is_lock_stale,
+    release_lock,
+)
+from context_sync._manifest import (
+    MANIFEST_FILENAME,
+    Manifest,
+    ManifestRootEntry,
+    ManifestSnapshot,
+    ManifestTicketEntry,
+    initialize_manifest,
+    load_manifest,
+    save_manifest,
+)
 from context_sync._models import DiffEntry, DiffResult, SyncError, SyncResult
+from context_sync._renderer import render_ticket_file
+from context_sync._signatures import compute_comments_signature, compute_relations_signature
 from context_sync._sync import ContextSync
 from context_sync.version import __version__ as __version__
 
@@ -99,6 +120,30 @@ __all__ = [
     "ThreadData",
     "TicketBundle",
     "WorkspaceIdentity",
+    # Manifest
+    "MANIFEST_FILENAME",
+    "Manifest",
+    "ManifestRootEntry",
+    "ManifestSnapshot",
+    "ManifestTicketEntry",
+    "initialize_manifest",
+    "load_manifest",
+    "save_manifest",
+    # Lock
+    "LOCK_FILENAME",
+    "LockRecord",
+    "acquire_lock",
+    "inspect_lock",
+    "is_lock_stale",
+    "release_lock",
+    # Renderer
+    "render_ticket_file",
+    # Signatures
+    "compute_comments_signature",
+    "compute_relations_signature",
+    # I/O
+    "atomic_write",
+    "write_and_verify_ticket",
     # Config
     "DEFAULT_CONCURRENCY_LIMIT",
     "DEFAULT_DIMENSIONS",

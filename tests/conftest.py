@@ -2,9 +2,19 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from context_sync._testing import FakeLinearGateway, make_issue
+
+
+@pytest.fixture()
+def context_dir(tmp_path: Path) -> Path:
+    """A temporary context directory for manifest/lock/ticket tests."""
+    d = tmp_path / "context"
+    d.mkdir()
+    return d
 
 
 @pytest.fixture()
