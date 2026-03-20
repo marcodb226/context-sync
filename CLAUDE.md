@@ -148,6 +148,15 @@ For those requests, the agent must:
 - follow the required review-file format from `docs/policies/common/execution-model.md`
 - treat the repository review artifact as mandatory, not optional
 
+Requests for a second review, rereview, or other additional review pass are
+also valid review requests. Across planning review, design review, and
+implementation review workflows, multiple independent review passes are allowed
+and encouraged when another reviewer can add perspective or when the reviewed
+artifact changed materially. Unless the governing planning or execution policy
+documents a different workflow, update the existing matching review artifact
+and append the new review pass rather than refusing the request because a prior
+review already exists.
+
 If the user also asks for chat-only feedback or says not to edit files, that conflicts with the
 Phase B review contract. In that case, do not silently choose one path. Stop and ask the user
 which mode they want:
