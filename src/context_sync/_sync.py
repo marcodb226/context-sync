@@ -29,7 +29,8 @@ logger = logging.getLogger(__name__)
 
 
 class ContextSync:
-    """Deterministic Linear ticket-neighborhood snapshot manager.
+    """
+    Deterministic Linear ticket-neighborhood snapshot manager.
 
     The caller provides an authenticated ``linear-client`` ``Linear`` instance
     (or, for testing, a ``LinearGateway`` via ``_gateway_override``), a target
@@ -85,23 +86,17 @@ class ContextSync:
             self._linear = linear
             self._gateway = None  # type: ignore[assignment]
         else:
-            raise ContextSyncError(
-                "Either 'linear' or '_gateway_override' must be provided."
-            )
+            raise ContextSyncError("Either 'linear' or '_gateway_override' must be provided.")
 
         self._context_dir = Path(context_dir)
         self._dimensions = resolve_dimensions(dimensions)
 
         if max_tickets_per_root < 1:
-            raise ValueError(
-                f"max_tickets_per_root must be positive, got {max_tickets_per_root}"
-            )
+            raise ValueError(f"max_tickets_per_root must be positive, got {max_tickets_per_root}")
         self._max_tickets_per_root = max_tickets_per_root
 
         if concurrency_limit < 1:
-            raise ValueError(
-                f"concurrency_limit must be positive, got {concurrency_limit}"
-            )
+            raise ValueError(f"concurrency_limit must be positive, got {concurrency_limit}")
         self._concurrency_limit = concurrency_limit
         self._semaphore = asyncio.Semaphore(concurrency_limit)
 
@@ -143,7 +138,8 @@ class ContextSync:
         max_tickets_per_root: int | None = None,
         dimensions: dict[str, int] | None = None,
     ) -> SyncResult:
-        """Full-snapshot rebuild from *root_ticket_id* and all existing roots.
+        """
+        Full-snapshot rebuild from *root_ticket_id* and all existing roots.
 
         Parameters
         ----------
@@ -165,7 +161,8 @@ class ContextSync:
         self,
         missing_root_policy: Literal["quarantine", "remove"] = "quarantine",
     ) -> SyncResult:
-        """Incremental whole-snapshot update from all existing roots.
+        """
+        Incremental whole-snapshot update from all existing roots.
 
         Parameters
         ----------
@@ -181,7 +178,8 @@ class ContextSync:
         raise NotImplementedError("refresh will be implemented by M3-1")
 
     async def add(self, ticket_ref: str) -> SyncResult:
-        """Add a new root and run whole-snapshot refresh.
+        """
+        Add a new root and run whole-snapshot refresh.
 
         Parameters
         ----------
@@ -195,7 +193,8 @@ class ContextSync:
         raise NotImplementedError("add will be implemented by M3-2")
 
     async def remove_root(self, ticket_ref: str) -> SyncResult:
-        """Remove a root and run whole-snapshot refresh.
+        """
+        Remove a root and run whole-snapshot refresh.
 
         Parameters
         ----------
@@ -209,7 +208,8 @@ class ContextSync:
         raise NotImplementedError("remove_root will be implemented by M3-2")
 
     async def diff(self) -> DiffResult:
-        """Compare local snapshot to live Linear state without modifying files.
+        """
+        Compare local snapshot to live Linear state without modifying files.
 
         Returns
         -------

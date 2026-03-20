@@ -17,7 +17,8 @@ from enum import StrEnum
 
 
 class Dimension(StrEnum):
-    """Built-in graph-traversal dimension names.
+    """
+    Built-in graph-traversal dimension names.
 
     Each dimension corresponds to one relationship type that the traversal
     engine can follow.  Depths are configured per-dimension and measured as
@@ -75,7 +76,8 @@ DEFAULT_MAX_TICKETS_PER_ROOT: int = 200
 """Default per-root ticket cap (ADR §1.1, §1.3)."""
 
 DEFAULT_CONCURRENCY_LIMIT: int = 10
-"""Default asyncio.Semaphore limit for concurrent ticket fetches (ADR §3.1).
+"""
+Default asyncio.Semaphore limit for concurrent ticket fetches (ADR §3.1).
 
 This is a per-process control.  Cross-process rate-limit coordination is
 explicitly out of scope for the first release.
@@ -86,7 +88,8 @@ FORMAT_VERSION: int = 1
 
 
 def resolve_dimensions(overrides: dict[str, int] | None) -> dict[str, int]:
-    """Return a validated dimension-depth mapping.
+    """
+    Return a validated dimension-depth mapping.
 
     Parameters
     ----------
@@ -120,9 +123,7 @@ def resolve_dimensions(overrides: dict[str, int] | None) -> dict[str, int]:
 
     for name, depth in overrides.items():
         if depth < 0:
-            raise ValueError(
-                f"Dimension depth must be non-negative, got {name}={depth}"
-            )
+            raise ValueError(f"Dimension depth must be non-negative, got {name}={depth}")
 
     merged = dict(DEFAULT_DIMENSIONS)
     merged.update(overrides)

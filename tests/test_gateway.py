@@ -208,15 +208,11 @@ class TestFakeLinearGatewayFetchIssue:
 
 
 class TestFakeLinearGatewayWorkspace:
-    async def test_workspace_identity(
-        self, populated_gateway: FakeLinearGateway
-    ) -> None:
+    async def test_workspace_identity(self, populated_gateway: FakeLinearGateway) -> None:
         ws = await populated_gateway.get_workspace_identity("uuid-1")
         assert ws == DEFAULT_FAKE_WORKSPACE
 
-    async def test_workspace_missing_raises(
-        self, fake_gateway: FakeLinearGateway
-    ) -> None:
+    async def test_workspace_missing_raises(self, fake_gateway: FakeLinearGateway) -> None:
         with pytest.raises(RootNotFoundError):
             await fake_gateway.get_workspace_identity("missing")
 
@@ -237,18 +233,14 @@ class TestFakeLinearGatewayRelations:
         assert len(result["uid-src"]) == 1
         assert result["uid-src"][0].target_issue_key == "TARGET-1"
 
-    async def test_missing_issues_omitted(
-        self, fake_gateway: FakeLinearGateway
-    ) -> None:
+    async def test_missing_issues_omitted(self, fake_gateway: FakeLinearGateway) -> None:
         result = await fake_gateway.get_ticket_relations(["no-such-id"])
         assert "no-such-id" not in result
 
 
 class TestFakeLinearGatewayRefreshMeta:
     async def test_issue_metadata(self, populated_gateway: FakeLinearGateway) -> None:
-        result = await populated_gateway.get_refresh_issue_metadata(
-            ["uuid-1", "uuid-2"]
-        )
+        result = await populated_gateway.get_refresh_issue_metadata(["uuid-1", "uuid-2"])
         assert "uuid-1" in result
         assert result["uuid-1"].visible is True
         assert result["uuid-1"].issue_key == "TEST-1"
@@ -274,8 +266,6 @@ class TestFakeLinearGatewayRefreshMeta:
         assert len(threads) == 1
         assert threads[0].resolved is True
 
-    async def test_relation_metadata_delegates(
-        self, populated_gateway: FakeLinearGateway
-    ) -> None:
+    async def test_relation_metadata_delegates(self, populated_gateway: FakeLinearGateway) -> None:
         result = await populated_gateway.get_refresh_relation_metadata(["uuid-1"])
         assert result["uuid-1"] == []

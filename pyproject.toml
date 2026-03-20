@@ -28,10 +28,64 @@ where = ["src"]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 
+# Ruff is the repository's single lint/format tool per the coding guidelines.
+# Keep the configuration here so packaging metadata and lint policy live together.
 [tool.ruff]
+# The project requires Python 3.13+, so lint/format against the minimum supported runtime.
 target-version = "py313"
-line-length = 88
+# Use a 100-column width to balance readability with the project's verbose
+# docstrings, GraphQL literals, and CLI help text.
+line-length = 100
+# Treat application code and tests as first-party code.
 src = ["src", "tests"]
+# Skip generated artifacts and local virtualenvs.
+extend-exclude = [
+  ".venv*",
+  "dist",
+]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "W", "UP"]
+select = [
+  "ANN",   # required type annotations
+  "ASYNC", # async-first safety checks
+  "B",     # likely bug patterns
+  "D",     # docstring and documentation enforcement
+  "E",     # pycodestyle errors
+  "F",     # pyflakes correctness checks
+  "I",     # import sorting
+  "N",     # conventional naming improves readability and consistency
+  # "SIM", # keep off for now: some simplifications reduce repetition, but others
+           # push toward terser rewrites that can conflict with the repo's
+           # readability-over-cleverness guideline
+  "UP",    # safe modern Python syntax upgrades
+  "W",     # pycodestyle warnings
+]
+ignore = [
+  # Allow explicit Any-like interface points when needed; the guideline requires
+  # annotations, but does not ban typing.Any itself.
+  "ANN401",
+  # The repository's docstrings commonly transition straight from the summary to
+  # structured sections like Args/Returns without an empty spacer line.
+  "D205",
+  # Use the blank-line convention that matches the repo's preferred docstring layout.
+  "D203",
+  # Do not require a blank line before the closing quotes after the final
+  # docstring section; keep the closing `"""` directly after the last content line.
+  "D413",
+  # Keep multi-line docstring summaries on the first content line, which matches
+  # the repository guideline that line 1 is just the opening triple quotes.
+  "D212",
+  # Do not force imperative-mood summaries; the project guideline asks for clarity,
+  # not this specific phrasing rule.
+  "D401",
+]
+
+[tool.ruff.lint.isort]
+# Import sorting should recognize the package under src/ as first-party.
+known-first-party = ["context_sync"]
+
+[tool.ruff.lint.per-file-ignores]
+# Test methods and test classes communicate intent through descriptive names and
+# inline comments, not through per-method or per-class docstrings.  Constructor
+# docstrings on test doubles add noise.
+"tests/**/*.py" = ["D101", "D102", "D107"]

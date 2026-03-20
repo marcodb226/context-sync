@@ -24,7 +24,8 @@ class LockError(ContextSyncError):
 
 
 class ActiveLockError(LockError):
-    """A non-stale writer lock is held by another process.
+    """
+    A non-stale writer lock is held by another process.
 
     The caller should not wait indefinitely; fail fast and let the operator
     decide when to retry.
@@ -32,7 +33,8 @@ class ActiveLockError(LockError):
 
 
 class StaleLockError(LockError):
-    """Lock staleness cannot be determined safely.
+    """
+    Lock staleness cannot be determined safely.
 
     The tool can neither prove the recorded writer is gone nor confirm it is
     still running.  Failing explicitly avoids guessing.
@@ -40,7 +42,8 @@ class StaleLockError(LockError):
 
 
 class DiffLockError(LockError):
-    """``diff`` detected a lock that is not demonstrably stale.
+    """
+    ``diff`` detected a lock that is not demonstrably stale.
 
     Running ``diff`` now would compete with the mutating run for rate-limited
     Linear API calls and could delay the write.  Retry after the lock clears.
@@ -57,8 +60,8 @@ class WorkspaceMismatchError(ContextSyncError):
 
 
 class RootNotFoundError(ContextSyncError):
-    """An explicitly requested root ticket is not available in the current
-    visible view.
+    """
+    An explicitly requested root ticket is not available in the current visible view.
 
     This is terminal for ``sync`` and ``add`` — there is no meaningful partial
     result without the requested root.
@@ -75,7 +78,8 @@ class RootNotInManifestError(ContextSyncError):
 
 
 class SystemicRemoteError(ContextSyncError):
-    """Whole-system remote failure that is terminal for the current run.
+    """
+    Whole-system remote failure that is terminal for the current run.
 
     Covers lost authentication, lost network access, workspace access loss,
     and retry-exhausted upstream ``5xx`` failures reported by
@@ -89,7 +93,8 @@ class SystemicRemoteError(ContextSyncError):
 
 
 class WriteError(ContextSyncError):
-    """Local file-write failure.
+    """
+    Local file-write failure.
 
     Terminal because it breaks the integrity of the local snapshot.
     """

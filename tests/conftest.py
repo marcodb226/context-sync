@@ -1,6 +1,4 @@
-"""
-Shared pytest fixtures for the context-sync test suite.
-"""
+"""Shared pytest fixtures for the context-sync test suite."""
 
 from __future__ import annotations
 

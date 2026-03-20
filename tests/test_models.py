@@ -1,6 +1,4 @@
-"""
-Tests for public result and error model contracts.
-"""
+"""Tests for public result and error model contracts."""
 
 from __future__ import annotations
 

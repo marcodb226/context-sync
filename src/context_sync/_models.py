@@ -14,7 +14,8 @@ from dataclasses import dataclass, field
 
 @dataclass(frozen=True)
 class SyncError:
-    """A single ticket-scoped error encountered during a mutating operation.
+    """
+    A single ticket-scoped error encountered during a mutating operation.
 
     Attributes
     ----------
@@ -37,7 +38,8 @@ class SyncError:
 
 @dataclass(frozen=True)
 class SyncResult:
-    """Outcome of a ``sync``, ``refresh``, ``add``, or ``remove_root`` call.
+    """
+    Outcome of a ``sync``, ``refresh``, ``add``, or ``remove_root`` call.
 
     Each list contains current issue keys.  The sets are disjoint: a ticket
     appears in exactly one of *created*, *updated*, *unchanged*, or *removed*.
@@ -67,7 +69,8 @@ class SyncResult:
 
 @dataclass(frozen=True)
 class DiffEntry:
-    """Drift status for one tracked ticket in ``diff`` mode.
+    """
+    Drift status for one tracked ticket in ``diff`` mode.
 
     Attributes
     ----------
@@ -88,7 +91,8 @@ class DiffEntry:
 
 @dataclass(frozen=True)
 class DiffResult:
-    """Outcome of a ``diff`` call.
+    """
+    Outcome of a ``diff`` call.
 
     Attributes
     ----------

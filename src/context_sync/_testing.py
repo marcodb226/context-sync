@@ -71,7 +71,8 @@ def make_issue(
     attachments: list[AttachmentData] | None = None,
     relations: list[RelationData] | None = None,
 ) -> TicketBundle:
-    """Build a :class:`TicketBundle` with sensible defaults.
+    """
+    Build a :class:`TicketBundle` with sensible defaults.
 
     Callers only need to supply the fields relevant to their test scenario;
     everything else gets a safe default.  This is the canonical fixture
@@ -112,7 +113,8 @@ def make_issue(
 
 
 class FakeLinearGateway:
-    """In-memory :class:`LinearGateway` for testing without live Linear access.
+    """
+    In-memory :class:`LinearGateway` for testing without live Linear access.
 
     Pre-load issues with :meth:`add_issue`, then pass this gateway to
     :func:`make_syncer` or directly to ``ContextSync(...,
@@ -127,7 +129,8 @@ class FakeLinearGateway:
         self._key_index: dict[str, str] = {}  # issue_key → issue UUID
 
     def add_issue(self, bundle: TicketBundle) -> None:
-        """Register a :class:`TicketBundle` for later lookup.
+        """
+        Register a :class:`TicketBundle` for later lookup.
 
         Parameters
         ----------
@@ -196,9 +199,7 @@ class FakeLinearGateway:
                 RefreshCommentMeta(
                     comment_id=c.comment_id,
                     root_comment_id=(
-                        c.parent_comment_id
-                        if c.parent_comment_id is not None
-                        else c.comment_id
+                        c.parent_comment_id if c.parent_comment_id is not None else c.comment_id
                     ),
                     parent_comment_id=c.parent_comment_id,
                     updated_at=c.updated_at,
@@ -236,7 +237,8 @@ def make_syncer(
     max_tickets_per_root: int = DEFAULT_MAX_TICKETS_PER_ROOT,
     concurrency_limit: int = DEFAULT_CONCURRENCY_LIMIT,
 ) -> ContextSync:
-    """Create a :class:`ContextSync` backed by a :class:`FakeLinearGateway`.
+    """
+    Create a :class:`ContextSync` backed by a :class:`FakeLinearGateway`.
 
     This is the canonical factory for integration tests.  Later tickets should
     use this rather than constructing ``ContextSync`` directly in test code.

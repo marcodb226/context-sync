@@ -37,7 +37,8 @@ from typing import Protocol
 
 @dataclass(frozen=True)
 class WorkspaceIdentity:
-    """Stable workspace identity for manifest binding.
+    """
+    Stable workspace identity for manifest binding.
 
     Attributes
     ----------
@@ -53,7 +54,8 @@ class WorkspaceIdentity:
 
 @dataclass(frozen=True)
 class IssueData:
-    """Core issue scalar fields needed for rendering and traversal.
+    """
+    Core issue scalar fields needed for rendering and traversal.
 
     Attributes
     ----------
@@ -104,7 +106,8 @@ class IssueData:
 
 @dataclass(frozen=True)
 class CommentData:
-    """A single comment from a ticket.
+    """
+    A single comment from a ticket.
 
     Attributes
     ----------
@@ -134,7 +137,8 @@ class CommentData:
 
 @dataclass(frozen=True)
 class ThreadData:
-    """Thread-level metadata.
+    """
+    Thread-level metadata.
 
     Attributes
     ----------
@@ -150,7 +154,8 @@ class ThreadData:
 
 @dataclass(frozen=True)
 class AttachmentData:
-    """Attachment metadata (content not downloaded in v1).
+    """
+    Attachment metadata (content not downloaded in v1).
 
     Attributes
     ----------
@@ -175,7 +180,8 @@ class AttachmentData:
 
 @dataclass(frozen=True)
 class RelationData:
-    """A single issue-relation edge.
+    """
+    A single issue-relation edge.
 
     Attributes
     ----------
@@ -197,7 +203,8 @@ class RelationData:
 
 @dataclass(frozen=True)
 class TicketBundle:
-    """All data needed to render and persist one ticket file.
+    """
+    All data needed to render and persist one ticket file.
 
     Assembled by the gateway from domain-layer and adapter-helper results
     so that downstream rendering code receives a single coherent object.
@@ -218,7 +225,8 @@ class TicketBundle:
 
 @dataclass(frozen=True)
 class RefreshIssueMeta:
-    """Minimal issue metadata for the composite freshness check.
+    """
+    Minimal issue metadata for the composite freshness check.
 
     Attributes
     ----------
@@ -240,7 +248,8 @@ class RefreshIssueMeta:
 
 @dataclass(frozen=True)
 class RefreshCommentMeta:
-    """Per-comment metadata for ``comments_signature`` computation.
+    """
+    Per-comment metadata for ``comments_signature`` computation.
 
     Attributes
     ----------
@@ -266,7 +275,8 @@ class RefreshCommentMeta:
 
 @dataclass(frozen=True)
 class RefreshThreadMeta:
-    """Per-thread metadata for ``comments_signature`` computation.
+    """
+    Per-thread metadata for ``comments_signature`` computation.
 
     Attributes
     ----------
@@ -286,7 +296,8 @@ class RefreshThreadMeta:
 
 
 class LinearGateway(Protocol):
-    """Contract for the subset of Linear operations that context-sync requires.
+    """
+    Contract for the subset of Linear operations that context-sync requires.
 
     The six methods below correspond to the narrow adapter helpers defined in
     `docs/design/linear-domain-coverage-audit.md
@@ -308,7 +319,8 @@ class LinearGateway(Protocol):
     """
 
     async def fetch_issue(self, issue_id_or_key: str) -> TicketBundle:
-        """Fetch a complete ticket bundle for a single issue.
+        """
+        Fetch a complete ticket bundle for a single issue.
 
         Returns all data needed to render and persist one ticket file,
         including scalar fields, comments, attachments, and relations.
@@ -322,17 +334,17 @@ class LinearGateway(Protocol):
         ...
 
     async def get_workspace_identity(self, issue_id: str) -> WorkspaceIdentity:
-        """Read stable workspace identity for manifest validation.
+        """
+        Read stable workspace identity for manifest validation.
 
         Used by ``sync`` and ``add`` to verify that a root ticket belongs to
         the same workspace as the context directory.
         """
         ...
 
-    async def get_ticket_relations(
-        self, issue_ids: Sequence[str]
-    ) -> dict[str, list[RelationData]]:
-        """Batch-read issue relations for traversal and rendered frontmatter.
+    async def get_ticket_relations(self, issue_ids: Sequence[str]) -> dict[str, list[RelationData]]:
+        """
+        Batch-read issue relations for traversal and rendered frontmatter.
 
         Returns a mapping from issue UUID to that issue's outgoing relation
         edges.  Issues that are not visible or have no relations may be
@@ -343,7 +355,8 @@ class LinearGateway(Protocol):
     async def get_refresh_issue_metadata(
         self, issue_ids: Sequence[str]
     ) -> dict[str, RefreshIssueMeta]:
-        """Batch-read issue identity + ``updated_at`` for freshness checks.
+        """
+        Batch-read issue identity + ``updated_at`` for freshness checks.
 
         Returns a mapping from issue UUID to issue-level metadata.  Issues
         not visible in the current view should still appear with
@@ -354,7 +367,8 @@ class LinearGateway(Protocol):
     async def get_refresh_comment_metadata(
         self, issue_ids: Sequence[str]
     ) -> dict[str, tuple[list[RefreshCommentMeta], list[RefreshThreadMeta]]]:
-        """Batch-read comment/thread metadata for ``comments_signature``.
+        """
+        Batch-read comment/thread metadata for ``comments_signature``.
 
         Returns a mapping from issue UUID to a ``(comments, threads)`` pair
         containing the per-comment and per-thread metadata needed to compute
@@ -366,7 +380,8 @@ class LinearGateway(Protocol):
     async def get_refresh_relation_metadata(
         self, issue_ids: Sequence[str]
     ) -> dict[str, list[RelationData]]:
-        """Batch-read relation metadata for ``relations_signature``.
+        """
+        Batch-read relation metadata for ``relations_signature``.
 
         Returns a mapping from issue UUID to relation edges, in the same
         shape as :meth:`get_ticket_relations`.  The implementation may

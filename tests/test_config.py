@@ -1,6 +1,4 @@
-"""
-Tests for configuration parsing, dimension validation, and runtime defaults.
-"""
+"""Tests for configuration parsing, dimension validation, and runtime defaults."""
 
 from __future__ import annotations
 
