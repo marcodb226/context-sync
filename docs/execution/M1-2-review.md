@@ -50,3 +50,85 @@
 - This review used repository artifacts, local code inspection, review-time
   probes, and the declared lint/format/test commands. No live Linear calls
   were needed or attempted.
+
+---
+
+## Second Review Pass
+
+### Findings (continued)
+
+| ID | Severity | Status | Area | Finding | Evidence | Impact | Recommendation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| M1-2-R5 | High | Todo | Locking | `release_lock()` removes the lock file unconditionally without verifying that the caller owns the lock. The function accepts only `context_dir` and has no mechanism to confirm that the current process or writer identity matches the lock record on disk. Any code path that erroneously calls `release_lock` — including crash-recovery handlers, error-handling fallbacks, or misuse by a second process — will silently delete another process's active lock. The design in [docs/adr.md §8](../adr.md#8-operating-guarantees) requires single-writer semantics for mutating operations, but the release primitive provides no ownership guard. | [src/context_sync/_lock.py:215-225](../../src/context_sync/_lock.py#L215-L225), [docs/adr.md:517](../adr.md#L517), [docs/design/0-top-level-design.md:170](../design/0-top-level-design.md#L170) | A process that did not acquire the lock can silently delete a valid active lock, breaking the single-writer contract. The consequence is potentially two concurrent writers modifying the context directory, which is the exact failure mode the lock subsystem exists to prevent. Because `release_lock` is a public API function exported in `__all__`, the risk surface includes any downstream caller. | Accept `writer_id` or the full `LockRecord` as a parameter, read and compare the on-disk lock record before unlinking, and raise an explicit error if the recorded writer does not match. Add a test that proves releasing with a non-matching writer identity is refused. |
+| M1-2-R6 | Medium | Todo | Error Domain | `parse_frontmatter()` in [src/context_sync/_yaml.py](../../src/context_sync/_yaml.py) always raises `ManifestError` for parsing failures. When called from `write_and_verify_ticket()` in [src/context_sync/_io.py](../../src/context_sync/_io.py) during ticket-file post-write verification, a corrupted or truncated frontmatter causes `ManifestError` to propagate to the caller instead of the documented `WriteError`. This leaks the manifest error domain into a code path whose contract promises only `WriteError`. | [src/context_sync/_yaml.py:136](../../src/context_sync/_yaml.py#L136), [src/context_sync/_yaml.py:145](../../src/context_sync/_yaml.py#L145), [src/context_sync/_io.py:120](../../src/context_sync/_io.py#L120), [src/context_sync/_io.py:111](../../src/context_sync/_io.py#L111) | Callers of `write_and_verify_ticket` that catch `WriteError` will not catch `ManifestError`, leading to an unhandled exception for what is functionally a write-verification failure. The coding guidelines require raising specific exception types that match the failure domain. | Either have `write_and_verify_ticket` catch `ManifestError` from `parse_frontmatter` and re-raise as `WriteError`, or make `parse_frontmatter` accept a configurable error class. The former is simpler and keeps `_yaml.py` unaware of the I/O domain. |
+| M1-2-R7 | Medium | Todo | Locking | `_atomic_create_lock()` writes directly to the target lock path via `O_CREAT \| O_EXCL` and does not clean up on partial-write failure. Unlike `atomic_write()`, which uses temp-file-then-rename for crash safety, the lock creation path leaves a partially written or empty lock file on disk if `os.write()` or `os.fsync()` raises after the file is created. A subsequent `acquire_lock()` call would find the corrupt file, `inspect_lock()` would raise `StaleLockError`, and the caller could not proceed without manual deletion. | [src/context_sync/_lock.py:263-275](../../src/context_sync/_lock.py#L263-L275), [src/context_sync/_lock.py:228-255](../../src/context_sync/_lock.py#L228-L255), [src/context_sync/_io.py:59-76](../../src/context_sync/_io.py#L59-L76) | A process crash or I/O error during lock creation leaves an orphaned corrupt lock file. The lock cannot be automatically preempted because `inspect_lock` raises `StaleLockError` for corrupt content, which `acquire_lock` propagates to the caller instead of treating as preemptable. Manual intervention is required to recover. | Add a `try/except` around the write+fsync in `_atomic_create_lock` that calls `os.unlink(path)` if writing fails after creation, mirroring the cleanup pattern in `atomic_write`. |
+| M1-2-R8 | Medium | Todo | Exception Handling | Both `load_manifest()` and `inspect_lock()` catch bare `except Exception` around `model_validate()` calls. This converts arbitrary programming errors — `TypeError`, `AttributeError`, recursion errors, or bugs inside Pydantic validators — into domain-specific errors (`ManifestError` or `StaleLockError`), masking the real failure. The Python coding guidelines state: "Catch only the exceptions you can handle. Never use bare `except:` or `except Exception:` as a catch-all without re-raising or logging with full context." While these catch blocks do re-raise with `from exc`, the converted error type conceals the root cause from the caller. | [src/context_sync/_manifest.py:188](../../src/context_sync/_manifest.py#L188), [src/context_sync/_lock.py:254](../../src/context_sync/_lock.py#L254) | A programming error in a Pydantic model or validator silently becomes an "invalid manifest" or "invalid lock schema" error. This delays diagnosis because the caller sees a data-corruption message when the real problem is a code bug. In a production setting, an operator would look at the manifest file for corruption rather than at the code. | Narrow both catch blocks to `except pydantic.ValidationError` (or the union of Pydantic validation exceptions) rather than bare `Exception`. |
+| M1-2-R9 | Medium | Todo | Testing | No test exercises the full render → write → verify pipeline. `test_io.py` uses hand-crafted content strings and marker lists, and `test_renderer.py` tests rendering in isolation without writing. The canonical verification helpers `expected_frontmatter_fields()` and `expected_markers()` from [src/context_sync/_renderer.py](../../src/context_sync/_renderer.py) are never used together with `write_and_verify_ticket()` in any test. | [tests/test_io.py:16-45](../../tests/test_io.py#L16-L45), [tests/test_renderer.py:28-43](../../tests/test_renderer.py#L28-L43), [src/context_sync/_renderer.py:81-107](../../src/context_sync/_renderer.py#L81-L107) | A regression in the renderer that changes marker format, frontmatter field names, or structural output would not be caught until later integration tickets wire the full pipeline. The render and verify contracts are tested in isolation but never validated together, so a drift between the renderer's actual output and the verification expectations would be invisible. | Add at least one integration test that calls `render_ticket_file()`, then `write_and_verify_ticket()` with the result from `expected_frontmatter_fields()` and `expected_markers()`, confirming the pipeline succeeds end-to-end. Also add a negative variant that mutates one rendered field and confirms verification catches it. |
+| M1-2-R10 | Medium | Todo | Locking | `acquire_lock()` has a TOCTOU window in the stale-lock preemption path. Between `inspect_lock()` returning a stale record (line 172) and `lock_path.unlink()` (line 195), a different process could independently preempt the same stale lock and create a valid new lock. The `unlink()` would then delete the new valid lock, and the subsequent `_atomic_create_lock` would succeed, effectively stealing a non-stale lock. The `O_CREAT \| O_EXCL` guard protects against two simultaneous creates but not against the delete-then-create sequence removing a concurrently acquired lock. | [src/context_sync/_lock.py:172-202](../../src/context_sync/_lock.py#L172-L202) | Two processes racing to preempt the same stale lock can result in one deleting the other's freshly acquired valid lock, silently violating the single-writer contract. While the window is small and requires precise timing, the consequence — two concurrent writers — is severe. | Before unlinking, re-read the lock file and verify the `writer_id` still matches the stale record observed by `inspect_lock`. If the record changed, treat it as a new lock and re-evaluate staleness instead of unlinking. This narrows the TOCTOU window substantially. |
+| M1-2-R11 | Low | Todo | Testing | All test methods in `TestSaveAndLoadManifest` and `TestManifestWithData` in [tests/test_manifest.py](../../tests/test_manifest.py) annotate the `tmp_path` fixture as `object` and then cast via `Path(str(tmp_path))`. Pytest's `tmp_path` fixture already provides a `pathlib.Path` instance. The wrong type annotation and unnecessary cast add noise to seven test methods, redundantly import `Path` inside each method body, and mislead static analysis tools. | [tests/test_manifest.py:158](../../tests/test_manifest.py#L158), [tests/test_manifest.py:167](../../tests/test_manifest.py#L167), [tests/test_manifest.py:176](../../tests/test_manifest.py#L176), [tests/test_manifest.py:189](../../tests/test_manifest.py#L189), [tests/test_manifest.py:196](../../tests/test_manifest.py#L196), [tests/test_manifest.py:212](../../tests/test_manifest.py#L212), [tests/test_manifest.py:236](../../tests/test_manifest.py#L236) | Static analysis and IDE tooling will not detect type errors when `tmp_path` is used as a `Path`. No runtime bug, but the pattern invites copy-paste into future test files. | Annotate as `tmp_path: Path`, remove the in-method `from pathlib import Path` lines, and use `tmp_path` directly instead of `Path(str(tmp_path))`. |
+| M1-2-R12 | Low | Todo | DRY | `save_manifest()` calls `strip_empty(data)` before passing the result to `dump_yaml()`, but `dump_yaml()` already calls `strip_empty()` internally as its first operation. The outer call is redundant. | [src/context_sync/_manifest.py:201](../../src/context_sync/_manifest.py#L201), [src/context_sync/_yaml.py:84](../../src/context_sync/_yaml.py#L84) | No functional impact — the result is correct. The redundant call is a minor DRY violation that adds confusion about which layer is responsible for empty-value stripping. | Remove the explicit `strip_empty()` call in `save_manifest` and pass `data` directly to `dump_yaml()`, which already handles stripping. |
+
+### Second-Pass Reviewer Notes
+
+- Validation is reproducible: `.venv/bin/ruff check src tests` passed,
+  `.venv/bin/ruff format --check src tests` passed, and `.venv/bin/pytest -v`
+  passed all 237 tests.
+- I concur with all four findings from the first review pass
+  ([M1-2-R1](M1-2-review.md#findings) through
+  [M1-2-R4](M1-2-review.md#findings)). Specifically:
+  - [M1-2-R1](M1-2-review.md#findings) (inspect_lock fail-open) is
+    well-evidenced and remains the single highest-severity issue across both
+    passes.
+  - [M1-2-R2](M1-2-review.md#findings) (flat comment rendering) is confirmed:
+    the ADR at [docs/adr.md:229](../adr.md#L229) and the design at
+    [docs/design/0-top-level-design.md:197](../design/0-top-level-design.md#L197)
+    both say "nested replies are embedded directly under that parent rather
+    than flattened into the global order." The current implementation records
+    the correct `parent` ID in markers but renders all non-root comments in
+    flat chronological order.
+  - [M1-2-R3](M1-2-review.md#findings) (verification scope gap) is confirmed:
+    `expected_markers()` at
+    [src/context_sync/_renderer.py:99-107](../../src/context_sync/_renderer.py#L99-L107)
+    always returns exactly four section markers regardless of comment count.
+  - [M1-2-R4](M1-2-review.md#findings) (plain `str` for finite-domain fields)
+    is confirmed: `ManifestRootEntry(state="bogus")` and
+    `LockRecord(mode="surprise")` both validate without error.
+- The lock subsystem has the most concentrated risk surface in this ticket.
+  Three of the eight new findings ([M1-2-R5](M1-2-review.md#findings),
+  [M1-2-R7](M1-2-review.md#findings), [M1-2-R10](M1-2-review.md#findings))
+  plus the first-pass [M1-2-R1](M1-2-review.md#findings) all target the lock
+  lifecycle, and the combined effect weakens the single-writer guarantee that
+  every mutating flow depends on.
+- The error-domain and exception-handling findings
+  ([M1-2-R6](M1-2-review.md#findings), [M1-2-R8](M1-2-review.md#findings))
+  are correctness issues, not style: callers that handle the documented error
+  types will miss real failures if the wrong exception type propagates.
+- The missing render → write → verify integration test
+  ([M1-2-R9](M1-2-review.md#findings)) is notable because the verification
+  contract is the design's primary defense against silent bad context (R1
+  mitigation in
+  [docs/design/0-top-level-design.md §7](../design/0-top-level-design.md#7-risks-and-mitigations-tool-specific)).
+  Testing its two halves in isolation without ever joining them leaves a gap
+  exactly where the design says the safety net should be tightest.
+
+### Second-Pass Residual Risks and Testing Gaps
+
+- The lock subsystem lacks any concurrency test. All lock tests run
+  single-threaded with synthetic lock files. A multiprocessing test that races
+  two `acquire_lock` calls against the same directory would add real
+  confidence in the `O_CREAT | O_EXCL` atomicity contract.
+- There is no test for the `atomic_write` cleanup path (the `finally` block
+  that removes the temp file on failure). Simulating an `os.write` failure
+  (for example via a read-only file descriptor or a full-disk mock) would
+  verify that partial temp files are not left behind.
+- The `_testing.py` `FakeLinearGateway.get_refresh_comment_metadata` hardcodes
+  `deleted=False` for all comments, so the `deleted=True` and `deleted=None`
+  branches in `_canonical_deleted` are only exercised by unit-level signature
+  tests, not by any fake-gateway-driven flow. If a later ticket depends on
+  `deleted` state flowing through the fake, it will need to extend the fake.
+- `_renderer.py` `_thread_activity` uses `max()` over a generator with
+  implicit `or` fallback (`c.updated_at or c.created_at`). If
+  `CommentData.updated_at` is not `None` but is an empty string, the fallback
+  produces `c.created_at` rather than failing visibly. The current gateway
+  types do not constrain against this; the risk is low but worth noting if
+  raw adapter data ever passes through without normalization.
