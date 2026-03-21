@@ -101,3 +101,16 @@
   entry whose stored `issue_key` is registered under a different lookup key.
 - Gaps noted in pass 1 (rollback test for rename failure, systemic-error
   propagation test, alias-history resolution test) remain open.
+
+---
+
+## Ticket Owner Response
+
+> **Status**: Phase C complete
+
+| ID | Verdict | Disposition | Notes |
+| --- | --- | --- | --- |
+| M2-2-R1 | Fix now | Accepted | Restructure `write_ticket` so `write_and_verify_ticket` is called before any manifest mutation or filesystem rename. On success, delete the old file and commit alias and manifest updates; on failure the old file and manifest state are untouched. Add regression test asserting that a failed write during a rename leaves the old file present and the manifest unchanged. |
+| M2-2-R2 | Fix now | Accepted | Replace bare `except Exception` with `except RootNotFoundError` so only the expected not-found/not-visible outcome is swallowed. All other gateway exceptions, including `SystemicRemoteError`, propagate unchanged through the provider to the traversal engine. Add test that `SystemicRemoteError` propagates instead of being silently dropped. |
+| M2-2-R3 | Fix now | Accepted | Add `aliases: dict[str, str] | None = None` parameter to `make_ticket_ref_provider`. Before falling back to `gateway.fetch_issue`, check whether the URL key is in `aliases`; if so, resolve the UUID locally and skip the remote call. Add test where a body references an old key mapped in `aliases` and verify the correct UUID edge is returned without a gateway call. |
+| M2-2-R4 | Fix now | Accepted | After a successful `gateway.fetch_issue(key)` call, index both `resolved.issue.issue_key` and the queried `key` into `key_to_id` so the lookup on the next line (`target_id = key_to_id[key]`) cannot raise `KeyError` when the gateway returns a bundle whose current key differs from the queried key. Add test where the gateway returns a bundle with a different `issue_key` than the queried key and verify the correct edge is returned without error. |

@@ -15,18 +15,19 @@ Design notes
 * :func:`write_ticket` is synchronous: it calls only synchronous I/O
   helpers (:func:`_io.write_and_verify_ticket`).  The caller (M2-3 sync
   flow) controls the async context and drives the sequential per-ticket
-  writes after all fetches complete.
+  writes after all fetches complete.  All manifest and filesystem mutations
+  are committed only *after* the new file content has been written and
+  verified successfully, so a write failure during a key-rename leaves the
+  old file and manifest state intact.
 
 * :func:`make_ticket_ref_provider` returns an async callable compatible
   with :class:`_traversal.TicketRefProvider`.  The provider scans already-
-  fetched content and resolves unknown keys via the gateway, mutating the
-  shared ``fetched`` dict as a side effect so M2-3 can write newly
-  discovered Tier 3 tickets alongside the rest.
-
-* Issue-key renames are detected in :func:`write_ticket` by comparing the
-  live bundle key to the manifest's tracked ``current_key``.  When a rename
-  is detected the old key is preserved as an alias in the manifest and the
-  old file is renamed before the new file is written (ADR §2).
+  fetched content and resolves unknown keys first via a locally supplied
+  alias map (when given) and then via the gateway, mutating the shared
+  ``fetched`` dict as a side effect so M2-3 can write newly discovered
+  Tier 3 tickets alongside the rest.  Only :class:`RootNotFoundError` is
+  caught when a key cannot be resolved; all other gateway exceptions
+  propagate unchanged per the traversal contract.
 """
 
 from __future__ import annotations
@@ -37,6 +38,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from context_sync._errors import RootNotFoundError
 from context_sync._gateway import (
     LinearGateway,
     RefreshCommentMeta,
@@ -211,10 +213,13 @@ def write_ticket(
 
     Detects issue-key renames by comparing the live bundle key to the
     manifest's tracked ``current_key`` for the same UUID.  When a rename
-    is detected, the old key is preserved in ``manifest.aliases``, the
-    old file is renamed to the new key path, and ``manifest.tickets`` is
-    updated.  The manifest is mutated in place; the caller is responsible
-    for persisting it after all tickets in the pass are written.
+    is detected, the new file is written and verified first; on success
+    the old file is removed and the alias and manifest entries are
+    updated.  On write failure the old file and manifest state are left
+    intact so no partial rename is visible.
+
+    The manifest is mutated in place; the caller is responsible for
+    persisting it after all tickets in the pass are written.
 
     Parameters
     ----------
@@ -242,11 +247,14 @@ def write_ticket(
     Raises
     ------
     WriteError
-        If the file write or post-write verification fails.
+        If the file write or post-write verification fails.  The manifest
+        and filesystem state are unchanged when this is raised during a
+        key-rename path.
     """
     issue_id = bundle.issue.issue_id
     issue_key = bundle.issue.issue_key
     previous_key: str | None = None
+    old_path: Path | None = None
 
     existing = manifest.tickets.get(issue_id)
     if existing is not None and existing.current_key != issue_key:
@@ -257,19 +265,12 @@ def write_ticket(
             previous_key,
             issue_key,
         )
-        manifest.aliases[previous_key] = issue_id
-        old_file = context_dir / existing.current_path
-        if old_file.is_file():
-            new_file = context_dir / f"{issue_key}.md"
-            old_file.rename(new_file)
-            logger.debug("Renamed ticket file: %s → %s", old_file.name, new_file.name)
+        old_path = context_dir / existing.current_path
 
     relative_path = f"{issue_key}.md"
-    manifest.tickets[issue_id] = ManifestTicketEntry(
-        current_key=issue_key,
-        current_path=relative_path,
-    )
 
+    # Write and verify the new content first — no manifest or filesystem
+    # state is mutated before this call returns successfully.
     cursor = compute_refresh_cursor(bundle)
     content = render_ticket_file(
         bundle,
@@ -283,6 +284,18 @@ def write_ticket(
         content,
         expected_frontmatter_fields(bundle, root_state=root_state),
         expected_markers(bundle),
+    )
+
+    # Write succeeded: commit alias recording, old-file removal, and manifest update.
+    if previous_key is not None:
+        manifest.aliases[previous_key] = issue_id
+        if old_path is not None and old_path.is_file():
+            old_path.unlink()
+            logger.debug("Removed old ticket file: %s", old_path.name)
+
+    manifest.tickets[issue_id] = ManifestTicketEntry(
+        current_key=issue_key,
+        current_path=relative_path,
     )
 
     return TicketWriteResult(
@@ -334,6 +347,7 @@ def make_ticket_ref_provider(
     *,
     gateway: LinearGateway,
     semaphore: asyncio.Semaphore,
+    aliases: dict[str, str] | None = None,
 ) -> TicketRefProvider:
     """
     Build a Tier 3 provider that scans already-fetched ticket content.
@@ -341,13 +355,16 @@ def make_ticket_ref_provider(
     The returned provider satisfies the :class:`_traversal.TicketRefProvider`
     contract: it receives a sequence of issue UUIDs whose content is
     present in *fetched*, scans description and comment bodies for Linear
-    ticket URLs, resolves any referenced keys not yet in *fetched* via the
-    gateway (adding them to *fetched* as a side effect), deduplicates
-    results by target UUID, and returns the discovered
-    ``(target_id, target_key)`` pairs.
+    ticket URLs, resolves unknown keys first via *aliases* (when supplied)
+    and then via the gateway (adding resolved bundles to *fetched* as a
+    side effect), deduplicates results by target UUID, and returns the
+    discovered ``(target_id, target_key)`` pairs.
 
-    Self-references (a ticket referencing its own key) and URLs whose
-    key cannot be resolved via the gateway are silently skipped.
+    Only :class:`RootNotFoundError` is swallowed when a key cannot be
+    resolved; all other gateway exceptions propagate unchanged per the
+    traversal contract.
+
+    Self-references (a ticket referencing its own key) are skipped.
 
     Parameters
     ----------
@@ -355,9 +372,15 @@ def make_ticket_ref_provider(
         Shared dict of already-fetched bundles (issue UUID → bundle).
         Mutated in place when unknown keys are resolved via the gateway.
     gateway:
-        Gateway used to resolve issue keys not yet in *fetched*.
+        Gateway used to resolve issue keys not yet in *fetched* or
+        *aliases*.
     semaphore:
         Shared concurrency limiter for gateway calls.
+    aliases:
+        Optional mapping of previously observed issue keys to their stable
+        UUIDs (e.g. ``manifest.aliases``).  Consulted before falling back
+        to the gateway so that bodies referencing old keys resolve locally
+        without a remote call.
 
     Returns
     -------
@@ -382,14 +405,30 @@ def make_ticket_ref_provider(
                     if key == bundle.issue.issue_key:
                         continue  # skip self-references
                     if key not in key_to_id:
-                        try:
-                            async with semaphore:
-                                resolved = await gateway.fetch_issue(key)
-                            fetched[resolved.issue.issue_id] = resolved
-                            key_to_id[resolved.issue.issue_key] = resolved.issue.issue_id
-                        except Exception:
-                            logger.debug("ticket_ref: could not resolve key %r", key)
-                            continue
+                        # Check locally known aliases before going to the gateway.
+                        if aliases and key in aliases:
+                            aliased_id = aliases[key]
+                            key_to_id[key] = aliased_id
+                            # Also index the current key if the bundle is available.
+                            if aliased_id in fetched:
+                                key_to_id[fetched[aliased_id].issue.issue_key] = aliased_id
+                        else:
+                            try:
+                                async with semaphore:
+                                    resolved = await gateway.fetch_issue(key)
+                                fetched[resolved.issue.issue_id] = resolved
+                                key_to_id[resolved.issue.issue_key] = resolved.issue.issue_id
+                                # Also index by the queried key so lookup
+                                # succeeds even when the gateway returns a
+                                # bundle whose current issue_key differs
+                                # from the key that was in the URL.
+                                key_to_id[key] = resolved.issue.issue_id
+                            except RootNotFoundError:
+                                logger.debug(
+                                    "ticket_ref: key %r not found or not visible, skipping",
+                                    key,
+                                )
+                                continue
                     target_id = key_to_id[key]
                     raw_refs.append((target_id, key))
 

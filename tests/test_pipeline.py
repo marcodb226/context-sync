@@ -401,6 +401,36 @@ class TestWriteTicket:
                     manifest=manifest,
                 )
 
+    def test_write_error_during_rename_preserves_old_state(self, tmp_path: Path) -> None:
+        """Failed write during a rename must leave the old file and manifest state intact."""
+        old_file = tmp_path / "OLD-R.md"
+        old_file.write_text("old content", encoding="utf-8")
+
+        bundle = make_issue(issue_id="rr1", issue_key="NEW-R")
+        manifest = _make_manifest(
+            tickets={"rr1": ManifestTicketEntry(current_key="OLD-R", current_path="OLD-R.md")}
+        )
+
+        with patch(
+            "context_sync._pipeline.write_and_verify_ticket",
+            side_effect=WriteError("simulated write failure"),
+        ):
+            with pytest.raises(WriteError):
+                write_ticket(
+                    bundle,
+                    root_state=None,
+                    last_synced_at="2026-03-01T00:00:00Z",
+                    context_dir=tmp_path,
+                    manifest=manifest,
+                )
+
+        # Old file must still exist.
+        assert old_file.is_file()
+        # Alias must NOT have been recorded.
+        assert "OLD-R" not in manifest.aliases
+        # Manifest entry must still point to the old key.
+        assert manifest.tickets["rr1"].current_key == "OLD-R"
+
 
 # ---------------------------------------------------------------------------
 # _extract_issue_keys and _bundle_content_texts
@@ -570,3 +600,71 @@ class TestMakeTicketRefProvider:
         )
         result = await provider(["cb1"])
         assert result == {"cb1": [("cb2", "CB-2")]}
+
+    async def test_systemic_error_propagates(self) -> None:
+        """Non-RootNotFoundError gateway exceptions must propagate out of the provider."""
+        from context_sync._errors import SystemicRemoteError
+
+        class _FailingGateway(FakeLinearGateway):
+            async def fetch_issue(self, issue_id_or_key: str) -> TicketBundle:
+                raise SystemicRemoteError("network failure")
+
+        b_root = make_issue(
+            issue_id="sys1",
+            issue_key="SYS-1",
+            description="See https://linear.app/team/issue/UNKNOWN-99 here.",
+        )
+        fetched: dict[str, TicketBundle] = {"sys1": b_root}
+
+        provider = make_ticket_ref_provider(
+            fetched,
+            gateway=_FailingGateway(),
+            semaphore=asyncio.Semaphore(5),
+        )
+        with pytest.raises(SystemicRemoteError):
+            await provider(["sys1"])
+
+    async def test_resolves_key_via_alias_map(self) -> None:
+        """Provider must use locally known aliases before going to the gateway."""
+        # CURR-1 was previously known as PREV-1; the alias map records this.
+        b_ref = make_issue(issue_id="ali2", issue_key="CURR-1")
+        b_root = make_issue(
+            issue_id="ali1",
+            issue_key="ALI-1",
+            description="See https://linear.app/team/issue/PREV-1 for context.",
+        )
+        fetched = {"ali1": b_root, "ali2": b_ref}
+
+        # aliases["PREV-1"] -> "ali2" models local alias history from a prior rename.
+        provider = make_ticket_ref_provider(
+            fetched,
+            gateway=FakeLinearGateway(),  # no issues loaded — must not be called
+            semaphore=asyncio.Semaphore(5),
+            aliases={"PREV-1": "ali2"},
+        )
+        result = await provider(["ali1"])
+        # Edge returned with the queried key (PREV-1) and the correct UUID.
+        assert result == {"ali1": [("ali2", "PREV-1")]}
+
+    async def test_resolves_renamed_key_from_gateway(self) -> None:
+        """Provider must not raise KeyError when gateway returns a different current key."""
+        # Gateway resolves "OLDKEY-1" to a bundle whose issue_key is "NEWKEY-1".
+        b_ref = make_issue(issue_id="rx2", issue_key="NEWKEY-1")
+        gw = FakeLinearGateway()
+        gw._bundles["rx2"] = b_ref
+        gw._key_index["OLDKEY-1"] = "rx2"  # old key resolves to the same UUID
+        gw._key_index["NEWKEY-1"] = "rx2"
+
+        b_root = make_issue(
+            issue_id="rx1",
+            issue_key="RX-1",
+            description="See https://linear.app/team/issue/OLDKEY-1 here.",
+        )
+        fetched: dict[str, TicketBundle] = {"rx1": b_root}
+
+        provider = make_ticket_ref_provider(fetched, gateway=gw, semaphore=asyncio.Semaphore(5))
+        result = await provider(["rx1"])
+
+        # Must return edge with correct UUID; no KeyError raised.
+        assert result == {"rx1": [("rx2", "OLDKEY-1")]}
+        assert "rx2" in fetched
