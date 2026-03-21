@@ -69,3 +69,58 @@
   Supporting context:
   [tests/test_refresh.py:220](../../tests/test_refresh.py#L220),
   [tests/test_refresh.py:296](../../tests/test_refresh.py#L296).
+
+---
+
+## Review Pass 2 — Findings
+
+| ID | Severity | Status | Area | Finding | Evidence | Impact | Recommendation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| M3-1-R5 | Medium | Todo | Error Handling | `_read_existing_ticket_state()` catches bare `except Exception:` and silently returns `(None, None, None)`. Per [docs/policies/common/coding-guidelines.md](../policies/common/coding-guidelines.md) ("Fail loudly") and [docs/policies/common/coding-guidelines-python.md](../policies/common/coding-guidelines-python.md) ("Catch only the exceptions you can handle"), this masks real filesystem errors such as permission-denied, disk-full, or encoding failures behind a silent fallback. A masked read error causes the ticket to be treated as stale rather than surfacing the operational failure. | [src/context_sync/_sync.py:98](../../src/context_sync/_sync.py#L98) | A real filesystem failure (for example, a permission change on the context directory mid-refresh) would be silently swallowed, producing an unnecessary re-fetch and overwrite instead of a diagnosable error. In a permission-denied scenario, the subsequent `write_ticket()` would then fail with an unrelated `WriteError`, making the root cause harder to trace. | Narrow the caught exception set to parsing-related errors only (for example `ValueError`, `KeyError`, or `ManifestError`). For genuine I/O failures (`OSError`), let the exception propagate or log at WARNING level with full context. |
+| M3-1-R6 | Medium | Todo | Type Safety | `_rewrite_quarantined_ticket()` declares `manifest: object` in its signature and then validates with `assert isinstance(manifest, Manifest)` at runtime. The `assert` can be stripped by `python -O`, and the function already performs a runtime import of `Manifest` on the next line. This is both a type-annotation gap (static checkers see `object`) and a fragile runtime check. | [src/context_sync/_sync.py:114](../../src/context_sync/_sync.py#L114), [src/context_sync/_sync.py:131](../../src/context_sync/_sync.py#L131), [src/context_sync/_sync.py:133](../../src/context_sync/_sync.py#L133) | Under `python -O`, the `assert` is removed entirely. The function would then call `manifest.tickets.get(uid)` on a bare `object`, producing an `AttributeError` with no diagnostic context. Static type checkers also cannot validate callers because the declared type is `object`. | Use a `TYPE_CHECKING` conditional import to annotate the parameter as `Manifest` for static analysis. Replace the `assert` with an explicit `if not isinstance(manifest, Manifest): raise TypeError(...)` for runtime safety that survives `-O`. |
+| M3-1-R7 | Low | Todo | Defensive Checks | `_rewrite_quarantined_ticket()` silently returns without logging or raising when `ticket_entry is None` (line 135) or when the ticket file does not exist (line 139). Reaching this code for a root that has no manifest ticket entry or no on-disk file indicates an inconsistent manifest/filesystem state that should be surfaced, not silently ignored. | [src/context_sync/_sync.py:135](../../src/context_sync/_sync.py#L135), [src/context_sync/_sync.py:139](../../src/context_sync/_sync.py#L139), [docs/policies/common/coding-guidelines.md](../policies/common/coding-guidelines.md) ("Fail loudly") | In the inconsistent-state case, quarantine is silently skipped: the manifest records `state="quarantined"` but the ticket file retains its pre-quarantine content with `root_state: active`, creating a manifest/file-system divergence with no diagnostic trace. | Log at WARNING level when either early-return branch is taken, so the divergence is at least observable in operational logs. |
+| M3-1-R8 | Low | Todo | Readability | The inline comment block at lines 260–265 lists `refresh → M3-1` as a stub implementation not yet owned by this ticket. Since M3-1 is the ticket that implemented `refresh()`, this comment is now stale and misleading for future readers. | [src/context_sync/_sync.py:260](../../src/context_sync/_sync.py#L260) | Minor readability issue only. No behavioral impact. | Remove `refresh → M3-1` from the stub list. |
+
+## Review Pass 2 — Reviewer Notes
+
+- Full repository validation confirmed passing:
+  `.venv/bin/ruff check src/ tests/`,
+  `.venv/bin/ruff format --check src/ tests/`,
+  `.venv/bin/pytest` (346 passed in 1.85s).
+- I independently confirm the four findings from Review Pass 1
+  ([M3-1-R1](M3-1-review.md#findings) through
+  [M3-1-R4](M3-1-review.md#findings)). The traversal-config and
+  input-validation findings ([M3-1-R1](M3-1-review.md#findings),
+  [M3-1-R2](M3-1-review.md#findings)) are the most impactful — both can cause
+  silent data loss under conditions that a caller might reasonably produce.
+- The core refresh logic (composite-cursor freshness, selective re-fetch,
+  quarantine/recovery state machine, pruning, manifest finalization) is
+  structurally sound and well-tested for the happy path. The implementation
+  correctly follows the [M1-D3](M1-D3.md) composite freshness contract and
+  the [M3-O1](M3-O1.md) `comments_signature` settlement.
+- The `format_version` staleness gate at
+  [src/context_sync/_sync.py:881](../../src/context_sync/_sync.py#L881) is a
+  good forward-looking design choice that ensures format-incompatible files are
+  unconditionally refreshed.
+- Linear-boundary compliance: confirmed. All remote reads route through the
+  gateway abstraction. No direct `linear.gql.*` calls were introduced.
+- The 16 integration tests provide good behavioral coverage for the primary
+  refresh scenarios. The test helpers (`_sync_then_refresh`, `_read_ticket_fm`)
+  are clean and well-scoped.
+
+## Review Pass 2 — Residual Risks and Testing Gaps
+
+- No test exercises `_read_existing_ticket_state` with a corrupt or
+  unreadable ticket file. The bare `except Exception:` path
+  ([M3-1-R5](M3-1-review.md#review-pass-2--findings)) is untested.
+- No test exercises `_rewrite_quarantined_ticket` when the ticket entry is
+  missing from the manifest or when the file has been externally deleted. The
+  silent-return paths ([M3-1-R7](M3-1-review.md#review-pass-2--findings))
+  are untested.
+- No test verifies the `format_version` staleness signal in isolation: a
+  ticket written with `format_version=0` (or missing) being treated as stale
+  during refresh and re-fetched.
+- The quarantine recovery + prefetch failure interaction is untested: a
+  quarantined root that becomes visible again but whose `fetch_issue()` then
+  fails would be left marked `active` with its descendants pruned (amplifies
+  [M3-1-R3](M3-1-review.md#findings)).
