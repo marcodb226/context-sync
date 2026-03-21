@@ -6,12 +6,15 @@
 ## Common-policy integrity gate
 
 At the start of every conversation, verify that `docs/policies/common` exists
-and contains at least one file. If the directory is missing, is not a readable
-directory, or is empty, **stop immediately** — do not proceed with any task.
-Instead, emit a clearly visible error (all-caps is appropriate) explaining that
-the common-policy layer is absent and that work cannot continue until the
-symlink or directory is restored (for example: re-creating the symlink to the
-shared policy repository).
+and contains at least one file. Use the Bash tool (for example,
+`ls docs/policies/common`) to perform this check — do **not** use the Glob
+tool, which does not follow symlinks and will incorrectly report the directory
+as missing or empty even when the symlink target is fully accessible. If the
+directory is missing, is not a readable directory, or is empty, **stop
+immediately** — do not proceed with any task. Instead, emit a clearly visible
+error (all-caps is appropriate) explaining that the common-policy layer is
+absent and that work cannot continue until the symlink or directory is restored
+(for example: re-creating the symlink to the shared policy repository).
 
 ## Mandatory references
 
