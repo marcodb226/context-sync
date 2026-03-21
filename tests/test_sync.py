@@ -281,8 +281,10 @@ class TestSyncInitial:
 class TestSyncIdempotency:
     """Repeated sync without upstream changes produces stable output."""
 
-    async def test_second_sync_reports_updated_not_created(self, tmp_path: Path) -> None:
-        """Running sync twice classifies all tickets as updated on the second run."""
+    async def test_second_sync_reports_unchanged_when_no_upstream_change(
+        self, tmp_path: Path
+    ) -> None:
+        """Running sync twice with no upstream change classifies tickets as unchanged."""
         gw = FakeLinearGateway()
         gw.add_issue(
             make_issue(
@@ -307,7 +309,8 @@ class TestSyncIdempotency:
 
         second = await syncer.sync("R-1")
         assert second.created == []
-        assert sorted(second.updated) == ["D-1", "R-1"]
+        assert second.updated == []
+        assert sorted(second.unchanged) == ["D-1", "R-1"]
         assert second.removed == []
 
     async def test_ticket_content_stable_across_syncs(self, tmp_path: Path) -> None:
@@ -454,7 +457,7 @@ class TestSyncPruning:
 
         # Re-sync — root should remain, not be pruned.
         result2 = await syncer.sync("R-1")
-        assert result2.updated == ["R-1"]
+        assert result2.unchanged == ["R-1"]
         assert result2.removed == []
 
 
@@ -486,10 +489,11 @@ class TestSyncMultiRoot:
         first = await syncer.sync("R-1")
         assert first.created == ["R-1"]
 
-        # Second sync adds R-2 and its child.
+        # Second sync adds R-2 and its child; R-1 is unchanged.
         second = await syncer.sync("R-2")
         assert sorted(second.created) == ["C-1", "R-2"]
-        assert second.updated == ["R-1"]
+        assert second.updated == []
+        assert second.unchanged == ["R-1"]
 
         # Manifest has both roots.
         manifest = load_manifest(tmp_path / "ctx")
@@ -642,3 +646,157 @@ class TestSyncTicketRefTier3:
 
         assert sorted(result.created) == ["REF-1", "REF-2"]
         assert (tmp_path / "ctx" / "REF-2.md").is_file()
+
+
+# ---------------------------------------------------------------------------
+# Review-finding regression tests (M2-3 Phase C)
+# ---------------------------------------------------------------------------
+
+
+class TestSyncLinkedTicketFetchFailure:
+    """R1: linked-ticket fetch failure records an error instead of aborting."""
+
+    async def test_linked_ticket_unavailable_records_error(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """A linked ticket that is unreachable produces a SyncError, not an abort."""
+        gw = FakeLinearGateway()
+        gw.add_issue(
+            make_issue(
+                issue_id="uuid-root",
+                issue_key="ROOT-1",
+                title="Root ticket",
+                relations=[
+                    RelationData(
+                        dimension="blocks",
+                        relation_type="blocks",
+                        target_issue_id="uuid-linked",
+                        target_issue_key="LINKED-1",
+                    ),
+                ],
+            )
+        )
+        # Add the linked ticket so traversal discovers it, then hide it
+        # so the post-traversal fetch fails.
+        gw.add_issue(make_issue(issue_id="uuid-linked", issue_key="LINKED-1"))
+        gw.hide_issue("uuid-linked")
+
+        syncer = make_syncer(gateway=gw, context_dir=tmp_path / "ctx")
+        result = await syncer.sync("ROOT-1")
+
+        # Root was written successfully.
+        assert result.created == ["ROOT-1"]
+        assert (tmp_path / "ctx" / "ROOT-1.md").is_file()
+
+        # Linked ticket failure recorded as an error, not an exception.
+        assert len(result.errors) == 1
+        assert result.errors[0].ticket_id == "LINKED-1"
+        assert result.errors[0].error_type == "fetch_failed"
+        assert result.errors[0].retriable is True
+
+        # No file was written for the failed ticket.
+        assert not (tmp_path / "ctx" / "LINKED-1.md").exists()
+
+
+class TestSyncGatewayReadiness:
+    """R2: ContextSync(linear=...) fails fast when gateway is not wired."""
+
+    async def test_linear_constructor_raises_on_sync(self) -> None:
+        """Calling sync() through the linear= constructor path raises immediately."""
+        from context_sync._sync import ContextSync
+
+        syncer = ContextSync(linear=object(), context_dir="/tmp/ctx-r2-test")
+        with pytest.raises(ContextSyncError, match="No gateway available"):
+            await syncer.sync("ANY-1")
+
+
+class TestSyncExistingRootPrefetchFailure:
+    """R3: existing root unavailable during pre-fetch does not abort sync."""
+
+    async def test_hidden_existing_root_excluded_from_traversal(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """When an existing root is hidden, sync completes for the healthy root."""
+        gw = FakeLinearGateway()
+        gw.add_issue(make_issue(issue_id="uuid-r1", issue_key="R-1"))
+        gw.add_issue(make_issue(issue_id="uuid-r2", issue_key="R-2"))
+        ctx = tmp_path / "ctx"
+        syncer = make_syncer(gateway=gw, context_dir=ctx)
+
+        # First sync: both roots healthy.
+        await syncer.sync("R-1")
+        await syncer.sync("R-2")
+        manifest = load_manifest(ctx)
+        assert "uuid-r1" in manifest.roots
+        assert "uuid-r2" in manifest.roots
+
+        # Hide R-1 and re-sync via R-2.
+        gw.hide_issue("uuid-r1")
+        result = await syncer.sync("R-2")
+
+        # R-2 was processed successfully (unchanged since no upstream change).
+        assert result.errors == []
+        assert (ctx / "R-2.md").is_file()
+
+
+class TestSyncWriteAvoidance:
+    """R4: files are not rewritten when upstream content is unchanged."""
+
+    async def test_file_mtime_stable_when_unchanged(self, tmp_path: Path) -> None:
+        """File modification time does not advance on a no-change re-sync."""
+        gw = FakeLinearGateway()
+        gw.add_issue(
+            make_issue(
+                issue_id="uuid-r",
+                issue_key="IDLE-1",
+                title="Idle ticket",
+            )
+        )
+        ctx = tmp_path / "ctx"
+        syncer = make_syncer(gateway=gw, context_dir=ctx)
+
+        await syncer.sync("IDLE-1")
+        first_mtime = (ctx / "IDLE-1.md").stat().st_mtime
+
+        result = await syncer.sync("IDLE-1")
+        second_mtime = (ctx / "IDLE-1.md").stat().st_mtime
+
+        assert result.unchanged == ["IDLE-1"]
+        assert result.updated == []
+        assert first_mtime == second_mtime
+
+    async def test_upstream_change_triggers_rewrite(self, tmp_path: Path) -> None:
+        """A ticket whose upstream content changed is classified as updated."""
+        gw = FakeLinearGateway()
+        gw.add_issue(
+            make_issue(
+                issue_id="uuid-r",
+                issue_key="UPD-1",
+                title="Original title",
+                updated_at="2026-01-01T00:00:00Z",
+            )
+        )
+        ctx = tmp_path / "ctx"
+        syncer = make_syncer(gateway=gw, context_dir=ctx)
+
+        first = await syncer.sync("UPD-1")
+        assert first.created == ["UPD-1"]
+
+        # Simulate upstream update.
+        gw.add_issue(
+            make_issue(
+                issue_id="uuid-r",
+                issue_key="UPD-1",
+                title="Updated title",
+                updated_at="2026-01-02T00:00:00Z",
+            )
+        )
+
+        second = await syncer.sync("UPD-1")
+        assert second.updated == ["UPD-1"]
+        assert second.unchanged == []
+
+        content = (ctx / "UPD-1.md").read_text(encoding="utf-8")
+        assert "Updated title" in content

@@ -12,8 +12,10 @@ Design notes
   across manifest bootstrap, traversal, writes, and pruning so the context
   directory never has two active writers.
 
-* All reachable ticket files are rewritten regardless of local freshness
-  markers.  Incremental refresh behavior belongs to M3-1.
+* Reachable ticket files are rewritten only when their upstream content or
+  role has changed (ADR §8 idempotency guarantee).  Files whose refresh
+  cursor and root_state match the on-disk state are skipped and classified
+  as ``unchanged``.  Incremental refresh behavior belongs to M3-1.
 
 * Derived tickets that are no longer reachable from the recomputed root set
   are pruned.  Root tickets are never pruned automatically.
@@ -37,23 +39,25 @@ from context_sync._config import (
     DEFAULT_MAX_TICKETS_PER_ROOT,
     resolve_dimensions,
 )
-from context_sync._errors import ContextSyncError, WorkspaceMismatchError
+from context_sync._errors import ContextSyncError, RootNotFoundError, WorkspaceMismatchError
 from context_sync._lock import acquire_lock, release_lock
 from context_sync._manifest import (
     MANIFEST_FILENAME,
     ManifestRootEntry,
     ManifestSnapshot,
+    ManifestTicketEntry,
     initialize_manifest,
     load_manifest,
     save_manifest,
 )
 from context_sync._models import DiffResult, SyncError, SyncResult
 from context_sync._pipeline import (
-    fetch_tickets,
+    compute_refresh_cursor,
     make_ticket_ref_provider,
     write_ticket,
 )
 from context_sync._traversal import build_reachable_graph
+from context_sync._yaml import parse_frontmatter
 
 if TYPE_CHECKING:
     from context_sync._gateway import LinearGateway
@@ -64,6 +68,29 @@ logger = logging.getLogger(__name__)
 def _utc_now() -> str:
     """Return the current UTC time as an RFC 3339 string with ``Z`` suffix."""
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _read_existing_ticket_state(
+    context_dir: Path,
+    manifest_entry: ManifestTicketEntry | None,
+) -> tuple[dict[str, str] | None, str | None]:
+    """
+    Read the refresh cursor and root_state from an existing ticket file.
+
+    Returns ``(refresh_cursor, root_state)`` or ``(None, None)`` if the file
+    does not exist or its frontmatter cannot be parsed.
+    """
+    if manifest_entry is None:
+        return None, None
+    file_path = context_dir / manifest_entry.current_path
+    if not file_path.is_file():
+        return None, None
+    try:
+        text = file_path.read_text(encoding="utf-8")
+        fm = parse_frontmatter(text)
+        return fm.get("refresh_cursor"), fm.get("root_state")
+    except Exception:
+        return None, None
 
 
 class ContextSync:
@@ -213,6 +240,13 @@ class ContextSync:
         WriteError
             If a local file write or post-write verification fails.
         """
+        if self._gateway is None:
+            raise ContextSyncError(
+                "No gateway available. The real Linear gateway wrapper is not "
+                "yet implemented. Use _gateway_override with a LinearGateway "
+                "instance."
+            )
+
         effective_dims = (
             resolve_dimensions(dimensions) if dimensions is not None else dict(self._dimensions)
         )
@@ -304,25 +338,40 @@ class ContextSync:
         # -- Pre-fetch all active root bundles --------------------------------
         # The requested root is already fetched.  Other active roots are
         # fetched now so that the Tier 3 ticket_ref provider can scan their
-        # content at depth 0.
+        # content at depth 0.  Per-ticket errors are caught so a single
+        # unavailable existing root does not abort the entire run.
         fetched = {root_uuid: root_bundle}
         other_active_roots = [
             uid
             for uid, entry in manifest.roots.items()
             if uid != root_uuid and entry.state == "active"
         ]
+        prefetch_failed: set[str] = set()
         if other_active_roots:
-            more = await fetch_tickets(
-                other_active_roots,
-                gateway=gateway,
-                semaphore=semaphore,
-            )
-            fetched.update(more)
+
+            async def _fetch_existing_root(issue_id: str) -> None:
+                async with semaphore:
+                    try:
+                        bundle = await gateway.fetch_issue(issue_id)
+                        fetched[bundle.issue.issue_id] = bundle
+                    except RootNotFoundError:
+                        prefetch_failed.add(issue_id)
+                        logger.warning(
+                            "Existing root %s unavailable during pre-fetch; "
+                            "excluding from traversal",
+                            issue_id,
+                        )
+
+            async with asyncio.TaskGroup() as tg:
+                for uid in other_active_roots:
+                    tg.create_task(_fetch_existing_root(uid))
 
         # -- Build traversal roots dict {uuid: current_key} -------------------
         roots_for_traversal: dict[str, str] = {}
         for uid, entry in manifest.roots.items():
             if entry.state != "active":
+                continue
+            if uid in prefetch_failed:
                 continue
             if uid in fetched:
                 roots_for_traversal[uid] = fetched[uid].issue.issue_key
@@ -353,37 +402,66 @@ class ContextSync:
         )
 
         # -- Fetch remaining reachable tickets --------------------------------
-        missing_ids = [uid for uid in graph.tickets if uid not in fetched]
-        if missing_ids:
-            more = await fetch_tickets(
-                missing_ids,
-                gateway=gateway,
-                semaphore=semaphore,
-            )
-            fetched.update(more)
-
-        # -- Write all reachable tickets --------------------------------------
+        # Per-ticket error handling so a single unreachable linked ticket
+        # does not abort the entire run (R1).
         created: list[str] = []
         updated: list[str] = []
+        unchanged: list[str] = []
         errors: list[SyncError] = []
+
+        missing_ids = [uid for uid in graph.tickets if uid not in fetched]
+        if missing_ids:
+            fetch_errors: list[tuple[str, str]] = []
+
+            async def _fetch_linked(issue_id: str) -> None:
+                async with semaphore:
+                    try:
+                        bundle = await gateway.fetch_issue(issue_id)
+                        fetched[bundle.issue.issue_id] = bundle
+                    except RootNotFoundError:
+                        ticket_info = graph.tickets[issue_id]
+                        fetch_errors.append((ticket_info.issue_key, issue_id))
+
+            async with asyncio.TaskGroup() as tg:
+                for uid in missing_ids:
+                    tg.create_task(_fetch_linked(uid))
+
+            for issue_key, _uid in fetch_errors:
+                errors.append(
+                    SyncError(
+                        ticket_id=issue_key,
+                        error_type="fetch_failed",
+                        message=f"Could not fetch linked ticket {issue_key}",
+                        retriable=True,
+                    )
+                )
+
+        # -- Write all reachable tickets --------------------------------------
         last_synced_at = _utc_now()
 
         for uid in graph.tickets:
             bundle = fetched.get(uid)
             if bundle is None:
-                ticket_info = graph.tickets[uid]
-                errors.append(
-                    SyncError(
-                        ticket_id=ticket_info.issue_key,
-                        error_type="fetch_failed",
-                        message=f"Could not fetch ticket {ticket_info.issue_key}",
-                        retriable=True,
-                    )
-                )
-                continue
+                continue  # Error already recorded during fetch
 
             is_new = uid not in manifest.tickets
             root_state = "active" if uid in manifest.roots else None
+
+            # Skip write when upstream content and role are unchanged (ADR §8).
+            if not is_new:
+                existing_entry = manifest.tickets.get(uid)
+                if (
+                    existing_entry is not None
+                    and existing_entry.current_key == bundle.issue.issue_key
+                ):
+                    new_cursor = compute_refresh_cursor(bundle)
+                    existing_cursor, existing_root_state = _read_existing_ticket_state(
+                        context_dir,
+                        existing_entry,
+                    )
+                    if existing_cursor == new_cursor and existing_root_state == root_state:
+                        unchanged.append(bundle.issue.issue_key)
+                        continue
 
             write_ticket(
                 bundle,
@@ -437,6 +515,7 @@ class ContextSync:
         return SyncResult(
             created=created,
             updated=updated,
+            unchanged=unchanged,
             removed=removed,
             errors=errors,
         )
