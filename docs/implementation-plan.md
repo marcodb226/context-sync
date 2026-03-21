@@ -360,7 +360,13 @@ ADR/design behavior rather than reopen it.
 **Goal:** add the maintenance flows that let callers evolve and inspect an
 existing snapshot without always paying for a full rebuild.
 
-### 5.1 Design Tickets
+### 5.1 Operational Prerequisites
+
+| # | Status | Item | Requirement | Unblocks | Verification | Source |
+| --- | --- | --- | --- | --- | --- | --- |
+| <a id="m3-o1---comments-signature-input-settlement"></a>M3-O1 | Todo | `comments_signature` input settlement | Confirm whether the Linear GraphQL API exposes comment-level `updatedAt` and whether it advances on comment edits. If confirmed, record the probe evidence as the accepted `comments_signature` input. If not, draft and accept a design amendment naming the replacement input (for example, a body-digest or `createdAt`-only fallback with documented limitations). | [M3-1](#m3-1---incremental-refresh-and-quarantined-root-recovery) | Repository artifact records either probe-backed acceptance of `comments_signature` canonical input or an accepted design amendment naming the replacement | [M1-D3](#m1-d3---refresh-composite-freshness-contract-amendment), [M1-D2](#m1-d2---linear-domain-coverage-audit-and-adapter-boundary), [M1-D2-R1](execution/M1-D2-review.md) |
+
+### 5.2 Design Tickets
 
 No new milestone-specific design tickets are planned here, but this milestone
 remains explicitly gated on the resolved Milestone 1 refresh-design chain:
@@ -371,15 +377,38 @@ the accepted replacement contract, and
 matching adapter audit. Milestone 3 should implement that adopted contract
 rather than reopen the refresh design during implementation.
 
-### 5.2 Implementation Tickets
+### 5.3 Implementation Tickets
 
 | # | Status | Ticket | Description | Dependencies | Tests | Source |
 | --- | --- | --- | --- | --- | --- | --- |
-| <a id="m3-1---incremental-refresh-and-quarantined-root-recovery"></a>M3-1 | Todo | Incremental `refresh` and quarantined-root recovery | Recompute reachability from active roots, batch-check freshness, re-fetch only stale or newly discovered tickets, quarantine or remove unavailable roots per policy, and recover quarantined roots when they become visible again | [M1-D3](#m1-d3---refresh-composite-freshness-contract-amendment), [M1-D2](#m1-d2---linear-domain-coverage-audit-and-adapter-boundary), [M2-2](#m2-2---ticket-fetch-normalization-and-render-pipeline), [M2-3](#m2-3---full-snapshot-sync-flow) | Integration tests for stale-vs-fresh refresh, unchanged-upstream no-op refresh/no rewrite, root quarantine, root reactivation, explicit remove policy, and changed-ticket selective rewrite behavior | [docs/adr.md](adr.md#52-refresh-incremental-whole-snapshot-update), [docs/adr.md](adr.md#61-snapshot-consistency-contract), [docs/design/0-top-level-design.md](design/0-top-level-design.md#62-refresh-flow), [ADR-R4](planning/26.03.15%20-%20ADR%20review.md#adr-r4-done-terminal-root-fragility) |
+| <a id="m3-1---incremental-refresh-and-quarantined-root-recovery"></a>M3-1 | Todo | Incremental `refresh` and quarantined-root recovery | Recompute reachability from active roots, batch-check freshness, re-fetch only stale or newly discovered tickets, quarantine or remove unavailable roots per policy, and recover quarantined roots when they become visible again | [M3-O1](#m3-o1---comments-signature-input-settlement), [M1-D3](#m1-d3---refresh-composite-freshness-contract-amendment), [M1-D2](#m1-d2---linear-domain-coverage-audit-and-adapter-boundary), [M2-2](#m2-2---ticket-fetch-normalization-and-render-pipeline), [M2-3](#m2-3---full-snapshot-sync-flow) | Integration tests for stale-vs-fresh refresh, unchanged-upstream no-op refresh/no rewrite, root quarantine, root reactivation, explicit remove policy, and changed-ticket selective rewrite behavior | [docs/adr.md](adr.md#52-refresh-incremental-whole-snapshot-update), [docs/adr.md](adr.md#61-snapshot-consistency-contract), [docs/design/0-top-level-design.md](design/0-top-level-design.md#62-refresh-flow), [ADR-R4](planning/26.03.15%20-%20ADR%20review.md#adr-r4-done-terminal-root-fragility) |
 | <a id="m3-2---add-and-remove-root-whole-snapshot-flows"></a>M3-2 | Todo | `add` and `remove-root` whole-snapshot flows | Implement root-set mutation through alias-aware ticket resolution, workspace checks, manifest updates, and reuse of the whole-snapshot refresh behavior under the same writer lock | [M3-1](#m3-1---incremental-refresh-and-quarantined-root-recovery) | Integration tests for adding by issue key and URL, overlapping-root refresh behavior, and failing `remove-root` for non-roots | [docs/design/0-top-level-design.md](design/0-top-level-design.md#63-add-flow), [docs/design/0-top-level-design.md](design/0-top-level-design.md#65-remove-root-flow), [docs/adr.md](adr.md#14-root-vs-derived-tickets) |
 | <a id="m3-3---diff-mode-and-lock-aware-drift-reporting"></a>M3-3 | Todo | `diff` mode and lock-aware drift reporting | Implement the non-mutating drift inspection path, including tracked-ticket comparison, `missing_remotely` classification, changed-field reporting, and refusal to run when a non-stale writer lock exists | [M2-2](#m2-2---ticket-fetch-normalization-and-render-pipeline), [M2-3](#m2-3---full-snapshot-sync-flow) | Integration tests for lock refusal, stale-lock observation without mutation, changed-field reporting, and unavailable-ticket classification | [docs/adr.md](adr.md#53-diff-non-mutating-drift-inspection), [docs/design/0-top-level-design.md](design/0-top-level-design.md#64-diff-flow), [docs/design/0-top-level-design.md](design/0-top-level-design.md#4-error-handling) |
 
-### 5.3 Detailed Ticket Notes
+### 5.4 Detailed Ticket Notes
+
+#### M3-O1 - `comments_signature` input settlement
+
+- This gate exists because
+  [M1-D2](#m1-d2---linear-domain-coverage-audit-and-adapter-boundary) confirmed
+  that the installed `linear-client` comment surface does not expose the fields
+  required by the
+  [M1-D3](#m1-d3---refresh-composite-freshness-contract-amendment)
+  `comments_signature` contract (comment `updatedAt`, parent/root topology,
+  thread `resolved`, deletion signal), but did not settle a fallback input or
+  confirm availability through the raw Linear GraphQL API.
+- The two resolution paths are: (a) probe the raw Linear GraphQL `Comment` type
+  for `updatedAt` and confirm it advances on comment edits — if so, record the
+  probe evidence and accept the existing canonical input; or (b) if the field is
+  unavailable or does not advance on edits, draft and accept a design amendment
+  naming the replacement input (for example, a body-content digest,
+  `createdAt`-only digest with documented staleness limitations, or another
+  composite).
+- The deliverable is a repository artifact recording the accepted decision, not
+  implementation code. The outcome feeds directly into
+  [M3-1](#m3-1---incremental-refresh-and-quarantined-root-recovery).
+- Traced from review finding
+  [M1-D2-R1](execution/M1-D2-review.md) (Medium, Fix now).
 
 #### M3-1 - Incremental `refresh` and quarantined-root recovery
 
@@ -392,13 +421,10 @@ rather than reopen the refresh design during implementation.
   required composite freshness query path, especially the mandatory
   relation-freshness mechanism, rather than widening the Linear boundary during
   implementation.
-- Do not begin [M3-1](#m3-1---incremental-refresh-and-quarantined-root-recovery)
-  until repository artifacts record the accepted `comments_signature` input:
-  either probe-backed confirmation that comment-level `updated_at` advances on
-  edit, or a later accepted design amendment that names the replacement input.
-  This is a pre-implementation gate carried forward from
-  [M1-D2](#m1-d2---linear-domain-coverage-audit-and-adapter-boundary), not an
-  implementation-time choice.
+- Do not begin until
+  [M3-O1](#m3-o1---comments-signature-input-settlement) is complete. The
+  `comments_signature` input must be settled by a repository artifact before
+  implementation, not decided ad hoc during implementation.
 - Keep the accepted v1 attachment-freshness narrowing intact. Attachment-only
   drift does not become first-release refresh scope unless a later accepted
   plan amendment changes that contract.
@@ -419,7 +445,7 @@ rather than reopen the refresh design during implementation.
 - User-facing output should explain why lock refusal is intentional, not merely
   report that a lock file exists.
 
-### 5.4 Exit Criteria
+### 5.5 Exit Criteria
 
 1. `refresh` can update existing snapshots incrementally without weakening the
    ADR's freshness or missing-root semantics.
