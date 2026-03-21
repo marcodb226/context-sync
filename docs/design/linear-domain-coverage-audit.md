@@ -108,18 +108,19 @@ even if `context-sync` ships a narrow local raw-GraphQL fallback first.
   `get_issue_workspace_identity(...)` or an equivalent narrow helper rather
   than treating team identity as an implicit proxy.
 
-## 5. Explicit Pre-[M3-1](../implementation-plan.md#m3-1---incremental-refresh-and-quarantined-root-recovery) Gate
+## 5. Pre-[M3-1](../implementation-plan.md#m3-1---incremental-refresh-and-quarantined-root-recovery) Gate (Resolved)
 
-- The audited package cannot confirm from its installed surfaces whether raw
-  GraphQL exposes comment-level `updatedAt` and whether that signal advances on
-  comment edit. The installed domain and repository surfaces expose only
-  `createdAt` for comments.
-- Before
+- The audited `linear-client` domain layer does not expose comment `updatedAt`,
+  parent/root topology, thread `resolved`, or a deletion signal. The installed
+  domain and repository surfaces expose only `createdAt` for comments.
+- **Resolved by [M3-O1](../execution/M3-O1.md).** A live probe confirmed that
+  the raw Linear GraphQL API exposes all required `comments_signature` fields
+  (`updatedAt`, `parentId`, `resolvedAt`, `archivedAt`) and that `updatedAt`
+  advances on body edit, thread resolve/unresolve, and child reply creation.
+  The existing [M1-D3](../execution/M1-D3.md) canonical input was accepted
+  without amendment. See [M3-O1](../execution/M3-O1.md) for full probe
+  evidence.
+- The raw `linear.gql.*` adapter path defined in [Section 4](#4-adapter-boundary)
+  remains the correct integration point for refresh-metadata queries.
   [M3-1](../implementation-plan.md#m3-1---incremental-refresh-and-quarantined-root-recovery)
-  begins, repository artifacts must record one of the following accepted
-  `comments_signature` inputs:
-  probe-backed confirmation that raw GraphQL exposes comment `updatedAt` and
-  that it advances on edit, or a later accepted design amendment that names the
-  replacement freshness input and any resulting contract or cost change.
-- [M3-1](../implementation-plan.md#m3-1---incremental-refresh-and-quarantined-root-recovery)
   must not invent this decision during implementation-time adapter work.
