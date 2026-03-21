@@ -80,6 +80,13 @@ from context_sync._manifest import (
     save_manifest,
 )
 from context_sync._models import DiffEntry, DiffResult, SyncError, SyncResult
+from context_sync._pipeline import (
+    TicketWriteResult,
+    compute_refresh_cursor,
+    fetch_tickets,
+    make_ticket_ref_provider,
+    write_ticket,
+)
 from context_sync._renderer import render_ticket_file
 from context_sync._signatures import compute_comments_signature, compute_relations_signature
 from context_sync._sync import ContextSync
@@ -142,6 +149,12 @@ __all__ = [
     "inspect_lock",
     "is_lock_stale",
     "release_lock",
+    # Pipeline
+    "TicketWriteResult",
+    "compute_refresh_cursor",
+    "fetch_tickets",
+    "make_ticket_ref_provider",
+    "write_ticket",
     # Renderer
     "render_ticket_file",
     # Signatures

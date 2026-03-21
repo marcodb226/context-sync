@@ -167,6 +167,19 @@ class TestPublicImports:
         for fn in (atomic_write, write_and_verify_ticket):
             assert callable(fn)
 
+    def test_pipeline_functions(self) -> None:
+        from context_sync import (
+            TicketWriteResult,
+            compute_refresh_cursor,
+            fetch_tickets,
+            make_ticket_ref_provider,
+            write_ticket,
+        )
+
+        assert TicketWriteResult is not None
+        for fn in (compute_refresh_cursor, fetch_tickets, make_ticket_ref_provider, write_ticket):
+            assert callable(fn)
+
     def test_traversal_types(self) -> None:
         from context_sync import (
             TicketRefProvider,
