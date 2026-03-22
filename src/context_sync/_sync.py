@@ -5,8 +5,8 @@ This module exposes the ``ContextSync`` class whose constructor and method
 signatures match the public API defined in the top-level design (§1).  The
 ``sync`` method implements the full-snapshot rebuild flow (M2-3); the
 ``refresh`` method implements incremental whole-snapshot update with
-quarantine/recovery (M3-1); the remaining async methods are stubs awaiting
-later tickets (M3-2 through M3-3).
+quarantine/recovery (M3-1); the ``add`` and ``remove_root`` methods implement
+root-set mutation flows (M3-2); the ``diff`` method is a stub awaiting M3-3.
 
 Design notes
 ------------
@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -46,6 +47,7 @@ from context_sync._errors import (
     ContextSyncError,
     ManifestError,
     RootNotFoundError,
+    RootNotInManifestError,
     WorkspaceMismatchError,
 )
 from context_sync._io import atomic_write
@@ -79,6 +81,64 @@ logger = logging.getLogger(__name__)
 def _utc_now() -> str:
     """Return the current UTC time as an RFC 3339 string with ``Z`` suffix."""
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+# Pattern captures ``https://linear.app/<slug>/issue/<KEY-123>`` with an
+# optional trailing title slug.  Issue keys are uppercase letters, a hyphen,
+# and one or more digits.
+_LINEAR_URL_RE = re.compile(r"^https?://linear\.app/(?P<slug>[^/]+)/issue/(?P<key>[A-Za-z]+-\d+)")
+
+
+def _parse_linear_url(url: str) -> tuple[str, str] | None:
+    """
+    Extract ``(workspace_slug, issue_key)`` from a Linear issue URL.
+
+    Returns ``None`` when *url* does not match the expected Linear URL
+    pattern.
+    """
+    m = _LINEAR_URL_RE.match(url)
+    if m:
+        return m.group("slug"), m.group("key")
+    return None
+
+
+def _normalize_ticket_ref(ticket_ref: str) -> tuple[str | None, str]:
+    """
+    Normalize a ticket reference to ``(workspace_slug | None, key_or_id)``.
+
+    If *ticket_ref* is a Linear issue URL, the workspace slug and issue key
+    are extracted.  Otherwise the reference is returned unchanged with
+    ``None`` as the slug.
+    """
+    parsed = _parse_linear_url(ticket_ref)
+    if parsed is not None:
+        return parsed
+    return None, ticket_ref
+
+
+def _resolve_ref_to_uuid(ref: str, manifest: Manifest) -> str | None:
+    """
+    Attempt to resolve a ticket reference to a UUID using manifest data.
+
+    Resolution order:
+
+    1. Alias table (``manifest.aliases``; maps issue keys to UUIDs).
+    2. Ticket entries scanned by ``current_key``.
+    3. Direct UUID match in the root set.
+
+    Returns ``None`` when no match is found.
+    """
+    # Alias table: issue_key → UUID.
+    if manifest.aliases and ref in manifest.aliases:
+        return manifest.aliases[ref]
+    # Ticket entries by current key.
+    for uid, entry in manifest.tickets.items():
+        if entry.current_key == ref:
+            return uid
+    # Direct UUID match in roots.
+    if ref in manifest.roots:
+        return ref
+    return None
 
 
 def _read_existing_ticket_state(
@@ -283,10 +343,7 @@ class ContextSync:
 
     # -- Async entry points -------------------------------------------------
     #
-    # Stub implementations for flows not yet owned by this ticket:
-    #   add         → M3-2
-    #   remove_root → M3-2
-    #   diff        → M3-3
+    # Stub: diff → M3-3
 
     async def sync(
         self,
@@ -696,9 +753,33 @@ class ContextSync:
         semaphore: asyncio.Semaphore,
         started_at: str,
         mono_start: float,
+        snapshot_mode: Literal["sync", "refresh", "add", "remove-root"] = "refresh",
     ) -> SyncResult:
         """
         Core refresh logic executed while the writer lock is held.
+
+        Separated from :meth:`refresh` so the ``try/finally`` release-lock
+        wrapper remains concise.  All parameters are pre-resolved by the
+        caller; this method does not read instance state directly.
+
+        Parameters
+        ----------
+        missing_root_policy:
+            How to handle existing manifest roots that are no longer visible.
+        context_dir:
+            Root directory of the context-sync snapshot.
+        gateway:
+            Gateway instance for all Linear reads.
+        semaphore:
+            Concurrency limiter for ticket fetches.
+        started_at:
+            RFC 3339 UTC timestamp when the outer operation started.
+        mono_start:
+            Monotonic clock reading at operation start, for duration logging.
+        snapshot_mode:
+            Label for the ``ManifestSnapshot.mode`` field.  Defaults to
+            ``"refresh"``; callers such as ``add`` and ``remove_root`` pass
+            their own mode so the manifest records the triggering operation.
 
         Returns
         -------
@@ -715,7 +796,7 @@ class ContextSync:
 
         # -- Record in-progress snapshot metadata -----------------------------
         manifest.snapshot = ManifestSnapshot(
-            mode="refresh",
+            mode=snapshot_mode,
             started_at=started_at,
             completed_successfully=False,
         )
@@ -726,16 +807,28 @@ class ContextSync:
         # -- Batch-check root visibility --------------------------------------
         root_uuids = list(manifest.roots.keys())
         if not root_uuids:
-            # No roots in manifest — nothing to refresh.
+            # No roots in manifest — prune all remaining tracked tickets and
+            # finalize.  This handles the case where remove_root deleted the
+            # last root.
+            removed: list[str] = []
+            for uid in list(manifest.tickets.keys()):
+                entry = manifest.tickets[uid]
+                file_path = context_dir / entry.current_path
+                if file_path.is_file():
+                    file_path.unlink()
+                    logger.debug("Pruned ticket (no roots remain): %s", entry.current_key)
+                removed.append(entry.current_key)
+                del manifest.tickets[uid]
+
             completed_at = _utc_now()
             manifest.snapshot = ManifestSnapshot(
-                mode="refresh",
+                mode=snapshot_mode,
                 started_at=started_at,
                 completed_at=completed_at,
                 completed_successfully=True,
             )
             save_manifest(manifest, context_dir)
-            return SyncResult()
+            return SyncResult(removed=removed)
 
         root_meta = await gateway.get_refresh_issue_metadata(root_uuids)
 
@@ -1064,7 +1157,7 @@ class ContextSync:
         # -- Finalize snapshot metadata and persist manifest ------------------
         completed_at = _utc_now()
         manifest.snapshot = ManifestSnapshot(
-            mode="refresh",
+            mode=snapshot_mode,
             started_at=started_at,
             completed_at=completed_at,
             completed_successfully=True,
@@ -1094,33 +1187,288 @@ class ContextSync:
 
     async def add(self, ticket_ref: str) -> SyncResult:
         """
-        Add a new root and run whole-snapshot refresh.
+        Add a root ticket and run a whole-snapshot refresh.
+
+        Acquires the writer lock, resolves *ticket_ref* (issue key or Linear
+        issue URL) to a ticket UUID through alias-based local resolution
+        and/or a remote fetch, validates workspace membership, adds the UUID
+        to the manifest root set, then delegates to the whole-snapshot
+        refresh pipeline under the same writer lock.
 
         Parameters
         ----------
         ticket_ref:
-            Issue key or Linear issue URL of the ticket to add as a root.
+            Issue key (e.g. ``"ACP-123"``) or Linear issue URL
+            (e.g. ``"https://linear.app/myteam/issue/ACP-123"``).
+
+        Returns
+        -------
+        SyncResult
+            Created, updated, unchanged, removed, and errored ticket sets.
+
+        Raises
+        ------
+        RootNotFoundError
+            If the requested ticket is not available.
+        WorkspaceMismatchError
+            If the ticket belongs to a different workspace than the context
+            directory.
+        ActiveLockError
+            If a non-stale writer lock is already held.
+        StaleLockError
+            If lock staleness cannot be determined safely.
+        SystemicRemoteError
+            If a systemic remote failure aborts the run.
+        WriteError
+            If a local file write or post-write verification fails.
+        """
+        if self._gateway is None:
+            raise ContextSyncError(
+                "No gateway available. The real Linear gateway wrapper is not "
+                "yet implemented. Use _gateway_override with a LinearGateway "
+                "instance."
+            )
+
+        context_dir = self._context_dir
+        gateway = self._gateway
+        semaphore = self._semaphore
+
+        started_at = _utc_now()
+        mono_start = time.monotonic()
+        lock = acquire_lock(context_dir, "add", acquired_at=started_at)
+
+        try:
+            return await self._add_under_lock(
+                ticket_ref=ticket_ref,
+                context_dir=context_dir,
+                gateway=gateway,
+                semaphore=semaphore,
+                started_at=started_at,
+                mono_start=mono_start,
+            )
+        finally:
+            release_lock(context_dir, lock.writer_id)
+
+    async def _add_under_lock(
+        self,
+        *,
+        ticket_ref: str,
+        context_dir: Path,
+        gateway: LinearGateway,
+        semaphore: asyncio.Semaphore,
+        started_at: str,
+        mono_start: float,
+    ) -> SyncResult:
+        """
+        Core add logic executed while the writer lock is held.
+
+        Resolves *ticket_ref* to a UUID, adds the root to the manifest,
+        persists the manifest, then delegates to :meth:`_refresh_under_lock`
+        for the whole-snapshot refresh phase.
 
         Returns
         -------
         SyncResult
         """
-        raise NotImplementedError("add will be implemented by M3-2")
+        manifest_path = context_dir / MANIFEST_FILENAME
+
+        # -- Normalize ticket_ref -----------------------------------------------
+        url_slug, normalized_ref = _normalize_ticket_ref(ticket_ref)
+
+        # -- Load or initialize manifest ----------------------------------------
+        manifest: Manifest | None
+        resolved_uuid: str | None = None
+
+        if manifest_path.is_file():
+            manifest = load_manifest(context_dir)
+
+            # URL workspace-slug validation (fail fast before any remote call).
+            if url_slug is not None and url_slug != manifest.workspace_slug:
+                raise WorkspaceMismatchError(
+                    f"URL workspace slug {url_slug!r} does not match the "
+                    f"context directory workspace {manifest.workspace_slug!r}"
+                )
+
+            # Attempt alias-based local resolution.
+            resolved_uuid = _resolve_ref_to_uuid(normalized_ref, manifest)
+        else:
+            manifest = None
+
+        # -- Fetch from Linear --------------------------------------------------
+        # Use the locally-resolved UUID for the fetch when available (avoids a
+        # redundant key→UUID resolution round-trip); otherwise use the
+        # normalized ref directly.
+        fetch_ref = resolved_uuid if resolved_uuid is not None else normalized_ref
+        bundle = await gateway.fetch_issue(fetch_ref)
+        root_uuid = bundle.issue.issue_id
+
+        # -- Initialize manifest if needed, or validate workspace ---------------
+        if manifest is None:
+            manifest = initialize_manifest(
+                bundle.workspace,
+                self._dimensions,
+                self._max_tickets_per_root,
+            )
+        elif manifest.workspace_id != bundle.workspace.workspace_id:
+            raise WorkspaceMismatchError(
+                f"Ticket {bundle.issue.issue_key} belongs to workspace "
+                f"{bundle.workspace.workspace_slug!r} "
+                f"({bundle.workspace.workspace_id}), but the context "
+                f"directory is bound to workspace "
+                f"{manifest.workspace_slug!r} ({manifest.workspace_id})"
+            )
+
+        # -- Add ticket UUID to manifest root set --------------------------------
+        manifest.roots[root_uuid] = ManifestRootEntry(state="active")
+        logger.info("add: added root %s (%s)", bundle.issue.issue_key, root_uuid)
+
+        # -- Persist manifest so _refresh_under_lock can load it -----------------
+        save_manifest(manifest, context_dir)
+
+        # -- Execute whole-snapshot refresh under the same writer lock -----------
+        return await self._refresh_under_lock(
+            missing_root_policy="quarantine",
+            context_dir=context_dir,
+            gateway=gateway,
+            semaphore=semaphore,
+            started_at=started_at,
+            mono_start=mono_start,
+            snapshot_mode="add",
+        )
 
     async def remove_root(self, ticket_ref: str) -> SyncResult:
         """
-        Remove a root and run whole-snapshot refresh.
+        Remove a root ticket and run a whole-snapshot refresh.
+
+        Acquires the writer lock, loads the manifest, resolves *ticket_ref*
+        to a UUID through the alias table or ticket entries, verifies the
+        UUID is in the root set, removes it, then delegates to the
+        whole-snapshot refresh pipeline under the same writer lock.
+
+        If the removed ticket is still reachable from another root, it
+        remains in the snapshot as a derived ticket.  If it is no longer
+        reachable, the refresh prunes it naturally.
 
         Parameters
         ----------
         ticket_ref:
-            Issue key or Linear issue URL of the root to remove.
+            Issue key (e.g. ``"ACP-123"``), Linear issue URL, or ticket
+            UUID identifying the root to remove.
+
+        Returns
+        -------
+        SyncResult
+            Created, updated, unchanged, removed, and errored ticket sets.
+
+        Raises
+        ------
+        ManifestError
+            If the manifest does not exist or is invalid.
+        RootNotInManifestError
+            If *ticket_ref* cannot be resolved to a current root.
+        WorkspaceMismatchError
+            If *ticket_ref* is a URL whose workspace slug does not match.
+        ActiveLockError
+            If a non-stale writer lock is already held.
+        StaleLockError
+            If lock staleness cannot be determined safely.
+        SystemicRemoteError
+            If a systemic remote failure aborts the run.
+        WriteError
+            If a local file write or post-write verification fails.
+        """
+        if self._gateway is None:
+            raise ContextSyncError(
+                "No gateway available. The real Linear gateway wrapper is not "
+                "yet implemented. Use _gateway_override with a LinearGateway "
+                "instance."
+            )
+
+        context_dir = self._context_dir
+        gateway = self._gateway
+        semaphore = self._semaphore
+
+        started_at = _utc_now()
+        mono_start = time.monotonic()
+        lock = acquire_lock(context_dir, "remove-root", acquired_at=started_at)
+
+        try:
+            return await self._remove_root_under_lock(
+                ticket_ref=ticket_ref,
+                context_dir=context_dir,
+                gateway=gateway,
+                semaphore=semaphore,
+                started_at=started_at,
+                mono_start=mono_start,
+            )
+        finally:
+            release_lock(context_dir, lock.writer_id)
+
+    async def _remove_root_under_lock(
+        self,
+        *,
+        ticket_ref: str,
+        context_dir: Path,
+        gateway: LinearGateway,
+        semaphore: asyncio.Semaphore,
+        started_at: str,
+        mono_start: float,
+    ) -> SyncResult:
+        """
+        Core remove-root logic executed while the writer lock is held.
+
+        Resolves *ticket_ref* to a UUID, removes it from the root set,
+        persists the manifest, then delegates to :meth:`_refresh_under_lock`
+        for the whole-snapshot refresh phase.
 
         Returns
         -------
         SyncResult
         """
-        raise NotImplementedError("remove_root will be implemented by M3-2")
+        # -- Load manifest (must exist for remove-root) -------------------------
+        manifest = load_manifest(context_dir)
+
+        # -- Normalize ticket_ref -----------------------------------------------
+        url_slug, normalized_ref = _normalize_ticket_ref(ticket_ref)
+
+        # URL workspace-slug validation.
+        if url_slug is not None and url_slug != manifest.workspace_slug:
+            raise WorkspaceMismatchError(
+                f"URL workspace slug {url_slug!r} does not match the "
+                f"context directory workspace {manifest.workspace_slug!r}"
+            )
+
+        # -- Resolve UUID through manifest --------------------------------------
+        resolved_uuid = _resolve_ref_to_uuid(normalized_ref, manifest)
+        if resolved_uuid is None:
+            raise RootNotInManifestError(
+                f"Cannot resolve {ticket_ref!r} to a ticket in the manifest"
+            )
+
+        # -- Verify UUID is in root set -----------------------------------------
+        if resolved_uuid not in manifest.roots:
+            raise RootNotInManifestError(
+                f"Ticket {ticket_ref!r} (UUID {resolved_uuid}) is tracked "
+                f"but is not in the root set"
+            )
+
+        # -- Remove UUID from root set ------------------------------------------
+        del manifest.roots[resolved_uuid]
+        logger.info("remove_root: removed root %s", resolved_uuid)
+
+        # -- Persist manifest so _refresh_under_lock can load it ----------------
+        save_manifest(manifest, context_dir)
+
+        # -- Execute whole-snapshot refresh under the same writer lock ----------
+        return await self._refresh_under_lock(
+            missing_root_policy="quarantine",
+            context_dir=context_dir,
+            gateway=gateway,
+            semaphore=semaphore,
+            started_at=started_at,
+            mono_start=mono_start,
+            snapshot_mode="remove-root",
+        )
 
     async def diff(self) -> DiffResult:
         """

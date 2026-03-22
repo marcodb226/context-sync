@@ -95,16 +95,6 @@ class TestProperties:
 class TestAsyncStubs:
     """Stub entry points raise NotImplementedError until implemented."""
 
-    async def test_add_stub(self) -> None:
-        syncer = make_syncer()
-        with pytest.raises(NotImplementedError):
-            await syncer.add("NEW-1")
-
-    async def test_remove_root_stub(self) -> None:
-        syncer = make_syncer()
-        with pytest.raises(NotImplementedError):
-            await syncer.remove_root("OLD-1")
-
     async def test_diff_stub(self) -> None:
         syncer = make_syncer()
         with pytest.raises(NotImplementedError):

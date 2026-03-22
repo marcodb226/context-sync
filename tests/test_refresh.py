@@ -592,7 +592,7 @@ class TestRefreshMultiRoot:
         assert "CHILD-1" in result.removed
 
     async def test_empty_manifest_no_roots(self, context_dir: Path) -> None:
-        """Refresh with an existing but root-less manifest succeeds vacuously."""
+        """Refresh with a root-less manifest prunes all remaining tickets."""
         gw = FakeLinearGateway()
         gw.add_issue(make_issue(issue_id="uuid-r1", issue_key="R1-1"))
 
@@ -606,7 +606,9 @@ class TestRefreshMultiRoot:
 
         result = await syncer.refresh()
 
-        assert result == SyncResult()
+        # No roots means nothing is reachable — all tracked tickets pruned.
+        assert "R1-1" in result.removed
+        assert not (context_dir / "R1-1.md").is_file()
 
 
 # ---------------------------------------------------------------------------
