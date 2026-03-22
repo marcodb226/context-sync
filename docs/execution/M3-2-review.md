@@ -1,6 +1,6 @@
 # Review: [M3-2](../implementation-plan.md#m3-2---add-and-remove-root-whole-snapshot-flows)
 
-> **Status**: Phase B complete
+> **Status**: Phase B complete (2 review passes)
 > **Plan ticket**:
 > [M3-2](../implementation-plan.md#m3-2---add-and-remove-root-whole-snapshot-flows)
 > **Execution record**:
@@ -57,3 +57,64 @@
 - No test forces the shared refresh phase to fail after the new pre-refresh
   `save_manifest()` call in `add()` or `remove_root()`, so the partial-commit
   behavior behind [M3-2-R2](M3-2-review.md#findings) is currently unguarded.
+
+---
+
+## Review Pass 2
+
+> **Reviewer**: Independent second-pass review
+> **Scope**: Implementation commit `9242e1b`, the same artifacts as review
+> pass 1. This pass confirms the pass-1 findings and adds four new findings.
+
+### Review Pass 2 — Findings
+
+| ID | Severity | Status | Area | Finding | Evidence | Impact | Recommendation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| M3-2-R3 | Medium | Todo | API / Resolution | `remove_root` documents `ticket_ref` as accepting "Issue key, Linear issue URL, or ticket UUID" ([src/context_sync/_sync.py:1354](../../src/context_sync/_sync.py#L1354)). However, `_resolve_ref_to_uuid` step 3 only checks `manifest.roots` for direct UUID matches — it never checks `manifest.tickets`. When a caller passes the raw UUID of a derived (non-root) ticket, all three resolution steps miss and the function returns `None`. This triggers the generic "Cannot resolve" error instead of the more specific "tracked but is not in the root set" error that the two-stage check was designed to produce. | [src/context_sync/_sync.py:119–141](../../src/context_sync/_sync.py#L119) (resolution function), [src/context_sync/_sync.py:138–140](../../src/context_sync/_sync.py#L138) (step 3 only checks `manifest.roots`), [src/context_sync/_sync.py:1354](../../src/context_sync/_sync.py#L1354) (docstring claims UUID input), [src/context_sync/_sync.py:1443–1446](../../src/context_sync/_sync.py#L1443) (generic error path hit instead of specific path at [line 1449](../../src/context_sync/_sync.py#L1449)) | `remove_root(uuid_of_derived_ticket)` reports "Cannot resolve … to a ticket in the manifest" even though the ticket IS in the manifest. The user gets a confusing diagnostic instead of the intended "tracked but is not in the root set" message. The documented API contract (UUID as accepted input) is not met for derived-ticket UUIDs. | Add a step between steps 2 and 3 (or replace step 3) that checks `manifest.tickets` for a direct UUID match, so derived-ticket UUIDs resolve correctly and reach the root-membership check with the more specific error. Add a test that calls `remove_root` with a raw derived-ticket UUID and asserts `RootNotInManifestError` with the "not in the root set" message. |
+| M3-2-R4 | Low | Todo | Operational | The zero-roots early-return path in `_refresh_under_lock` (lines 809–832) prunes all remaining tracked tickets, but the path returns before reaching the INFO-level summary log at [line 1168](../../src/context_sync/_sync.py#L1168). Individual prunes are logged at DEBUG only. There is no INFO-level summary for the zero-roots case. | [src/context_sync/_sync.py:809–832](../../src/context_sync/_sync.py#L809) (zero-roots path with only DEBUG logs), [src/context_sync/_sync.py:1168](../../src/context_sync/_sync.py#L1168) (INFO summary only reached by the normal completion path), [docs/policies/common/coding-guidelines.md](../policies/common/coding-guidelines.md) ("Emit meaningful operational events at INFO level") | An operator monitoring INFO logs would see no record of a `remove_root` that pruned all tickets via the zero-roots path. This makes post-incident diagnosis harder for the most destructive variant of `remove_root` (removing the last root). | Add an INFO-level log line before the early return in the zero-roots branch, summarizing the prune count and snapshot mode, consistent with the normal completion path's format. |
+| M3-2-R5 | Low | Todo | Maintainability | [src/context_sync/_sync.py](../../src/context_sync/_sync.py) is now 888 code lines (per `cloc`). The coding guidelines require proactive extraction when a file grows past ~750 lines ([docs/policies/common/coding-guidelines.md](../policies/common/coding-guidelines.md)). M3-2 added ~255 code lines. The three new module-level helpers (`_parse_linear_url`, `_normalize_ticket_ref`, `_resolve_ref_to_uuid`) are stateless, have no dependency on `ContextSync` instance state, and form a cohesive "ticket-ref resolution" group that could live in a sibling module. The execution record does not note consideration of file-size extraction. | [src/context_sync/_sync.py](../../src/context_sync/_sync.py) (888 code lines via `cloc`), [src/context_sync/_sync.py:86–141](../../src/context_sync/_sync.py#L86) (three stateless helpers), [docs/policies/common/coding-guidelines.md](../policies/common/coding-guidelines.md) (750-line proactive extraction threshold, 1000-line hard limit) | The file is 112 code lines from the hard limit. One more ticket of similar scope (M3-3 `diff`) will likely breach 1000 lines. Extracting now is cheaper than extracting under the hard-limit deadline. | Extract `_parse_linear_url`, `_normalize_ticket_ref`, `_resolve_ref_to_uuid`, and `_LINEAR_URL_RE` into a dedicated `_ticket_ref.py` module. This reduces `_sync.py` by ~60 code lines and creates a natural test seam for the resolution logic. |
+| M3-2-R6 | Low | Todo | Testing | No test exercises `add` on an already-quarantined root. The implementation unconditionally sets `state="active"` at [line 1322](../../src/context_sync/_sync.py#L1322), silently overriding a quarantine without logging the state transition. The test suite covers idempotent re-add of an active root (`test_add_already_active_root_is_idempotent`) but not the quarantined→active transition. | [src/context_sync/_sync.py:1322](../../src/context_sync/_sync.py#L1322) (`manifest.roots[root_uuid] = ManifestRootEntry(state="active")` — no quarantine check), [tests/test_add_remove_root.py](../../tests/test_add_remove_root.py) (no quarantined-root test case) | The quarantine→active override via `add` is an implicit recovery path that bypasses the explicit quarantine/recovery logic in `refresh` (M3-1). If this behavior is intentional it should be documented and tested; if not, it is a silent correctness gap. | Add a test that syncs a root, quarantines it (by simulating an unavailable root through a subsequent refresh), then calls `add` with the same key and verifies: (a) the root returns to `active` state, (b) the ticket file is refreshed, and (c) the behavior is logged at INFO. If quarantine override is unintentional, add a guard that raises or warns instead. |
+
+### Review Pass 2 — Reviewer Notes
+
+- I independently confirm the findings from review pass 1.
+  [M3-2-R1](M3-2-review.md#findings) (alias precedence inversion) and
+  [M3-2-R2](M3-2-review.md#findings) (pre-refresh partial commit) are both
+  real, reproducible, and correctly characterized. I traced the same code paths
+  and agree with the severity assessments.
+- For [M3-2-R3](M3-2-review.md#review-pass-2--findings): the resolution
+  function's step 3 only checks `manifest.roots` for UUID matches
+  ([src/context_sync/_sync.py:138–140](../../src/context_sync/_sync.py#L138)).
+  A `manifest.tickets` UUID lookup is absent. Tracing
+  `remove_root("uuid-child")` where `uuid-child` is tracked as a derived
+  ticket: steps 1–2 miss (aliases and `current_key` don't match UUIDs), step 3
+  misses (`uuid-child ∉ manifest.roots`), so `None` is returned and the
+  generic "Cannot resolve" error fires rather than the targeted "not in the
+  root set" error at [line 1449](../../src/context_sync/_sync.py#L1449).
+- For [M3-2-R4](M3-2-review.md#review-pass-2--findings): the zero-roots
+  early return at [line 832](../../src/context_sync/_sync.py#L832) bypasses
+  the INFO log at [line 1168](../../src/context_sync/_sync.py#L1168). The
+  `test_remove_sole_root_prunes_everything` test confirms the prune behavior
+  works, but log output is not verified.
+- For [M3-2-R5](M3-2-review.md#review-pass-2--findings): `cloc` reports 888
+  code lines. The three new helpers at
+  [lines 86–141](../../src/context_sync/_sync.py#L86) are pure functions with
+  no `self` or class-level dependency — they are the strongest extraction
+  candidate.
+- I did not find a Linear-domain-boundary violation. All remote reads continue
+  to route through the gateway abstraction.
+- I did not rerun lint/format/test commands. The current worktree diff is
+  docs-only per the validation scope gate.
+
+### Review Pass 2 — Residual Risks and Testing Gaps
+
+- All residual risks from pass 1 remain open.
+- [tests/test_add_remove_root.py](../../tests/test_add_remove_root.py) does
+  not test `remove_root` with a raw UUID input (neither root UUID nor derived
+  UUID). The documented API contract for UUID inputs is untested
+  ([M3-2-R3](M3-2-review.md#review-pass-2--findings)).
+- No test verifies that `add` on a quarantined root transitions the root to
+  `active` state ([M3-2-R6](M3-2-review.md#review-pass-2--findings)).
+- The zero-roots prune path is the most destructive single code path in
+  `remove_root` (deletes all ticket files), yet it has no INFO-level
+  operational log ([M3-2-R4](M3-2-review.md#review-pass-2--findings)).
