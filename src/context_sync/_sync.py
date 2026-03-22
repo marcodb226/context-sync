@@ -31,7 +31,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -69,6 +68,7 @@ from context_sync._pipeline import (
     write_ticket,
 )
 from context_sync._signatures import compute_comments_signature, compute_relations_signature
+from context_sync._ticket_ref import _normalize_ticket_ref, _resolve_ref_to_uuid
 from context_sync._traversal import build_reachable_graph
 from context_sync._yaml import extract_body, parse_frontmatter, serialize_frontmatter
 
@@ -81,64 +81,6 @@ logger = logging.getLogger(__name__)
 def _utc_now() -> str:
     """Return the current UTC time as an RFC 3339 string with ``Z`` suffix."""
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-# Pattern captures ``https://linear.app/<slug>/issue/<KEY-123>`` with an
-# optional trailing title slug.  Issue keys are uppercase letters, a hyphen,
-# and one or more digits.
-_LINEAR_URL_RE = re.compile(r"^https?://linear\.app/(?P<slug>[^/]+)/issue/(?P<key>[A-Za-z]+-\d+)")
-
-
-def _parse_linear_url(url: str) -> tuple[str, str] | None:
-    """
-    Extract ``(workspace_slug, issue_key)`` from a Linear issue URL.
-
-    Returns ``None`` when *url* does not match the expected Linear URL
-    pattern.
-    """
-    m = _LINEAR_URL_RE.match(url)
-    if m:
-        return m.group("slug"), m.group("key")
-    return None
-
-
-def _normalize_ticket_ref(ticket_ref: str) -> tuple[str | None, str]:
-    """
-    Normalize a ticket reference to ``(workspace_slug | None, key_or_id)``.
-
-    If *ticket_ref* is a Linear issue URL, the workspace slug and issue key
-    are extracted.  Otherwise the reference is returned unchanged with
-    ``None`` as the slug.
-    """
-    parsed = _parse_linear_url(ticket_ref)
-    if parsed is not None:
-        return parsed
-    return None, ticket_ref
-
-
-def _resolve_ref_to_uuid(ref: str, manifest: Manifest) -> str | None:
-    """
-    Attempt to resolve a ticket reference to a UUID using manifest data.
-
-    Resolution order:
-
-    1. Alias table (``manifest.aliases``; maps issue keys to UUIDs).
-    2. Ticket entries scanned by ``current_key``.
-    3. Direct UUID match in the root set.
-
-    Returns ``None`` when no match is found.
-    """
-    # Alias table: issue_key → UUID.
-    if manifest.aliases and ref in manifest.aliases:
-        return manifest.aliases[ref]
-    # Ticket entries by current key.
-    for uid, entry in manifest.tickets.items():
-        if entry.current_key == ref:
-            return uid
-    # Direct UUID match in roots.
-    if ref in manifest.roots:
-        return ref
-    return None
 
 
 def _read_existing_ticket_state(
@@ -754,6 +696,7 @@ class ContextSync:
         started_at: str,
         mono_start: float,
         snapshot_mode: Literal["sync", "refresh", "add", "remove-root"] = "refresh",
+        manifest: Manifest | None = None,
     ) -> SyncResult:
         """
         Core refresh logic executed while the writer lock is held.
@@ -780,13 +723,21 @@ class ContextSync:
             Label for the ``ManifestSnapshot.mode`` field.  Defaults to
             ``"refresh"``; callers such as ``add`` and ``remove_root`` pass
             their own mode so the manifest records the triggering operation.
+        manifest:
+            Pre-loaded manifest to use instead of reading from disk.  When
+            callers such as ``add`` and ``remove_root`` have already mutated
+            the manifest in memory, they pass it here so the root-set change
+            and the snapshot finalization are committed together — avoiding
+            a partial-commit window where the manifest is saved but the
+            refresh has not yet completed.
 
         Returns
         -------
         SyncResult
         """
         # -- Load existing manifest (must exist for refresh) -------------------
-        manifest = load_manifest(context_dir)
+        if manifest is None:
+            manifest = load_manifest(context_dir)
 
         # Refresh uses the manifest's persisted traversal configuration, not
         # the current ContextSync instance defaults.  The manifest is
@@ -828,6 +779,14 @@ class ContextSync:
                 completed_successfully=True,
             )
             save_manifest(manifest, context_dir)
+
+            duration = time.monotonic() - mono_start
+            logger.info(
+                "%s: no roots remain — pruned=%d, duration=%.1fs",
+                snapshot_mode,
+                len(removed),
+                duration,
+            )
             return SyncResult(removed=removed)
 
         root_meta = await gateway.get_refresh_issue_metadata(root_uuids)
@@ -1319,13 +1278,20 @@ class ContextSync:
             )
 
         # -- Add ticket UUID to manifest root set --------------------------------
+        previous_entry = manifest.roots.get(root_uuid)
         manifest.roots[root_uuid] = ManifestRootEntry(state="active")
-        logger.info("add: added root %s (%s)", bundle.issue.issue_key, root_uuid)
-
-        # -- Persist manifest so _refresh_under_lock can load it -----------------
-        save_manifest(manifest, context_dir)
+        if previous_entry is not None and previous_entry.state == "quarantined":
+            logger.info(
+                "add: recovered quarantined root %s (%s) → active",
+                bundle.issue.issue_key,
+                root_uuid,
+            )
+        else:
+            logger.info("add: added root %s (%s)", bundle.issue.issue_key, root_uuid)
 
         # -- Execute whole-snapshot refresh under the same writer lock -----------
+        # Pass the in-memory manifest so the root-set mutation and snapshot
+        # finalization are committed together (no partial-commit window).
         return await self._refresh_under_lock(
             missing_root_policy="quarantine",
             context_dir=context_dir,
@@ -1334,6 +1300,7 @@ class ContextSync:
             started_at=started_at,
             mono_start=mono_start,
             snapshot_mode="add",
+            manifest=manifest,
         )
 
     async def remove_root(self, ticket_ref: str) -> SyncResult:
@@ -1456,10 +1423,9 @@ class ContextSync:
         del manifest.roots[resolved_uuid]
         logger.info("remove_root: removed root %s", resolved_uuid)
 
-        # -- Persist manifest so _refresh_under_lock can load it ----------------
-        save_manifest(manifest, context_dir)
-
         # -- Execute whole-snapshot refresh under the same writer lock ----------
+        # Pass the in-memory manifest so the root-set mutation and snapshot
+        # finalization are committed together (no partial-commit window).
         return await self._refresh_under_lock(
             missing_root_policy="quarantine",
             context_dir=context_dir,
@@ -1468,6 +1434,7 @@ class ContextSync:
             started_at=started_at,
             mono_start=mono_start,
             snapshot_mode="remove-root",
+            manifest=manifest,
         )
 
     async def diff(self) -> DiffResult:
