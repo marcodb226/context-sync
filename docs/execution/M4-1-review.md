@@ -1,6 +1,6 @@
 # Review: [M4-1](../implementation-plan.md#m4-1---cli-surface-and-command-output-contracts)
 
-> **Status**: Phase B complete
+> **Status**: Phase B complete (two review passes)
 > **Plan ticket**:
 > [M4-1](../implementation-plan.md#m4-1---cli-surface-and-command-output-contracts)
 > **Execution record**:
@@ -62,3 +62,78 @@
 - There is no regression test for semantically invalid numeric input. The
   current suite checks invalid flags and invalid `--missing-root-policy`
   values, but not zero or negative depth/cap arguments.
+
+---
+
+## Second Review Pass
+
+### Agreement with First Review
+
+I agree with all three findings from the first review pass:
+
+- **M4-1-R1** (gateway wiring): Confirmed. The `ContextSync(linear=...)` path
+  stores the raw client and sets `self._gateway = None`; every method
+  immediately raises `ContextSyncError` before doing any work. The CLI is
+  structurally inert in a real environment. I agree this is High severity.
+- **M4-1-R2** (JSON bootstrap failure): Confirmed. `_create_linear_client()`
+  calls `sys.exit(1)` directly, bypassing `main()`'s JSON error surface. I
+  agree this is Medium severity.
+- **M4-1-R3** (input validation): Confirmed. `ValueError` from the library
+  propagates as an uncaught traceback. I agree this is Medium severity.
+
+I also agree with the first reviewer's note about the execution artifact
+claiming `--verbose` / `-v` when the code uses `--log-level` and `-v` /
+`--version`. I have promoted that to a formal finding below (M4-1-R9) since
+the execution record is the Phase B handoff artifact and its inaccuracy could
+mislead an independent reviewer or Phase C responder.
+
+### Additional Findings
+
+| ID | Severity | Status | Area | Finding | Evidence | Impact | Recommendation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| M4-1-R4 | Medium | Todo | Correctness | `_run_sync` passes `dimensions` and `max_tickets_per_root` to both the `ContextSync()` constructor and the `.sync()` per-call overrides. The `.sync()` overrides always take precedence, making the constructor values dead for this call. `_build_dimensions(args)` is also called twice, producing two throwaway dicts. The four other handlers correctly rely on constructor defaults only, so this handler is inconsistent with the rest of the dispatch surface. | [src/context_sync/_cli.py:201–211](../../src/context_sync/_cli.py#L201), [src/context_sync/_sync.py:290–294](../../src/context_sync/_sync.py#L290), [src/context_sync/_sync.py:342–347](../../src/context_sync/_sync.py#L342) | No runtime bug today because both paths receive the same values, but a maintenance change to one path without the other would introduce silent divergence. The redundancy also obscures the design intent — a reader must trace both the constructor and the method to understand which value actually governs behavior. | Pass `dimensions` and `max_tickets_per_root` only to `.sync()` (as per-call overrides) and let the constructor use defaults. Alternatively, pass them only to the constructor and call `.sync()` without overrides. Either approach removes the ambiguity. |
+| M4-1-R5 | Low | Todo | Code Quality | `_run_sync` uses a two-step `result = syncer.sync(...); result = await result` pattern that rebinds the name `result` from the coroutine to the resolved value. All four other handlers use the idiomatic `result = await syncer.method(...)` one-liner. | [src/context_sync/_cli.py:207–212](../../src/context_sync/_cli.py#L207), [src/context_sync/_cli.py:227](../../src/context_sync/_cli.py#L227), [src/context_sync/_cli.py:242](../../src/context_sync/_cli.py#L242), [src/context_sync/_cli.py:257](../../src/context_sync/_cli.py#L257), [src/context_sync/_cli.py:272](../../src/context_sync/_cli.py#L272) | Minor readability issue — the two-step form suggests a deliberate reason (e.g., interleaving work before the await) that does not exist, and the name reuse can confuse readers or static analyzers. | Collapse to `result = await syncer.sync(...)` to match the other handlers. |
+| M4-1-R6 | Medium | Todo | Error Contract | `_emit()` silently falls back to text output when `json_output` is `None` and `use_json` is `True`. The guard `if use_json and json_output is not None` means JSON mode produces human-readable text instead of JSON (or an error) when a caller passes `None` for the JSON payload. No current handler triggers this path, but the function's signature and docstring accept `None` as a valid value for `json_output`, so a future handler or refactor could hit it without warning. | [src/context_sync/_cli.py:130–146](../../src/context_sync/_cli.py#L130) | A `--json` invocation that silently emits text instead of JSON breaks the machine-readable output contract. Downstream automation parsing stdout as JSON would get a parse failure with no diagnostic about why the mode downgraded. | Either raise an error when `use_json=True` and `json_output is None` (fail-loud per coding guidelines), or remove the `None` optionality from the parameter and require callers to always supply the JSON payload. |
+| M4-1-R7 | Low | Todo | Code Quality | The handler dispatch table `_HANDLERS` is typed `dict[str, object]`, which erases the handler callable signature and forces a `# type: ignore[operator]` suppression at the `asyncio.run(handler(args))` call site. | [src/context_sync/_cli.py:427](../../src/context_sync/_cli.py#L427), [src/context_sync/_cli.py:467](../../src/context_sync/_cli.py#L467) | The type suppression disables static verification that every registered handler accepts `argparse.Namespace` and returns `int`. A mistyped handler would only surface at runtime. | Define a `Handler` type alias (e.g., `Callable[[argparse.Namespace], Coroutine[Any, Any, int]]`) and annotate `_HANDLERS` with it. Remove the `# type: ignore`. |
+| M4-1-R8 | Medium | Todo | Operational | The `--log-level OFF` code path calls `logging.disable(logging.CRITICAL)`, which is a process-global operation that silences all loggers in the current process, not just `context-sync` loggers. Separately, the `logging.basicConfig()` call (without `force=True`) is a no-op on any call after the first in the same process. Both issues are benign for a standalone `context-sync` invocation but break library callers who import and call `main()` as a function, and they make test-driven repeated `main()` calls unreliable for log-level verification. | [src/context_sync/_cli.py:453–460](../../src/context_sync/_cli.py#L453) | Library consumers who call `main(["diff", "--log-level", "OFF"])` lose their own logging for the rest of the process. Repeated `main()` calls in tests with different log levels silently keep the first call's configuration. | For `OFF`, set the `context_sync` package logger level to `CRITICAL + 1` instead of using `logging.disable()`. For `basicConfig`, either pass `force=True` (acceptable for a CLI entry point) or configure the package-level logger directly instead of relying on `basicConfig`. |
+| M4-1-R9 | Low | Todo | Documentation | The execution record at [docs/execution/M4-1.md](M4-1.md) claims `--verbose` / `-v` sets the root logger to DEBUG (lines 37 and 109), but the shipped parser reserves `-v` for `--version` and uses `--log-level` for diagnostic verbosity. The first reviewer noted this discrepancy in prose but did not record it as a finding. | [docs/execution/M4-1.md:37](M4-1.md#L37), [docs/execution/M4-1.md:109](M4-1.md#L109), [src/context_sync/_cli.py:343–354](../../src/context_sync/_cli.py#L343) | The execution record is the Phase B handoff artifact. An inaccurate claim about the CLI's flag surface could mislead Phase C or a future reviewer into thinking the implementation is wrong when the record is what is outdated. | Correct the execution record in Phase C: replace the `--verbose` / `-v` references with `--log-level` and note that `-v` is `--version` per [docs/policies/common/cli-conventions.md](../policies/common/cli-conventions.md). |
+
+### Second-Pass Reviewer Notes
+
+- Review scope: full re-read of [src/context_sync/_cli.py](../../src/context_sync/_cli.py),
+  [tests/test_cli.py](../../tests/test_cli.py),
+  [docs/execution/M4-1.md](M4-1.md), the design references at
+  [docs/design/0-top-level-design.md §2](../design/0-top-level-design.md#2-cli-interface)
+  and [§4](../design/0-top-level-design.md#4-error-handling), the library
+  constructor and method entry points in
+  [src/context_sync/_sync.py](../../src/context_sync/_sync.py), the config
+  validation in [src/context_sync/_config.py](../../src/context_sync/_config.py),
+  and the error hierarchy in
+  [src/context_sync/_errors.py](../../src/context_sync/_errors.py).
+- I confirmed the Linear-boundary check from the first review. No direct
+  `linear.gql.*` usage in the CLI module; all operational behavior routes
+  through [src/context_sync/_sync.py](../../src/context_sync/_sync.py).
+- The `_VersionedParser` subclass at
+  [src/context_sync/_cli.py:312](../../src/context_sync/_cli.py#L312) correctly
+  includes the tool name and version in both help and error output, satisfying
+  [docs/policies/common/cli-conventions.md](../policies/common/cli-conventions.md).
+- The `-v` / `--version` reservation and `--log-level` (not `--verbose`)
+  approach correctly follow
+  [docs/policies/common/cli-conventions.md](../policies/common/cli-conventions.md).
+- Changelog review: version is `0.1.0.dev0` (pre-stable), so the changelog
+  gate does not apply.
+- I did not rerun lint/format/test commands. The current worktree diff is
+  docs-only.
+
+### Second-Pass Residual Risks and Testing Gaps
+
+The residual risks identified by the first review pass remain. Additional gaps:
+
+- There is no test for `_build_dimensions()` in isolation — the test suite
+  verifies argparse parsing of `--depth-*` flags but never exercises the
+  function that transforms parsed args into the dict passed to the library.
+- There is no test for `_emit()` edge cases, specifically the
+  `use_json=True, json_output=None` fallback path identified in M4-1-R6.
+- There is no test that exercises `main()` with different `--log-level`
+  values in the same process to surface the `basicConfig` idempotency gap
+  identified in M4-1-R8.
