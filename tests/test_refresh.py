@@ -13,10 +13,11 @@ from pathlib import Path
 
 import pytest
 
-from context_sync._errors import ManifestError
+from context_sync._errors import ManifestError, RootNotFoundError
 from context_sync._gateway import (
     CommentData,
     RelationData,
+    TicketBundle,
 )
 from context_sync._manifest import (
     load_manifest,
@@ -606,3 +607,163 @@ class TestRefreshMultiRoot:
         result = await syncer.refresh()
 
         assert result == SyncResult()
+
+
+# ---------------------------------------------------------------------------
+# Input validation
+# ---------------------------------------------------------------------------
+
+
+class TestRefreshInputValidation:
+    """Invalid missing_root_policy is rejected at the public boundary."""
+
+    async def test_invalid_policy_raises_value_error(self, context_dir: Path) -> None:
+        gw = FakeLinearGateway()
+        gw.add_issue(make_issue(issue_id="uuid-root", issue_key="ROOT-1"))
+
+        syncer = make_syncer(context_dir=context_dir, gateway=gw)
+        await syncer.sync("uuid-root")
+
+        with pytest.raises(ValueError, match="missing_root_policy"):
+            await syncer.refresh(missing_root_policy="typo")  # type: ignore[arg-type]
+
+    async def test_invalid_policy_does_not_delete_root(self, context_dir: Path) -> None:
+        """A typo must not silently fall through to the 'remove' branch."""
+        gw = FakeLinearGateway()
+        gw.add_issue(make_issue(issue_id="uuid-root", issue_key="ROOT-1"))
+
+        syncer = make_syncer(context_dir=context_dir, gateway=gw)
+        await syncer.sync("uuid-root")
+
+        gw.hide_issue("uuid-root")
+
+        with pytest.raises(ValueError):
+            await syncer.refresh(missing_root_policy="quaratine")  # type: ignore[arg-type]
+
+        # Root file must still exist.
+        assert (context_dir / "ROOT-1.md").is_file()
+
+
+# ---------------------------------------------------------------------------
+# Manifest traversal config authority (R1)
+# ---------------------------------------------------------------------------
+
+
+class TestRefreshUsesManifestConfig:
+    """Refresh uses the manifest's persisted traversal config, not instance defaults."""
+
+    async def test_cross_instance_config_divergence(self, context_dir: Path) -> None:
+        """A second ContextSync with different defaults must not change scope."""
+        gw = FakeLinearGateway()
+        child = make_issue(issue_id="uuid-child", issue_key="CHILD-1")
+        root = make_issue(
+            issue_id="uuid-root",
+            issue_key="ROOT-1",
+            relations=[
+                RelationData(
+                    dimension="blocks",
+                    relation_type="blocks",
+                    target_issue_id="uuid-child",
+                    target_issue_key="CHILD-1",
+                ),
+            ],
+        )
+        gw.add_issue(root)
+        gw.add_issue(child)
+
+        # Sync with blocks=1 (child reachable).
+        syncer1 = make_syncer(context_dir=context_dir, gateway=gw, dimensions={"blocks": 1})
+        await syncer1.sync("uuid-root")
+
+        assert (context_dir / "CHILD-1.md").is_file()
+
+        # Build a new ContextSync with blocks=0 and refresh.
+        syncer2 = make_syncer(context_dir=context_dir, gateway=gw, dimensions={"blocks": 0})
+        result = await syncer2.refresh()
+
+        # Child must NOT be pruned — manifest records blocks=1.
+        assert "CHILD-1" not in result.removed
+        assert (context_dir / "CHILD-1.md").is_file()
+
+
+# ---------------------------------------------------------------------------
+# Prefetch failure applies missing_root_policy (R3)
+# ---------------------------------------------------------------------------
+
+
+class _PrefetchFailGateway(FakeLinearGateway):
+    """Gateway that fails fetch_issue for specific IDs after visibility passes."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._prefetch_fail_ids: set[str] = set()
+
+    def fail_prefetch_for(self, issue_id: str) -> None:
+        """Make fetch_issue raise RootNotFoundError for *issue_id*."""
+        self._prefetch_fail_ids.add(issue_id)
+
+    async def fetch_issue(self, issue_id_or_key: str) -> TicketBundle:
+        """Raise if the issue is in the prefetch-fail set."""
+        resolved_id = self._key_index.get(issue_id_or_key, issue_id_or_key)
+        if resolved_id in self._prefetch_fail_ids:
+            raise RootNotFoundError(f"Simulated prefetch failure: {issue_id_or_key}")
+        return await super().fetch_issue(issue_id_or_key)
+
+
+class TestRefreshPrefetchFailure:
+    """Root-prefetch failure applies the missing-root policy."""
+
+    async def test_prefetch_failure_quarantines_root(self, context_dir: Path) -> None:
+        gw = _PrefetchFailGateway()
+        child = make_issue(issue_id="uuid-child", issue_key="CHILD-1")
+        root = make_issue(
+            issue_id="uuid-root",
+            issue_key="ROOT-1",
+            relations=[
+                RelationData(
+                    dimension="blocks",
+                    relation_type="blocks",
+                    target_issue_id="uuid-child",
+                    target_issue_key="CHILD-1",
+                ),
+            ],
+        )
+        gw.add_issue(root)
+        gw.add_issue(child)
+
+        # Initial sync succeeds normally.
+        syncer = make_syncer(context_dir=context_dir, gateway=gw)
+        await syncer.sync("uuid-root")
+
+        assert (context_dir / "CHILD-1.md").is_file()
+
+        # Now make fetch_issue fail for the root (but visibility still passes).
+        gw.fail_prefetch_for("uuid-root")
+
+        result = await syncer.refresh()
+
+        # Root should be quarantined, not left active.
+        manifest = load_manifest(context_dir)
+        assert manifest.roots["uuid-root"].state == "quarantined"
+
+        # An error should be recorded.
+        assert any(e.error_type == "root_quarantined" for e in result.errors)
+
+        # Child should be pruned (root is quarantined, not traversed).
+        assert "CHILD-1" in result.removed
+
+    async def test_prefetch_failure_removes_root(self, context_dir: Path) -> None:
+        gw = _PrefetchFailGateway()
+        gw.add_issue(make_issue(issue_id="uuid-root", issue_key="ROOT-1"))
+
+        syncer = make_syncer(context_dir=context_dir, gateway=gw)
+        await syncer.sync("uuid-root")
+
+        gw.fail_prefetch_for("uuid-root")
+
+        result = await syncer.refresh(missing_root_policy="remove")
+
+        # Root should be removed entirely.
+        manifest = load_manifest(context_dir)
+        assert "uuid-root" not in manifest.roots
+        assert "ROOT-1" in result.removed

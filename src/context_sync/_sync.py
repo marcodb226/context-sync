@@ -42,10 +42,17 @@ from context_sync._config import (
     FORMAT_VERSION,
     resolve_dimensions,
 )
-from context_sync._errors import ContextSyncError, RootNotFoundError, WorkspaceMismatchError
+from context_sync._errors import (
+    ContextSyncError,
+    ManifestError,
+    RootNotFoundError,
+    WorkspaceMismatchError,
+)
+from context_sync._io import atomic_write
 from context_sync._lock import acquire_lock, release_lock
 from context_sync._manifest import (
     MANIFEST_FILENAME,
+    Manifest,
     ManifestRootEntry,
     ManifestSnapshot,
     ManifestTicketEntry,
@@ -95,7 +102,10 @@ def _read_existing_ticket_state(
         fm = parse_frontmatter(text)
         fv = fm.get("format_version")
         return fm.get("refresh_cursor"), fm.get("root_state"), fv if isinstance(fv, int) else None
-    except Exception:
+    except (ValueError, KeyError, ManifestError):
+        # Frontmatter is corrupt or missing expected structure — treat the
+        # ticket as stale so it will be re-fetched.
+        logger.debug("Could not parse ticket state from %s; treating as stale", file_path)
         return None, None, None
 
 
@@ -111,7 +121,7 @@ def _rewrite_quarantined_ticket(
     *,
     uid: str,
     context_dir: Path,
-    manifest: object,
+    manifest: Manifest,
     last_synced_at: str,
 ) -> None:
     """
@@ -120,23 +130,38 @@ def _rewrite_quarantined_ticket(
     Reads the existing file, updates frontmatter to add ``root_state`` and
     ``quarantined_reason``, inserts the quarantine warning preamble before
     the first ``<!-- context-sync:section`` marker if not already present,
-    and writes the file back.
+    and writes the file back atomically.
 
     This is used when a root ticket is no longer visible and cannot be
     re-fetched.  The existing content is preserved but marked as potentially
     stale.
-    """
-    # Avoid circular import and keep the function signature simple — manifest
-    # is duck-typed here for the tickets dict lookup.
-    from context_sync._manifest import Manifest
 
-    assert isinstance(manifest, Manifest)
+    Parameters
+    ----------
+    uid:
+        Issue UUID of the quarantined root.
+    context_dir:
+        Root directory of the context-sync snapshot.
+    manifest:
+        The loaded manifest.
+    last_synced_at:
+        RFC 3339 timestamp for the ``last_synced_at`` frontmatter field.
+    """
     ticket_entry = manifest.tickets.get(uid)
     if ticket_entry is None:
+        logger.warning(
+            "Cannot rewrite quarantined ticket %s: no manifest ticket entry",
+            uid,
+        )
         return
 
     file_path = context_dir / ticket_entry.current_path
     if not file_path.is_file():
+        logger.warning(
+            "Cannot rewrite quarantined ticket %s: file does not exist at %s",
+            uid,
+            file_path,
+        )
         return
 
     text = file_path.read_text(encoding="utf-8")
@@ -159,7 +184,7 @@ def _rewrite_quarantined_ticket(
             body = _QUARANTINE_WARNING + "\n" + body
 
     new_content = serialize_frontmatter(fm) + body
-    file_path.write_text(new_content, encoding="utf-8")
+    atomic_write(file_path, new_content)
 
 
 class ContextSync:
@@ -259,7 +284,6 @@ class ContextSync:
     # -- Async entry points -------------------------------------------------
     #
     # Stub implementations for flows not yet owned by this ticket:
-    #   refresh     → M3-1
     #   add         → M3-2
     #   remove_root → M3-2
     #   diff        → M3-3
@@ -629,6 +653,13 @@ class ContextSync:
         WriteError
             If a local file write or post-write verification fails.
         """
+        valid_policies = ("quarantine", "remove")
+        if missing_root_policy not in valid_policies:
+            raise ValueError(
+                f"missing_root_policy must be one of {valid_policies!r}, "
+                f"got {missing_root_policy!r}"
+            )
+
         if self._gateway is None:
             raise ContextSyncError(
                 "No gateway available. The real Linear gateway wrapper is not "
@@ -676,8 +707,11 @@ class ContextSync:
         # -- Load existing manifest (must exist for refresh) -------------------
         manifest = load_manifest(context_dir)
 
-        effective_dims = dict(self._dimensions)
-        effective_cap = self._max_tickets_per_root
+        # Refresh uses the manifest's persisted traversal configuration, not
+        # the current ContextSync instance defaults.  The manifest is
+        # authoritative for the snapshot's active dimensions and per-root cap.
+        effective_dims = dict(manifest.dimensions)
+        effective_cap = manifest.max_tickets_per_root
 
         # -- Record in-progress snapshot metadata -----------------------------
         manifest.snapshot = ManifestSnapshot(
@@ -783,17 +817,62 @@ class ContextSync:
                         fetched[bundle.issue.issue_id] = bundle
                     except RootNotFoundError:
                         prefetch_failed.add(issue_id)
-                        logger.warning(
-                            "Existing root %s unavailable during pre-fetch; "
-                            "excluding from traversal",
-                            issue_id,
-                        )
 
             async with asyncio.TaskGroup() as tg:
                 for uid in active_root_uuids:
                     tg.create_task(_fetch_root(uid))
 
+        # Treat a root-prefetch RootNotFoundError as a missing-root condition
+        # and apply the requested missing_root_policy rather than silently
+        # dropping the root from traversal while leaving it marked active.
+        for uid in prefetch_failed:
+            ticket_entry = manifest.tickets.get(uid)
+            failed_key = ticket_entry.current_key if ticket_entry is not None else uid
+
+            if missing_root_policy == "quarantine":
+                manifest.roots[uid] = ManifestRootEntry(
+                    state="quarantined",
+                    quarantined_reason="not_available_in_visible_view",
+                )
+                if ticket_entry is not None:
+                    _rewrite_quarantined_ticket(
+                        uid=uid,
+                        context_dir=context_dir,
+                        manifest=manifest,
+                        last_synced_at=started_at,
+                    )
+                errors.append(
+                    SyncError(
+                        ticket_id=failed_key,
+                        error_type="root_quarantined",
+                        message=(
+                            "Root ticket passed visibility check but was "
+                            "unavailable during pre-fetch"
+                        ),
+                        retriable=True,
+                    )
+                )
+                logger.warning(
+                    "refresh: root %s passed visibility but failed pre-fetch; quarantined",
+                    uid,
+                )
+            else:
+                # missing_root_policy == "remove"
+                if ticket_entry is not None:
+                    file_path = context_dir / ticket_entry.current_path
+                    if file_path.is_file():
+                        file_path.unlink()
+                    del manifest.tickets[uid]
+                del manifest.roots[uid]
+                removed_by_policy.append(failed_key)
+                logger.warning(
+                    "refresh: root %s passed visibility but failed pre-fetch; removed",
+                    uid,
+                )
+
         # -- Build traversal roots dict {uuid: current_key} -------------------
+        # Re-derive active roots after prefetch-failure handling since some
+        # roots may have been quarantined or removed above.
         roots_for_traversal: dict[str, str] = {}
         for uid in active_root_uuids:
             if uid in prefetch_failed:
