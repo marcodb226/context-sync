@@ -210,6 +210,29 @@ to `Next release` yet.
   manifest, and subsequent snapshot operations keep only the tickets permitted
   by that stored filter under documented root and pruning rules.
 
+<a id="fw-8-ci-file-size-enforcement"></a>
+### FW-8 - CI Enforcement of Source File Size Limit
+
+**Why deferred**
+- The coding guidelines now require source files to stay under 1,000 lines of
+  code (excluding comments, docstrings, and blanks), measured by `cloc`.
+- Enforcement is currently manual. A lightweight CI check would catch violations
+  before they land on the default branch, but the first release has no CI
+  pipeline yet and wiring one up is out of scope for the current milestones.
+
+**Scope**
+- Add a CI step (or pre-commit hook) that runs `cloc` over `src/` and fails if
+  any non-exempt source file exceeds 1,000 code lines.
+- Honor per-file exceptions recorded as top-of-file comments per the coding
+  guidelines.
+- Exempt test modules (`tests/`) from the hard limit, consistent with the
+  guideline.
+
+**Completion signal**
+- A CI check or pre-commit hook automatically blocks merges that introduce a
+  source file exceeding the documented code-line limit, respecting declared
+  exceptions and the test-module exemption.
+
 ## Historical
 
 No historical items are tracked yet.
