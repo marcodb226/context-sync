@@ -31,9 +31,10 @@ import asyncio
 import json
 import logging
 import sys
+from collections.abc import Callable, Coroutine
 from dataclasses import asdict
 from pathlib import Path
-from typing import NoReturn
+from typing import Any, NoReturn
 
 from context_sync._config import DEFAULT_DIMENSIONS, DEFAULT_MAX_TICKETS_PER_ROOT, Dimension
 from context_sync._errors import ContextSyncError
@@ -57,6 +58,9 @@ DEFAULT_LOG_LEVEL: str = "WARNING"
 
 _VERSION_STRING: str = f"{__prog_name__} {__version__}"
 """Pre-formatted version string shared by ``-v``, ``-h``, and error output."""
+
+_Handler = Callable[..., Coroutine[Any, Any, int]]
+"""Type alias for async subcommand handlers (R7)."""
 
 # ---------------------------------------------------------------------------
 # Output formatting
@@ -127,7 +131,7 @@ def _format_diff_result_text(result: DiffResult) -> str:
     return "\n".join(lines)
 
 
-def _emit(text_output: str, json_output: dict[str, object] | None, *, use_json: bool) -> None:
+def _emit(text_output: str, json_output: dict[str, object], *, use_json: bool) -> None:
     """
     Write the formatted result to stdout.
 
@@ -136,11 +140,11 @@ def _emit(text_output: str, json_output: dict[str, object] | None, *, use_json: 
     text_output:
         Pre-formatted human-readable text.
     json_output:
-        Serializable dict for ``--json`` mode.  ``None`` skips JSON emission.
+        Serializable dict for ``--json`` mode.
     use_json:
         If ``True``, print *json_output*; otherwise print *text_output*.
     """
-    if use_json and json_output is not None:
+    if use_json:
         print(json.dumps(json_output, indent=2, sort_keys=True))
     else:
         print(text_output)
@@ -174,101 +178,146 @@ def _create_linear_client() -> object:
 
     Raises
     ------
-    SystemExit
-        If ``linear-client`` is not installed or authentication fails.
+    ContextSyncError
+        If ``linear-client`` is not installed or client initialization fails.
     """
     try:
         from linear_client import Linear  # type: ignore[import-untyped]
-    except ImportError:
-        logger.error(
+    except ImportError as exc:
+        raise ContextSyncError(
             "linear-client is not installed.  Install it into the active "
             "environment before running context-sync CLI commands."
-        )
-        sys.exit(EXIT_ERROR)
+        ) from exc
 
     try:
         return Linear()
     except Exception as exc:
-        logger.error("Failed to initialize Linear client: %s", exc)
-        sys.exit(EXIT_ERROR)
+        raise ContextSyncError(f"Failed to initialize Linear client: {exc}") from exc
 
 
-async def _run_sync(args: argparse.Namespace) -> int:
+async def _run_sync(
+    args: argparse.Namespace,
+    *,
+    _gateway_override: Any = None,
+) -> int:
     """Execute the ``sync`` subcommand."""
     from context_sync._sync import ContextSync
 
-    linear = _create_linear_client()
-    syncer = ContextSync(
-        linear=linear,
-        context_dir=Path(args.context_dir),
-        dimensions=_build_dimensions(args),
-        max_tickets_per_root=args.max_tickets_per_root,
-    )
-    result = syncer.sync(
+    if _gateway_override is not None:
+        syncer = ContextSync(
+            context_dir=Path(args.context_dir),
+            _gateway_override=_gateway_override,
+        )
+    else:
+        linear = _create_linear_client()
+        syncer = ContextSync(
+            linear=linear,
+            context_dir=Path(args.context_dir),
+        )
+    result = await syncer.sync(
         root_ticket_id=args.root_ticket,
         max_tickets_per_root=args.max_tickets_per_root,
         dimensions=_build_dimensions(args),
     )
-    result = await result
     text = _format_sync_result_text(result)
     _emit(text, asdict(result), use_json=args.json)
     return EXIT_SUCCESS
 
 
-async def _run_refresh(args: argparse.Namespace) -> int:
+async def _run_refresh(
+    args: argparse.Namespace,
+    *,
+    _gateway_override: Any = None,
+) -> int:
     """Execute the ``refresh`` subcommand."""
     from context_sync._sync import ContextSync
 
-    linear = _create_linear_client()
-    syncer = ContextSync(
-        linear=linear,
-        context_dir=Path(args.context_dir),
-    )
+    if _gateway_override is not None:
+        syncer = ContextSync(
+            context_dir=Path(args.context_dir),
+            _gateway_override=_gateway_override,
+        )
+    else:
+        linear = _create_linear_client()
+        syncer = ContextSync(
+            linear=linear,
+            context_dir=Path(args.context_dir),
+        )
     result = await syncer.refresh(missing_root_policy=args.missing_root_policy)
     text = _format_sync_result_text(result)
     _emit(text, asdict(result), use_json=args.json)
     return EXIT_SUCCESS
 
 
-async def _run_add(args: argparse.Namespace) -> int:
+async def _run_add(
+    args: argparse.Namespace,
+    *,
+    _gateway_override: Any = None,
+) -> int:
     """Execute the ``add`` subcommand."""
     from context_sync._sync import ContextSync
 
-    linear = _create_linear_client()
-    syncer = ContextSync(
-        linear=linear,
-        context_dir=Path(args.context_dir),
-    )
+    if _gateway_override is not None:
+        syncer = ContextSync(
+            context_dir=Path(args.context_dir),
+            _gateway_override=_gateway_override,
+        )
+    else:
+        linear = _create_linear_client()
+        syncer = ContextSync(
+            linear=linear,
+            context_dir=Path(args.context_dir),
+        )
     result = await syncer.add(ticket_ref=args.ticket_ref)
     text = _format_sync_result_text(result)
     _emit(text, asdict(result), use_json=args.json)
     return EXIT_SUCCESS
 
 
-async def _run_remove_root(args: argparse.Namespace) -> int:
+async def _run_remove_root(
+    args: argparse.Namespace,
+    *,
+    _gateway_override: Any = None,
+) -> int:
     """Execute the ``remove-root`` subcommand."""
     from context_sync._sync import ContextSync
 
-    linear = _create_linear_client()
-    syncer = ContextSync(
-        linear=linear,
-        context_dir=Path(args.context_dir),
-    )
+    if _gateway_override is not None:
+        syncer = ContextSync(
+            context_dir=Path(args.context_dir),
+            _gateway_override=_gateway_override,
+        )
+    else:
+        linear = _create_linear_client()
+        syncer = ContextSync(
+            linear=linear,
+            context_dir=Path(args.context_dir),
+        )
     result = await syncer.remove_root(ticket_ref=args.ticket_ref)
     text = _format_sync_result_text(result)
     _emit(text, asdict(result), use_json=args.json)
     return EXIT_SUCCESS
 
 
-async def _run_diff(args: argparse.Namespace) -> int:
+async def _run_diff(
+    args: argparse.Namespace,
+    *,
+    _gateway_override: Any = None,
+) -> int:
     """Execute the ``diff`` subcommand."""
     from context_sync._sync import ContextSync
 
-    linear = _create_linear_client()
-    syncer = ContextSync(
-        linear=linear,
-        context_dir=Path(args.context_dir),
-    )
+    if _gateway_override is not None:
+        syncer = ContextSync(
+            context_dir=Path(args.context_dir),
+            _gateway_override=_gateway_override,
+        )
+    else:
+        linear = _create_linear_client()
+        syncer = ContextSync(
+            linear=linear,
+            context_dir=Path(args.context_dir),
+        )
     result = await syncer.diff()
     text = _format_diff_result_text(result)
     _emit(text, asdict(result), use_json=args.json)
@@ -424,7 +473,7 @@ def build_parser() -> argparse.ArgumentParser:
 # ---------------------------------------------------------------------------
 
 # Handler dispatch table mapping subcommand names to their async handlers.
-_HANDLERS: dict[str, object] = {
+_HANDLERS: dict[str, _Handler] = {
     "sync": _run_sync,
     "refresh": _run_refresh,
     "add": _run_add,
@@ -449,14 +498,17 @@ def main(argv: list[str] | None = None) -> NoReturn:
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    # Configure logging before any library code runs.
+    # Configure logging before any library code runs (R8).
+    pkg_logger = logging.getLogger("context_sync")
     if args.log_level == "OFF":
-        logging.disable(logging.CRITICAL)
+        pkg_logger.setLevel(logging.CRITICAL + 1)
+        pkg_logger.addHandler(logging.NullHandler())
     else:
         logging.basicConfig(
             level=getattr(logging, args.log_level),
             format="%(levelname)s %(name)s: %(message)s",
             stream=sys.stderr,
+            force=True,
         )
 
     handler = _HANDLERS.get(args.command)
@@ -464,9 +516,9 @@ def main(argv: list[str] | None = None) -> NoReturn:
         parser.error(f"Unknown command: {args.command}")
 
     try:
-        exit_code = asyncio.run(handler(args))  # type: ignore[operator]
-    except ContextSyncError as exc:
-        # Operational errors: report clearly and exit 1.
+        exit_code = asyncio.run(handler(args))
+    except (ContextSyncError, ValueError) as exc:
+        # Operational errors and input validation errors: report clearly.
         if getattr(args, "json", False):
             error_payload = {"error": type(exc).__name__, "message": str(exc)}
             print(json.dumps(error_payload, indent=2, sort_keys=True))

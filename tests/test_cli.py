@@ -2,14 +2,16 @@
 Tests for the CLI surface (M4-1).
 
 Exercises command parsing, human-readable output, JSON output, error-code
-behavior, lock-error text, and missing-root-policy selection.  All tests use
-the :class:`FakeLinearGateway` so no real Linear calls are made.
+behavior, lock-error text, missing-root-policy selection, handler-level
+integration through a fake gateway, bootstrap failure JSON output, and
+semantic input validation.
 """
 
 from __future__ import annotations
 
 import json
 from dataclasses import asdict
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -20,9 +22,15 @@ from context_sync._cli import (
     EXIT_SUCCESS,
     _format_diff_result_text,
     _format_sync_result_text,
+    _run_add,
+    _run_diff,
+    _run_refresh,
+    _run_remove_root,
+    _run_sync,
     build_parser,
     main,
 )
+from context_sync._config import Dimension
 from context_sync._errors import (
     ActiveLockError,
     ContextSyncError,
@@ -34,6 +42,7 @@ from context_sync._errors import (
     WorkspaceMismatchError,
 )
 from context_sync._models import DiffEntry, DiffResult, SyncError, SyncResult
+from context_sync._testing import FakeLinearGateway, make_issue
 from context_sync.version import __prog_name__, __version__
 
 # ---------------------------------------------------------------------------
@@ -550,3 +559,232 @@ class TestMissingRootPolicySelection:
         with pytest.raises(SystemExit) as exc_info:
             parser.parse_args(["refresh", "--missing-root-policy", "ignore"])
         assert exc_info.value.code == 2
+
+
+# ---------------------------------------------------------------------------
+# Handler-level integration tests with fake gateway (R1)
+# ---------------------------------------------------------------------------
+
+
+def _make_args(**kwargs: object) -> object:
+    """Build a minimal argparse.Namespace-like object for handler tests."""
+    import argparse
+
+    defaults = {"context_dir": ".", "json": False}
+    defaults.update(kwargs)
+    return argparse.Namespace(**defaults)
+
+
+class TestHandlerIntegration:
+    """Exercise the real handler functions against a fake gateway."""
+
+    async def test_sync_handler_creates_ticket_files(
+        self, context_dir: Path, fake_gateway: FakeLinearGateway
+    ) -> None:
+        """``_run_sync`` creates ticket files via the library layer."""
+        fake_gateway.add_issue(make_issue(issue_id="uuid-1", issue_key="TEST-1"))
+        args = _make_args(
+            context_dir=str(context_dir),
+            root_ticket="TEST-1",
+            max_tickets_per_root=200,
+            # No depth overrides — all default to None.
+            **{f"depth_{d.value.replace('-', '_')}": None for d in Dimension},
+        )
+        code = await _run_sync(args, _gateway_override=fake_gateway)
+        assert code == EXIT_SUCCESS
+        assert (context_dir / "TEST-1.md").is_file()
+
+    async def test_refresh_handler_succeeds(
+        self, context_dir: Path, fake_gateway: FakeLinearGateway
+    ) -> None:
+        """``_run_refresh`` completes against an existing snapshot."""
+        fake_gateway.add_issue(make_issue(issue_id="uuid-1", issue_key="TEST-1"))
+        # Bootstrap via sync first.
+        from context_sync._testing import make_syncer
+
+        syncer = make_syncer(gateway=fake_gateway, context_dir=context_dir)
+        await syncer.sync(root_ticket_id="TEST-1")
+
+        args = _make_args(
+            context_dir=str(context_dir),
+            missing_root_policy="quarantine",
+        )
+        code = await _run_refresh(args, _gateway_override=fake_gateway)
+        assert code == EXIT_SUCCESS
+
+    async def test_add_handler_adds_root(
+        self, context_dir: Path, fake_gateway: FakeLinearGateway
+    ) -> None:
+        """``_run_add`` adds a new root via the library layer."""
+        fake_gateway.add_issue(make_issue(issue_id="uuid-1", issue_key="TEST-1"))
+        args = _make_args(
+            context_dir=str(context_dir),
+            ticket_ref="TEST-1",
+        )
+        code = await _run_add(args, _gateway_override=fake_gateway)
+        assert code == EXIT_SUCCESS
+        assert (context_dir / "TEST-1.md").is_file()
+
+    async def test_remove_root_handler_removes_root(
+        self, context_dir: Path, fake_gateway: FakeLinearGateway
+    ) -> None:
+        """``_run_remove_root`` removes a root via the library layer."""
+        fake_gateway.add_issue(make_issue(issue_id="uuid-1", issue_key="TEST-1"))
+        from context_sync._testing import make_syncer
+
+        syncer = make_syncer(gateway=fake_gateway, context_dir=context_dir)
+        await syncer.sync(root_ticket_id="TEST-1")
+
+        args = _make_args(
+            context_dir=str(context_dir),
+            ticket_ref="TEST-1",
+        )
+        code = await _run_remove_root(args, _gateway_override=fake_gateway)
+        assert code == EXIT_SUCCESS
+
+    async def test_diff_handler_returns_entries(
+        self, context_dir: Path, fake_gateway: FakeLinearGateway
+    ) -> None:
+        """``_run_diff`` returns entries via the library layer."""
+        fake_gateway.add_issue(make_issue(issue_id="uuid-1", issue_key="TEST-1"))
+        from context_sync._testing import make_syncer
+
+        syncer = make_syncer(gateway=fake_gateway, context_dir=context_dir)
+        await syncer.sync(root_ticket_id="TEST-1")
+
+        args = _make_args(context_dir=str(context_dir))
+        code = await _run_diff(args, _gateway_override=fake_gateway)
+        assert code == EXIT_SUCCESS
+
+    async def test_sync_handler_json_output(
+        self,
+        context_dir: Path,
+        fake_gateway: FakeLinearGateway,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """``_run_sync`` emits valid JSON when ``--json`` is set."""
+        fake_gateway.add_issue(make_issue(issue_id="uuid-1", issue_key="TEST-1"))
+        args = _make_args(
+            context_dir=str(context_dir),
+            root_ticket="TEST-1",
+            max_tickets_per_root=200,
+            json=True,
+            **{f"depth_{d.value.replace('-', '_')}": None for d in Dimension},
+        )
+        code = await _run_sync(args, _gateway_override=fake_gateway)
+        assert code == EXIT_SUCCESS
+        captured = capsys.readouterr()
+        payload = json.loads(captured.out)
+        assert "created" in payload
+
+
+# ---------------------------------------------------------------------------
+# Bootstrap failure tests (R2)
+# ---------------------------------------------------------------------------
+
+
+class TestBootstrapFailures:
+    """Verify that startup failures go through the structured error surface."""
+
+    def test_missing_linear_client_exits_1_text(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """Missing linear-client produces exit code 1 and text on stderr."""
+        with (
+            patch("context_sync._cli._create_linear_client") as mock_create,
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            mock_create.side_effect = ContextSyncError("linear-client is not installed.")
+            main(["refresh"])
+
+        assert exc_info.value.code == EXIT_ERROR
+        captured = capsys.readouterr()
+        assert "linear-client is not installed" in captured.err
+
+    def test_missing_linear_client_exits_1_json(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """Missing linear-client in JSON mode emits a JSON error object."""
+        with (
+            patch("context_sync._cli._create_linear_client") as mock_create,
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            mock_create.side_effect = ContextSyncError("linear-client is not installed.")
+            main(["refresh", "--json"])
+
+        assert exc_info.value.code == EXIT_ERROR
+        captured = capsys.readouterr()
+        payload = json.loads(captured.out)
+        assert payload["error"] == "ContextSyncError"
+        assert "linear-client" in payload["message"]
+
+    def test_linear_init_failure_exits_1_json(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """Linear() init failure in JSON mode emits a JSON error object."""
+        with (
+            patch("context_sync._cli._create_linear_client") as mock_create,
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            mock_create.side_effect = ContextSyncError(
+                "Failed to initialize Linear client: bad token"
+            )
+            main(["diff", "--json"])
+
+        assert exc_info.value.code == EXIT_ERROR
+        captured = capsys.readouterr()
+        payload = json.loads(captured.out)
+        assert "Failed to initialize" in payload["message"]
+
+
+# ---------------------------------------------------------------------------
+# Semantic input validation (R3)
+# ---------------------------------------------------------------------------
+
+
+class TestSemanticInputValidation:
+    """Verify that semantically invalid numeric inputs produce controlled errors."""
+
+    def test_zero_max_tickets_exits_1(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """``--max-tickets-per-root 0`` exits with code 1, not a traceback."""
+
+        async def _raise(_args: object) -> int:
+            raise ValueError("max_tickets_per_root must be positive, got 0")
+
+        with (
+            patch("context_sync._cli._HANDLERS", {"sync": _raise}),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            main(["sync", "ACP-1", "--max-tickets-per-root", "0"])
+
+        assert exc_info.value.code == EXIT_ERROR
+        captured = capsys.readouterr()
+        assert "must be positive" in captured.err
+
+    def test_negative_depth_exits_1(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """``--depth-blocks -1`` exits with code 1, not a traceback."""
+
+        async def _raise(_args: object) -> int:
+            raise ValueError("Dimension depth must be non-negative, got blocks=-1")
+
+        with (
+            patch("context_sync._cli._HANDLERS", {"sync": _raise}),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            main(["sync", "ACP-1", "--depth-blocks", "-1"])
+
+        assert exc_info.value.code == EXIT_ERROR
+        captured = capsys.readouterr()
+        assert "non-negative" in captured.err
+
+    def test_value_error_json_mode(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """ValueError in JSON mode emits a JSON error object."""
+
+        async def _raise(_args: object) -> int:
+            raise ValueError("max_tickets_per_root must be positive, got 0")
+
+        with (
+            patch("context_sync._cli._HANDLERS", {"sync": _raise}),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            main(["sync", "ACP-1", "--max-tickets-per-root", "0", "--json"])
+
+        assert exc_info.value.code == EXIT_ERROR
+        captured = capsys.readouterr()
+        payload = json.loads(captured.out)
+        assert payload["error"] == "ValueError"
+        assert "must be positive" in payload["message"]
