@@ -38,16 +38,13 @@ from typing import NoReturn
 from context_sync._config import DEFAULT_DIMENSIONS, DEFAULT_MAX_TICKETS_PER_ROOT, Dimension
 from context_sync._errors import ContextSyncError
 from context_sync._models import DiffResult, SyncResult
-from context_sync.version import __version__
+from context_sync.version import __prog_name__, __version__
 
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-
-PROG_NAME: str = "context-sync"
-"""Canonical tool name used in help, version, and error output."""
 
 EXIT_SUCCESS: int = 0
 EXIT_ERROR: int = 1
@@ -58,7 +55,7 @@ LOG_LEVEL_CHOICES: tuple[str, ...] = ("DEBUG", "INFO", "WARNING", "ERROR", "OFF"
 DEFAULT_LOG_LEVEL: str = "WARNING"
 """Log level applied when ``--log-level`` is not supplied."""
 
-_VERSION_STRING: str = f"{PROG_NAME} {__version__}"
+_VERSION_STRING: str = f"{__prog_name__} {__version__}"
 """Pre-formatted version string shared by ``-v``, ``-h``, and error output."""
 
 # ---------------------------------------------------------------------------
@@ -340,7 +337,7 @@ def build_parser() -> argparse.ArgumentParser:
         Fully configured parser ready for ``parse_args()``.
     """
     parser = _VersionedParser(
-        prog=PROG_NAME,
+        prog=__prog_name__,
         description="Deterministic Linear ticket neighborhood snapshots.",
     )
     parser.add_argument(

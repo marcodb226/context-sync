@@ -96,6 +96,7 @@ from context_sync._traversal import (
     TraversedTicket,
     build_reachable_graph,
 )
+from context_sync.version import __prog_name__ as __prog_name__
 from context_sync.version import __version__ as __version__
 
 # Prevent the 'version' submodule from appearing as a public attribute.
@@ -179,6 +180,7 @@ __all__ = [
     "TraversalResult",
     "TraversedTicket",
     "build_reachable_graph",
-    # Version
+    # Version / identity
+    "__prog_name__",
     "__version__",
 ]

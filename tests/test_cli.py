@@ -18,7 +18,6 @@ from context_sync._cli import (
     DEFAULT_LOG_LEVEL,
     EXIT_ERROR,
     EXIT_SUCCESS,
-    PROG_NAME,
     _format_diff_result_text,
     _format_sync_result_text,
     build_parser,
@@ -35,7 +34,7 @@ from context_sync._errors import (
     WorkspaceMismatchError,
 )
 from context_sync._models import DiffEntry, DiffResult, SyncError, SyncResult
-from context_sync.version import __version__
+from context_sync.version import __prog_name__, __version__
 
 # ---------------------------------------------------------------------------
 # Parser construction and argument validation
@@ -52,7 +51,7 @@ class TestParserConstruction:
             parser.parse_args(["--version"])
         assert exc_info.value.code == 0
         captured = capsys.readouterr()
-        assert PROG_NAME in captured.out
+        assert __prog_name__ in captured.out
         assert __version__ in captured.out
 
     def test_version_flag_short(self, capsys: pytest.CaptureFixture[str]) -> None:
@@ -62,7 +61,7 @@ class TestParserConstruction:
             parser.parse_args(["-v"])
         assert exc_info.value.code == 0
         captured = capsys.readouterr()
-        assert PROG_NAME in captured.out
+        assert __prog_name__ in captured.out
         assert __version__ in captured.out
 
     def test_no_command_exits_with_error(self) -> None:
@@ -208,7 +207,7 @@ class TestHelpAndErrorOutput:
             parser.parse_args(["-h"])
         assert exc_info.value.code == 0
         captured = capsys.readouterr()
-        assert PROG_NAME in captured.out
+        assert __prog_name__ in captured.out
         assert __version__ in captured.out
 
     def test_long_help_includes_name_and_version(self, capsys: pytest.CaptureFixture[str]) -> None:
@@ -218,7 +217,7 @@ class TestHelpAndErrorOutput:
             parser.parse_args(["--help"])
         assert exc_info.value.code == 0
         captured = capsys.readouterr()
-        assert PROG_NAME in captured.out
+        assert __prog_name__ in captured.out
         assert __version__ in captured.out
 
     def test_syntax_error_includes_name_and_version(
@@ -230,7 +229,7 @@ class TestHelpAndErrorOutput:
             parser.parse_args(["--bogus-flag"])
         assert exc_info.value.code == 2
         captured = capsys.readouterr()
-        assert PROG_NAME in captured.err
+        assert __prog_name__ in captured.err
         assert __version__ in captured.err
         assert "--help" in captured.err
 
