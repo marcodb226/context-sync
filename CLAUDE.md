@@ -198,6 +198,19 @@ Phase C) for a named plan item:
    - **Phase B:** §5 rule 13 (explicit completion gate with sub-requirements).
    - **Phase C:** §6 rule 15 (explicit completion gate with sub-requirements).
 
+## Codebase Navigation
+
+- Prefer `rg` and `rg --files` over slower text/file discovery tools such as
+  `grep` and `find` for routine codebase navigation.
+- When a semantic symbol-navigation tool is available for Python, prefer it to
+  raw text search when locating Python definitions, references, or call sites.
+- Use plain-text search for comments, string literals, config keys, SQL, YAML,
+  logs, or similar non-symbol content, and as the fallback when symbol-aware
+  lookup is unavailable or fails.
+- After identifying candidate files, read the smallest relevant file ranges
+  needed to confirm behavior instead of defaulting to whole-file reads. Expand
+  outward only when local context is insufficient.
+
 ## Common Conventions
 
 - Follow the repository's declared language/runtime targets; do not assume the
