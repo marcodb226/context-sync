@@ -971,9 +971,11 @@ class ContextSync:
         tracked_reachable = [uid for uid in reachable_uuids if uid in manifest.tickets]
 
         if tracked_reachable:
-            remote_issue_meta = await gateway.get_refresh_issue_metadata(tracked_reachable)
-            remote_comment_meta = await gateway.get_refresh_comment_metadata(tracked_reachable)
-            remote_relation_meta = await gateway.get_refresh_relation_metadata(tracked_reachable)
+            remote_issue_meta, remote_comment_meta, remote_relation_meta = await asyncio.gather(
+                gateway.get_refresh_issue_metadata(tracked_reachable),
+                gateway.get_refresh_comment_metadata(tracked_reachable),
+                gateway.get_refresh_relation_metadata(tracked_reachable),
+            )
 
             for uid in tracked_reachable:
                 # Build remote cursor from batch metadata.
@@ -1491,6 +1493,7 @@ class ContextSync:
         # file does not exist on disk (missing_locally); an empty dict means
         # the file exists but its frontmatter is corrupt (treated as stale).
         local_frontmatter: dict[str, dict[str, Any] | None] = {}
+        read_errors: list[SyncError] = []
         for uid in tracked_uids:
             entry = manifest.tickets[uid]
             file_path = context_dir / entry.current_path
@@ -1500,24 +1503,58 @@ class ContextSync:
                 try:
                     text = file_path.read_text(encoding="utf-8")
                     local_frontmatter[uid] = parse_frontmatter(text)
-                except (ValueError, KeyError, ManifestError):
-                    logger.debug(
-                        "Could not parse frontmatter for %s; treating as stale",
-                        uid,
+                except OSError as exc:
+                    logger.warning(
+                        "Cannot read ticket file %s: %s",
+                        file_path,
+                        exc,
                     )
-                    local_frontmatter[uid] = {}
+                    read_errors.append(
+                        SyncError(
+                            ticket_id=entry.current_key,
+                            error_type="read_error",
+                            message=f"Cannot read ticket file: {exc}",
+                            retriable=True,
+                        )
+                    )
+                    local_frontmatter[uid] = None
+                except (ValueError, KeyError, ManifestError) as exc:
+                    logger.warning(
+                        "Corrupt frontmatter for %s: %s",
+                        file_path,
+                        exc,
+                    )
+                    read_errors.append(
+                        SyncError(
+                            ticket_id=entry.current_key,
+                            error_type="corrupt_frontmatter",
+                            message=f"Cannot parse ticket frontmatter: {exc}",
+                            retriable=False,
+                        )
+                    )
+                    local_frontmatter[uid] = None
 
         # --- Fetch remote state (batch metadata) ---------------------------
-        issue_meta = await gateway.get_refresh_issue_metadata(tracked_uids)
-        comment_meta = await gateway.get_refresh_comment_metadata(tracked_uids)
-        relation_meta = await gateway.get_refresh_relation_metadata(tracked_uids)
+        issue_meta, comment_meta, relation_meta = await asyncio.gather(
+            gateway.get_refresh_issue_metadata(tracked_uids),
+            gateway.get_refresh_comment_metadata(tracked_uids),
+            gateway.get_refresh_relation_metadata(tracked_uids),
+        )
 
         # --- Compare and classify ------------------------------------------
         entries: list[DiffEntry] = []
-        errors: list[SyncError] = []
+        errors: list[SyncError] = list(read_errors)
+
+        # UUIDs that had read errors are already in errors; skip them below.
+        errored_uids = {e.ticket_id for e in read_errors}
 
         for uid in tracked_uids:
             manifest_entry = manifest.tickets[uid]
+
+            # Skip tickets that had read errors — already reported.
+            if manifest_entry.current_key in errored_uids:
+                continue
+
             fm = local_frontmatter[uid]
 
             # missing_locally: tracked in manifest but no file on disk.
@@ -1526,6 +1563,21 @@ class ContextSync:
                     DiffEntry(
                         ticket_id=manifest_entry.current_key,
                         status="missing_locally",
+                    )
+                )
+                continue
+
+            # Identity validation: ticket_uuid must match the manifest UUID.
+            local_uuid = fm.get("ticket_uuid")
+            if local_uuid != uid:
+                errors.append(
+                    SyncError(
+                        ticket_id=manifest_entry.current_key,
+                        error_type="identity_mismatch",
+                        message=(
+                            f"Local ticket_uuid {local_uuid!r} does not match manifest UUID {uid!r}"
+                        ),
+                        retriable=False,
                     )
                 )
                 continue
@@ -1541,6 +1593,11 @@ class ContextSync:
                 )
                 continue
 
+            # format_version gate: a file whose format is too old for the
+            # accepted cursor contract is stale regardless of cursor match.
+            local_fv = fm.get("format_version")
+            format_stale = not isinstance(local_fv, int) or local_fv < FORMAT_VERSION
+
             # Compare local cursor vs remote metadata.
             changed = compute_changed_fields(
                 fm=fm,
@@ -1549,10 +1606,12 @@ class ContextSync:
                 remote_relation_meta=relation_meta.get(uid, []),
             )
 
+            stale = bool(changed) or format_stale
+
             entries.append(
                 DiffEntry(
                     ticket_id=remote_issue.issue_key,
-                    status="stale" if changed else "current",
+                    status="stale" if stale else "current",
                     changed_fields=changed,
                 )
             )

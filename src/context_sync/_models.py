@@ -80,8 +80,13 @@ class DiffEntry:
         One of ``"current"``, ``"stale"``, ``"missing_locally"``, or
         ``"missing_remotely"``.
     changed_fields:
-        Field names that differ between local and remote state.  Empty when
-        *status* is ``"current"``.
+        Cursor-component names that differ between local and remote state.
+        Empty when *status* is ``"current"``.  Possible values:
+
+        - ``"issue_updated_at"`` — issue-level metadata changed
+        - ``"comments_signature"`` — comment content changed
+        - ``"relations_signature"`` — relation set changed
+        - ``"issue_key"`` — issue key renamed
     """
 
     ticket_id: str

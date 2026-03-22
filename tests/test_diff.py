@@ -620,3 +620,159 @@ class TestDiffNeverModifiesFiles:
         await syncer.diff()
 
         assert not (context_dir / LOCK_FILENAME).exists()
+
+
+# ---------------------------------------------------------------------------
+# Format-version freshness gate (M3-3-R1)
+# ---------------------------------------------------------------------------
+
+
+class TestDiffFormatVersion:
+    """diff treats outdated format_version as stale."""
+
+    async def test_outdated_format_version_is_stale(self, context_dir: Path) -> None:
+        """A file with format_version below current is stale even if cursor matches."""
+        gw = FakeLinearGateway()
+        gw.add_issue(make_issue(issue_id="uuid-1", issue_key="TEST-1"))
+        syncer = make_syncer(context_dir=context_dir, gateway=gw)
+        await syncer.sync("uuid-1")
+
+        # Downgrade format_version without changing the cursor.
+        ticket_file = context_dir / "TEST-1.md"
+        text = ticket_file.read_text(encoding="utf-8")
+        text = text.replace("format_version: 1", "format_version: 0")
+        ticket_file.write_text(text, encoding="utf-8")
+
+        result = await syncer.diff()
+        assert len(result.entries) == 1
+        entry = result.entries[0]
+        assert entry.status == "stale"
+
+    async def test_missing_format_version_is_stale(self, context_dir: Path) -> None:
+        """A file without format_version is stale."""
+        gw = FakeLinearGateway()
+        gw.add_issue(make_issue(issue_id="uuid-1", issue_key="TEST-1"))
+        syncer = make_syncer(context_dir=context_dir, gateway=gw)
+        await syncer.sync("uuid-1")
+
+        # Remove format_version line from frontmatter.
+        ticket_file = context_dir / "TEST-1.md"
+        lines = ticket_file.read_text(encoding="utf-8").splitlines(keepends=True)
+        lines = [ln for ln in lines if not ln.startswith("format_version:")]
+        ticket_file.write_text("".join(lines), encoding="utf-8")
+
+        result = await syncer.diff()
+        assert len(result.entries) == 1
+        assert result.entries[0].status == "stale"
+
+
+# ---------------------------------------------------------------------------
+# Identity validation (M3-3-R2)
+# ---------------------------------------------------------------------------
+
+
+class TestDiffIdentityValidation:
+    """diff validates ticket_uuid against manifest and reports mismatches."""
+
+    async def test_mismatched_ticket_uuid_is_error(self, context_dir: Path) -> None:
+        """Mismatched ticket_uuid produces an identity-mismatch error."""
+        gw = FakeLinearGateway()
+        gw.add_issue(make_issue(issue_id="uuid-1", issue_key="TEST-1"))
+        syncer = make_syncer(context_dir=context_dir, gateway=gw)
+        await syncer.sync("uuid-1")
+
+        # Change ticket_uuid to a different value.
+        ticket_file = context_dir / "TEST-1.md"
+        text = ticket_file.read_text(encoding="utf-8")
+        text = text.replace("ticket_uuid: uuid-1", "ticket_uuid: uuid-other")
+        ticket_file.write_text(text, encoding="utf-8")
+
+        result = await syncer.diff()
+        assert result.entries == []  # no normal entries
+        assert len(result.errors) == 1
+        assert result.errors[0].error_type == "identity_mismatch"
+        assert result.errors[0].ticket_id == "TEST-1"
+
+    async def test_missing_ticket_uuid_is_error(self, context_dir: Path) -> None:
+        """A file without ticket_uuid produces an identity-mismatch error."""
+        gw = FakeLinearGateway()
+        gw.add_issue(make_issue(issue_id="uuid-1", issue_key="TEST-1"))
+        syncer = make_syncer(context_dir=context_dir, gateway=gw)
+        await syncer.sync("uuid-1")
+
+        # Remove ticket_uuid line.
+        ticket_file = context_dir / "TEST-1.md"
+        lines = ticket_file.read_text(encoding="utf-8").splitlines(keepends=True)
+        lines = [ln for ln in lines if not ln.startswith("ticket_uuid:")]
+        ticket_file.write_text("".join(lines), encoding="utf-8")
+
+        result = await syncer.diff()
+        assert result.entries == []
+        assert len(result.errors) == 1
+        assert result.errors[0].error_type == "identity_mismatch"
+
+    async def test_malformed_frontmatter_is_error(self, context_dir: Path) -> None:
+        """Corrupt YAML frontmatter produces a corrupt_frontmatter error."""
+        gw = FakeLinearGateway()
+        gw.add_issue(make_issue(issue_id="uuid-1", issue_key="TEST-1"))
+        syncer = make_syncer(context_dir=context_dir, gateway=gw)
+        await syncer.sync("uuid-1")
+
+        # Replace file content with genuinely unparseable YAML.
+        ticket_file = context_dir / "TEST-1.md"
+        ticket_file.write_text("---\nkey: [unclosed\n---\nbody\n", encoding="utf-8")
+
+        result = await syncer.diff()
+        assert result.entries == []
+        assert len(result.errors) == 1
+        assert result.errors[0].error_type == "corrupt_frontmatter"
+        assert result.errors[0].ticket_id == "TEST-1"
+
+
+# ---------------------------------------------------------------------------
+# Error surface (M3-3-R3)
+# ---------------------------------------------------------------------------
+
+
+class TestDiffErrorSurface:
+    """diff reports ticket-level read errors through DiffResult.errors."""
+
+    async def test_unreadable_file_produces_error(self, context_dir: Path) -> None:
+        """An unreadable ticket file produces a read_error in DiffResult.errors."""
+        from context_sync._gateway import RelationData
+
+        gw = FakeLinearGateway()
+        root = make_issue(
+            issue_id="uuid-root",
+            issue_key="ROOT-1",
+            relations=[
+                RelationData(
+                    dimension="blocks",
+                    relation_type="blocks",
+                    target_issue_id="uuid-child",
+                    target_issue_key="CHILD-1",
+                )
+            ],
+        )
+        child = make_issue(issue_id="uuid-child", issue_key="CHILD-1")
+        gw.add_issue(root)
+        gw.add_issue(child)
+        syncer = make_syncer(context_dir=context_dir, gateway=gw)
+        await syncer.sync("uuid-root")
+
+        # Make the child file unreadable.
+        child_file = context_dir / "CHILD-1.md"
+        child_file.chmod(0o000)
+
+        try:
+            result = await syncer.diff()
+            # The root should still be classified normally.
+            assert len(result.entries) == 1
+            assert result.entries[0].ticket_id == "ROOT-1"
+            # The child should appear in errors.
+            assert len(result.errors) == 1
+            assert result.errors[0].error_type == "read_error"
+            assert result.errors[0].ticket_id == "CHILD-1"
+        finally:
+            # Restore permissions for cleanup.
+            child_file.chmod(0o644)

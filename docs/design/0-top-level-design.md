@@ -248,7 +248,7 @@ class SyncError:
 class DiffEntry:
     ticket_id: str            # current issue key for reporting
     status: str               # "current", "stale", "missing_locally", "missing_remotely"
-    changed_fields: list[str]  # e.g., ["status", "comments"] — empty if current
+    changed_fields: list[str]  # e.g., ["comments_signature", "issue_updated_at"] — empty if current
 
 @dataclass
 class DiffResult:
