@@ -6,7 +6,8 @@ signatures match the public API defined in the top-level design (§1).  The
 ``sync`` method implements the full-snapshot rebuild flow (M2-3); the
 ``refresh`` method implements incremental whole-snapshot update with
 quarantine/recovery (M3-1); the ``add`` and ``remove_root`` methods implement
-root-set mutation flows (M3-2); the ``diff`` method is a stub awaiting M3-3.
+root-set mutation flows (M3-2); the ``diff`` method implements the non-mutating
+drift inspection flow (M3-3).
 
 Design notes
 ------------
@@ -42,6 +43,7 @@ from context_sync._config import (
     FORMAT_VERSION,
     resolve_dimensions,
 )
+from context_sync._diff import check_diff_lock, compute_changed_fields
 from context_sync._errors import (
     ContextSyncError,
     ManifestError,
@@ -61,7 +63,7 @@ from context_sync._manifest import (
     load_manifest,
     save_manifest,
 )
-from context_sync._models import DiffResult, SyncError, SyncResult
+from context_sync._models import DiffEntry, DiffResult, SyncError, SyncResult
 from context_sync._pipeline import (
     compute_refresh_cursor,
     make_ticket_ref_provider,
@@ -284,8 +286,6 @@ class ContextSync:
         return self._concurrency_limit
 
     # -- Async entry points -------------------------------------------------
-    #
-    # Stub: diff → M3-3
 
     async def sync(
         self,
@@ -1441,8 +1441,120 @@ class ContextSync:
         """
         Compare local snapshot to live Linear state without modifying files.
 
+        Inspects the writer lock without acquiring or modifying it.  If a
+        lock exists and is not demonstrably stale, raises
+        :class:`DiffLockError` to avoid competing for rate-limited Linear
+        API capacity while a mutating operation already owns the directory.
+
+        Loads the manifest, reads frontmatter from all tracked ticket files,
+        batch-fetches current metadata from Linear, and classifies each
+        ticket as ``"current"``, ``"stale"``, ``"missing_locally"``, or
+        ``"missing_remotely"``.
+
         Returns
         -------
         DiffResult
+            Per-ticket drift classifications and any ticket-scoped errors.
+
+        Raises
+        ------
+        DiffLockError
+            If a non-stale writer lock is detected.
+        ManifestError
+            If the manifest does not exist or is invalid.
+        ContextSyncError
+            If no gateway is available.
         """
-        raise NotImplementedError("diff will be implemented by M3-3")
+        if self._gateway is None:
+            raise ContextSyncError(
+                "No gateway available. The real Linear gateway wrapper is not "
+                "yet implemented. Use _gateway_override with a LinearGateway "
+                "instance."
+            )
+
+        context_dir = self._context_dir
+        gateway = self._gateway
+
+        # --- Lock inspection (never acquire, clear, or preempt) ------------
+        check_diff_lock(context_dir)
+
+        # --- Load manifest -------------------------------------------------
+        manifest = load_manifest(context_dir)
+
+        tracked_uids = list(manifest.tickets.keys())
+        if not tracked_uids:
+            return DiffResult()
+
+        # --- Read local state ----------------------------------------------
+        #
+        # For each tracked ticket, read its frontmatter.  ``None`` means the
+        # file does not exist on disk (missing_locally); an empty dict means
+        # the file exists but its frontmatter is corrupt (treated as stale).
+        local_frontmatter: dict[str, dict[str, Any] | None] = {}
+        for uid in tracked_uids:
+            entry = manifest.tickets[uid]
+            file_path = context_dir / entry.current_path
+            if not file_path.is_file():
+                local_frontmatter[uid] = None
+            else:
+                try:
+                    text = file_path.read_text(encoding="utf-8")
+                    local_frontmatter[uid] = parse_frontmatter(text)
+                except (ValueError, KeyError, ManifestError):
+                    logger.debug(
+                        "Could not parse frontmatter for %s; treating as stale",
+                        uid,
+                    )
+                    local_frontmatter[uid] = {}
+
+        # --- Fetch remote state (batch metadata) ---------------------------
+        issue_meta = await gateway.get_refresh_issue_metadata(tracked_uids)
+        comment_meta = await gateway.get_refresh_comment_metadata(tracked_uids)
+        relation_meta = await gateway.get_refresh_relation_metadata(tracked_uids)
+
+        # --- Compare and classify ------------------------------------------
+        entries: list[DiffEntry] = []
+        errors: list[SyncError] = []
+
+        for uid in tracked_uids:
+            manifest_entry = manifest.tickets[uid]
+            fm = local_frontmatter[uid]
+
+            # missing_locally: tracked in manifest but no file on disk.
+            if fm is None:
+                entries.append(
+                    DiffEntry(
+                        ticket_id=manifest_entry.current_key,
+                        status="missing_locally",
+                    )
+                )
+                continue
+
+            # missing_remotely: not available in the current visible view.
+            remote_issue = issue_meta.get(uid)
+            if remote_issue is None or not remote_issue.visible:
+                entries.append(
+                    DiffEntry(
+                        ticket_id=manifest_entry.current_key,
+                        status="missing_remotely",
+                    )
+                )
+                continue
+
+            # Compare local cursor vs remote metadata.
+            changed = compute_changed_fields(
+                fm=fm,
+                remote_issue=remote_issue,
+                remote_comment_meta=comment_meta.get(uid, ([], [])),
+                remote_relation_meta=relation_meta.get(uid, []),
+            )
+
+            entries.append(
+                DiffEntry(
+                    ticket_id=remote_issue.issue_key,
+                    status="stale" if changed else "current",
+                    changed_fields=changed,
+                )
+            )
+
+        return DiffResult(entries=entries, errors=errors)

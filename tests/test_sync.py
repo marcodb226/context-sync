@@ -92,15 +92,6 @@ class TestProperties:
         assert d1 is not d2
 
 
-class TestAsyncStubs:
-    """Stub entry points raise NotImplementedError until implemented."""
-
-    async def test_diff_stub(self) -> None:
-        syncer = make_syncer()
-        with pytest.raises(NotImplementedError):
-            await syncer.diff()
-
-
 class TestGatewayOverride:
     """The _gateway_override testing hook works correctly."""
 
