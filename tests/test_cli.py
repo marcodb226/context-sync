@@ -194,6 +194,48 @@ class TestParserConstruction:
 
 
 # ---------------------------------------------------------------------------
+# Help and error output include tool name and version
+# ---------------------------------------------------------------------------
+
+
+class TestHelpAndErrorOutput:
+    """Verify that help and syntax-error output include the tool name and version."""
+
+    def test_help_includes_name_and_version(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """``-h`` output includes the canonical tool name and current version."""
+        parser = build_parser()
+        with pytest.raises(SystemExit) as exc_info:
+            parser.parse_args(["-h"])
+        assert exc_info.value.code == 0
+        captured = capsys.readouterr()
+        assert PROG_NAME in captured.out
+        assert __version__ in captured.out
+
+    def test_long_help_includes_name_and_version(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """``--help`` output includes the canonical tool name and current version."""
+        parser = build_parser()
+        with pytest.raises(SystemExit) as exc_info:
+            parser.parse_args(["--help"])
+        assert exc_info.value.code == 0
+        captured = capsys.readouterr()
+        assert PROG_NAME in captured.out
+        assert __version__ in captured.out
+
+    def test_syntax_error_includes_name_and_version(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Syntax errors include the tool name, version, and a pointer to --help."""
+        parser = build_parser()
+        with pytest.raises(SystemExit) as exc_info:
+            parser.parse_args(["--bogus-flag"])
+        assert exc_info.value.code == 2
+        captured = capsys.readouterr()
+        assert PROG_NAME in captured.err
+        assert __version__ in captured.err
+        assert "--help" in captured.err
+
+
+# ---------------------------------------------------------------------------
 # Output formatting — SyncResult
 # ---------------------------------------------------------------------------
 
