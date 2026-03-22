@@ -23,6 +23,7 @@ Before writing or modifying any code, read and follow:
 - `docs/policies/common/coding-guidelines.md` — language-agnostic documentation, security, and repository versioning/changelog conventions.
 - `docs/policies/common/coding-guidelines-python.md` — apply only if the repository uses Python.
 - `docs/policies/common/cli-conventions.md` — apply only if the repository builds CLI tools.
+- `docs/policies/common/cli-conventions-python.md` — apply only if the repository builds CLI tools in Python.
 - `docs/policies/common/reference-material.md` — apply when the repository stores external reference inputs in `docs/external-sources/` or adopts conclusions from non-authoritative reference material.
 - `docs/policies/common/planning-model.md` — planning model for candidate selection, draft-plan creation, review, and activation.
 - `docs/policies/common/future-work-model.md` — apply when the repository uses a future-work artifact such as `docs/future-work.md`.
