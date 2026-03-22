@@ -167,6 +167,37 @@ which mode they want:
 - official Phase B review with `docs/execution/<ticket>-review.md` updated
 - informal in-chat review with no file edits
 
+## Execution-model phase transitions
+
+When beginning work on a specific execution-model phase (Phase A, Phase B, or
+Phase C) for a named plan item:
+
+1. **Re-read the governing section before starting.** Open
+   `docs/policies/common/execution-model.md` and read the section for the phase
+   you are about to perform. If a repo-local
+   `docs/policies/execution-model.md` exists, read it as well — it may
+   augment or override the common-layer rules. Do not rely on a prior reading
+   from earlier in the same conversation — the rules are detailed enough that
+   recall-based approximation leads to structural violations.
+
+2. **Create the required artifact structure first, then do the work.** For
+   Phase C, create the verdict table in the review file before implementing any
+   code fixes. For Phase B, create the review file and findings table before
+   writing findings prose. Getting the artifact skeleton right first prevents
+   the structural requirements from being forgotten once implementation work
+   begins.
+
+3. **Run the phase completion gate before declaring done.** Each phase has
+   explicit completion requirements. Before marking the phase complete, open
+   the execution model, locate the completion gate for that phase, and verify
+   each sub-requirement individually. Do not treat this as a mental
+   checklist — read the actual rules and confirm against the actual artifacts.
+   The completion gates are:
+   - **Phase A:** §4.1 rule 9 (explicit completion gate with
+     sub-requirements, including the applicable ticket-type subsection).
+   - **Phase B:** §5 rule 13 (explicit completion gate with sub-requirements).
+   - **Phase C:** §6 rule 15 (explicit completion gate with sub-requirements).
+
 ## Common Conventions
 
 - Follow the repository's declared language/runtime targets; do not assume the
