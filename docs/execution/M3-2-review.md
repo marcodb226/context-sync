@@ -1,6 +1,6 @@
 # Review: [M3-2](../implementation-plan.md#m3-2---add-and-remove-root-whole-snapshot-flows)
 
-> **Status**: Phase B complete (2 review passes)
+> **Status**: Phase C complete (2 review passes, all findings fixed)
 > **Plan ticket**:
 > [M3-2](../implementation-plan.md#m3-2---add-and-remove-root-whole-snapshot-flows)
 > **Execution record**:
@@ -118,3 +118,57 @@
 - The zero-roots prune path is the most destructive single code path in
   `remove_root` (deletes all ticket files), yet it has no INFO-level
   operational log ([M3-2-R4](M3-2-review.md#review-pass-2--findings)).
+
+---
+
+## Ticket Owner Response
+
+| ID | Verdict | Rationale |
+| --- | --- | --- |
+| [M3-2-R1](M3-2-review.md#findings) | Fix now | Inverted resolution order in `_resolve_ref_to_uuid` so `current_key` wins over historical aliases, aligning with the Tier 3 URL resolver in [src/context_sync/_pipeline.py](../../src/context_sync/_pipeline.py) and [docs/adr.md §1.6](../adr.md#16-alias-table-and-key-reassignment). Regression test added: `TestAliasCurrentKeyPrecedence`. |
+| [M3-2-R2](M3-2-review.md#findings) | Fix now | `_refresh_under_lock` now accepts an optional pre-loaded `manifest` parameter. `add` and `remove_root` pass the in-memory manifest so the root-set mutation and snapshot finalization are committed together — no pre-refresh `save_manifest` call remains. Regression tests added: `TestNoPartialCommitOnRefreshFailure`. |
+| [M3-2-R3](M3-2-review.md#review-pass-2--findings) | Fix now | Step 3 of `_resolve_ref_to_uuid` now checks `manifest.tickets` (all tracked tickets) rather than only `manifest.roots`, so derived-ticket UUIDs resolve and reach the "not in the root set" error. Regression tests added: `TestRemoveRootByDerivedUuid`. |
+| [M3-2-R4](M3-2-review.md#review-pass-2--findings) | Fix now | Added INFO-level summary log in the zero-roots early-return path reporting snapshot mode, prune count, and duration. |
+| [M3-2-R5](M3-2-review.md#review-pass-2--findings) | Fix now | Extracted `_parse_linear_url`, `_normalize_ticket_ref`, `_resolve_ref_to_uuid`, and `_LINEAR_URL_RE` into new [src/context_sync/_ticket_ref.py](../../src/context_sync/_ticket_ref.py). Reduces `_sync.py` by ~60 code lines. |
+| [M3-2-R6](M3-2-review.md#review-pass-2--findings) | Fix now | The quarantine→active transition via `add` is intentional (re-adding a quarantined root should recover it). Added quarantine-detection INFO logging in `_add_under_lock` and regression test `TestAddRecoversQuarantinedRoot`. |
+
+### Changes by finding
+
+**[M3-2-R1](M3-2-review.md#findings) — Alias precedence inversion:**
+- [src/context_sync/_ticket_ref.py](../../src/context_sync/_ticket_ref.py):
+  Resolution order is now (1) `current_key`, (2) aliases, (3) direct UUID.
+- [tests/test_add_remove_root.py](../../tests/test_add_remove_root.py):
+  `TestAliasCurrentKeyPrecedence` — injects a conflicting historical alias
+  and asserts the current-key owner wins.
+
+**[M3-2-R2](M3-2-review.md#findings) — Pre-refresh partial commit:**
+- [src/context_sync/_sync.py](../../src/context_sync/_sync.py): Added
+  `manifest` parameter to `_refresh_under_lock`. Removed the pre-refresh
+  `save_manifest` calls from `_add_under_lock` and `_remove_root_under_lock`.
+- [tests/test_add_remove_root.py](../../tests/test_add_remove_root.py):
+  `TestNoPartialCommitOnRefreshFailure` — verifies atomic commit semantics
+  for both `add` and `remove_root`.
+
+**[M3-2-R3](M3-2-review.md#review-pass-2--findings) — Derived-ticket UUID resolution:**
+- [src/context_sync/_ticket_ref.py](../../src/context_sync/_ticket_ref.py):
+  Step 3 checks `manifest.tickets` then falls back to `manifest.roots`.
+- [tests/test_add_remove_root.py](../../tests/test_add_remove_root.py):
+  `TestRemoveRootByDerivedUuid` — tests both derived-UUID and root-UUID
+  inputs.
+
+**[M3-2-R4](M3-2-review.md#review-pass-2--findings) — Zero-roots INFO log:**
+- [src/context_sync/_sync.py](../../src/context_sync/_sync.py): Added
+  `logger.info` call in the zero-roots early-return path.
+
+**[M3-2-R5](M3-2-review.md#review-pass-2--findings) — File size extraction:**
+- [src/context_sync/_ticket_ref.py](../../src/context_sync/_ticket_ref.py):
+  New module with the extracted stateless helpers.
+- [src/context_sync/_sync.py](../../src/context_sync/_sync.py): Removed
+  inline helpers; imports from `_ticket_ref`.
+
+**[M3-2-R6](M3-2-review.md#review-pass-2--findings) — Quarantine→active recovery:**
+- [src/context_sync/_sync.py](../../src/context_sync/_sync.py): Added
+  quarantine-detection logging in `_add_under_lock`.
+- [tests/test_add_remove_root.py](../../tests/test_add_remove_root.py):
+  `TestAddRecoversQuarantinedRoot` — syncs, quarantines via hidden root +
+  refresh, then re-adds and asserts active state.
