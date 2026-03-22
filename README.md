@@ -109,9 +109,20 @@ needs to be explicitly granted for paths outside the project.
 ## Developer commands
 
 The repository uses [Ruff](https://docs.astral.sh/ruff/) for linting and
-formatting, and [pytest](https://docs.pytest.org/) with
-[pytest-asyncio](https://github.com/pytest-dev/pytest-asyncio) for testing.
-Install dev dependencies with `pip install -e ".[dev]"`.
+formatting, [pytest](https://docs.pytest.org/) with
+[pytest-asyncio](https://github.com/pytest-dev/pytest-asyncio) for testing, and
+[cloc](https://github.com/AlDanial/cloc) for measuring source file size against
+the coding-guidelines limit (1,000 code lines per file). Install dev
+dependencies with `pip install -e ".[dev]"`, and install `cloc` via your system
+package manager:
+
+```bash
+# Debian / Ubuntu / WSL
+sudo apt install cloc
+
+# macOS
+brew install cloc
+```
 
 Make sure the project virtualenv is active before running these commands:
 
