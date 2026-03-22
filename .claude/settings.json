@@ -1,5 +1,8 @@
 {
   "effortLevel": "high",
+  "env": {
+    "CLAUDE_CODE_EFFORT_LEVEL": "max"
+  },
   "defaultMode": "acceptEdits",
   "sandbox": {
     "enabled": true,
