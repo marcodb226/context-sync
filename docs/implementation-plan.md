@@ -504,7 +504,7 @@ validation coverage that matches the repository's documented contracts.
 | # | Status | Ticket | Description | Dependencies | Tests | Source |
 | --- | --- | --- | --- | --- | --- | --- |
 | <a id="m4-1---cli-surface-and-command-output-contracts"></a>M4-1 | Done | CLI surface and command output contracts | Add the thin CLI wrapper over the async library, expose the documented commands and options, and define human-readable plus machine-readable output behavior for success and failure cases | [M2-3](#m2-3---full-snapshot-sync-flow), [M3-1](#m3-1---incremental-refresh-and-quarantined-root-recovery), [M3-2](#m3-2---add-and-remove-root-whole-snapshot-flows), [M3-3](#m3-3---diff-mode-and-lock-aware-drift-reporting) | CLI tests for command parsing, JSON output, lock-error text, and missing-root-policy selection | [docs/design/0-top-level-design.md](design/0-top-level-design.md#2-cli-interface), [docs/design/0-top-level-design.md](design/0-top-level-design.md#4-error-handling) |
-| <a id="m4-2---operational-logging-validation-hardening-and-user-docs"></a>M4-2 | In progress | Operational logging, validation hardening, and user docs | Add the INFO/DEBUG logging contract, end-to-end validation coverage, onboarding and usage docs, and the sample configuration artifact needed to satisfy the repository's documentation/security conventions | [M4-1](#m4-1---cli-surface-and-command-output-contracts) | End-to-end fixture tests covering all major modes plus manual CLI smoke checks documented in repo docs | [docs/adr.md](adr.md#61-snapshot-consistency-contract), [README.md](../README.md), [docs/policies/common/coding-guidelines.md](policies/common/coding-guidelines.md) |
+| <a id="m4-2---operational-logging-validation-hardening-and-user-docs"></a>M4-2 | Done | Operational logging, validation hardening, and user docs | Add the INFO/DEBUG logging contract, fixture-backed validation hardening for the shipped pre-release handler/runtime surface, onboarding and usage docs that accurately qualify current behavior, and the sample configuration artifact needed to satisfy the repository's documentation/security conventions. Supported public-entrypoint integration proof and the durable manual smoke recipe are deferred to [M5-2](#m5-2---supported-public-runtime-validation-and-smoke-path). | [M4-1](#m4-1---cli-surface-and-command-output-contracts) | Fixture-backed tests covering all major modes through the existing handler/fake path. Supported public-entrypoint integration validation and the durable manual smoke recipe are deferred to [M5-2](#m5-2---supported-public-runtime-validation-and-smoke-path). | [docs/adr.md](adr.md#61-snapshot-consistency-contract), [README.md](../README.md), [docs/policies/common/coding-guidelines.md](policies/common/coding-guidelines.md) |
 | <a id="m4-3---rename-root-ticket-id-to-key"></a>M4-3 | Todo | Rename `root_ticket_id` to `key` | Rename the `root_ticket_id` parameter on `ContextSync.sync()` (and any internal callers) to `key`, because the value accepted is a human-facing issue key (e.g. `TEAM-42`) or URL, not an internal ID/UUID. Update the CLI positional argument help text, docstrings, tests, and user-facing documentation to match. | [M4-R2](#m4-r2---api-interface-review) | Update existing tests that reference the old parameter name | [README.md](../README.md), [docs/execution/M4-1-review.md](execution/M4-1-review.md) |
 
 ### 6.3 Detailed Ticket Notes
@@ -597,6 +597,11 @@ validation coverage that matches the repository's documented contracts.
 - Keep validation focused on the declared repository command set from
   [M1-1](#m1-1---project-scaffold-and-public-runtime-contracts) so later ticket
   work has one canonical lint/format/test surface.
+- This ticket closes with honest pre-release documentation plus
+  fixture-backed/component validation for the existing handler/runtime surface.
+  Supported public-entrypoint integration proof and the durable manual CLI
+  smoke recipe are deferred to
+  [M5-2](#m5-2---supported-public-runtime-validation-and-smoke-path).
 
 #### M4-3 - Rename `root_ticket_id` to `key`
 

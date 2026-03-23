@@ -1,6 +1,6 @@
 # Review: [M4-2](../implementation-plan.md#m4-2---operational-logging-validation-hardening-and-user-docs)
 
-> **Status**: Phase B complete
+> **Status**: Phase C complete (M4-2-R3 deferred to [M5-2](../implementation-plan.md#m5-2---supported-public-runtime-validation-and-smoke-path))
 > **Plan ticket**:
 > [M4-2](../implementation-plan.md#m4-2---operational-logging-validation-hardening-and-user-docs)
 > **Execution record**:
