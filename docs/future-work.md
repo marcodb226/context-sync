@@ -233,6 +233,41 @@ to `Next release` yet.
   source file exceeding the documented code-line limit, respecting declared
   exceptions and the test-module exemption.
 
+<a id="fw-9-scoped-diff-targets"></a>
+### FW-9 - Scoped Diff Targets
+
+**Why deferred**
+- The first release already has a clear snapshot-wide `diff` command with
+  stable read-only semantics. The current CLI review
+  ([M4-R1](execution/M4-R1.md)) concluded that simplifying the root-management
+  verbs is a higher-priority surface cleanup than expanding `diff`.
+- Ticket-scoped or root-scoped `diff` needs deliberate semantics: a single
+  ticket can be a root or a derived ticket, while a graph-scoped diff only
+  makes sense when the target is a root or when the command defines another
+  traversal anchor model.
+- Adding scoped `diff` too early risks overloading one command with multiple
+  targeting modes before the simpler v1 command model is settled.
+
+**Scope**
+- Support a ticket-targeted diff that compares only one selected tracked
+  ticket, whether it is a root or a derived ticket.
+- Optionally support a root-graph-targeted diff that compares only the
+  reachable graph for one selected root, with a clear error contract when the
+  supplied ticket is not a root.
+- Define CLI and library targeting syntax that stays clearly distinct from the
+  existing snapshot-wide `diff` behavior.
+- Document the interaction between scoped `diff`, lock refusal, and the
+  snapshot consistency contract so operators know what "partial diff" does and
+  does not mean.
+
+**Completion signal**
+- The tool has a documented and validated way to run either snapshot-wide
+  `diff` or a deliberately scoped ticket/root diff without ambiguity about the
+  target, graph semantics, or read-only guarantees.
+
+**References**
+- [docs/execution/M4-R1.md](execution/M4-R1.md)
+
 ## Historical
 
 No historical items are tracked yet.
