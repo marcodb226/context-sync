@@ -203,6 +203,13 @@ Phase C) for a named plan item:
      sub-requirements, including the applicable ticket-type subsection).
    - **Phase B:** §5 rule 13 (explicit completion gate with sub-requirements).
    - **Phase C:** §6 rule 15 (explicit completion gate with sub-requirements).
+4. **Do not mark a ticket `Done` during Phase A unless the human explicitly
+   instructs you to do so.** The default Phase A row status for an
+   execution-model ticket is `In progress`. Even when the Phase A execution
+   artifact is complete, treat the ticket itself as still in progress until
+   the execution model's post-review closeout rules say the row may move to
+   `Done` (for example, after a no-findings Phase B review is observed or
+   after Phase C / accepted post-review closeout is complete).
 
 ## Codebase Navigation
 
