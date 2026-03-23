@@ -42,8 +42,8 @@ should not have to rediscover.
 **What this plan covers:** the initial Python package and project scaffold, the
 async library surface, deterministic context-directory persistence, whole-
 snapshot `sync`, incremental `refresh`, `add`, `remove-root`, `diff`, a thin
-CLI wrapper, and the validation/documentation work needed to ship that first
-release.
+CLI wrapper, a post-implementation interface review pass, and the
+validation/documentation work needed to ship that first release.
 
 ### 1.1 Stage 1 Planning Inputs
 
@@ -82,6 +82,8 @@ deferred.
 | Root-set mutation flows from [docs/design/0-top-level-design.md](design/0-top-level-design.md#63-add-flow) and [docs/design/0-top-level-design.md](design/0-top-level-design.md#65-remove-root-flow) | Keep | [M3-2](#m3-2---add-and-remove-root-whole-snapshot-flows) | `add` and `remove-root` should reuse whole-snapshot refresh semantics under one writer lock. |
 | Non-mutating drift inspection from [docs/adr.md](adr.md#53-diff-non-mutating-drift-inspection) and [docs/design/0-top-level-design.md](design/0-top-level-design.md#64-diff-flow) | Keep | [M3-3](#m3-3---diff-mode-and-lock-aware-drift-reporting) | Must preserve the read-only lock behavior described in the ADR. |
 | CLI packaging and operator-facing runtime docs from [docs/design/0-top-level-design.md](design/0-top-level-design.md#2-cli-interface), [README.md](../README.md), and [docs/policies/common/coding-guidelines.md](policies/common/coding-guidelines.md) | Keep | [M4-1](#m4-1---cli-surface-and-command-output-contracts), [M4-2](#m4-2---operational-logging-validation-hardening-and-user-docs) | The repo currently has no runtime scaffold, so the first implementation pass must also define how humans run and validate the tool. |
+| Post-implementation CLI interface review of the command surface from direct human request, [docs/execution/M4-1-review.md](execution/M4-1-review.md), and [docs/design/0-top-level-design.md](design/0-top-level-design.md#2-cli-interface) | Keep | [M4-R1](#m4-r1---cli-interface-review) | Adds a dedicated top-level CLI review ticket that stays distinct from the Phase B review of [M4-1](#m4-1---cli-surface-and-command-output-contracts) and settles command-surface semantics before the separate API review. |
+| Post-implementation public API review of the `ContextSync` library surface from direct human request, [docs/design/0-top-level-design.md](design/0-top-level-design.md#1-library-api), and the planned CLI review outcome | Keep | [M4-R2](#m4-r2---api-interface-review) | Keeps the public library API review separate from the CLI review, lets [M4-R1](#m4-r1---cli-interface-review) resolve command-surface semantics first, and preserves room for API-only follow-on work such as [M4-3](#m4-3---rename-root-ticket-id-to-key). |
 | [FW-1](future-work.md#fw-1-comment-storage-optimizations) | Defer | None in this plan | Keep the first-release full-comment-history contract. |
 | [FW-2](future-work.md#fw-2-attachment-content-handling) | Defer | None in this plan | Attachment and resource handling remains metadata-only in v1, and attachment-only freshness drift is not part of the first-release incremental-refresh correctness contract. |
 | [FW-3](future-work.md#fw-3-whole-snapshot-atomic-commit) | Defer | None in this plan | Preserve atomic file writes, but defer whole-directory atomic commit. |
@@ -95,15 +97,16 @@ deferred.
 
 This active plan explicitly adopts
 [docs/policies/common/execution-model.md](policies/common/execution-model.md)
-for the named operational, design, and implementation tickets below. Once a
-ticket begins, its work must follow the execution-model Phase A/B/C artifact
-flow in [docs/execution/](execution/) and satisfy the validation and review
-gates defined there.
+for the named operational, design, review, and implementation tickets below.
+Once a ticket begins, its work must follow the execution-model Phase A/B/C
+artifact flow in [docs/execution/](execution/) and satisfy the validation and
+review gates defined there.
 
 Ticket identifiers in this active plan use these forms:
 
 - Operational tickets: `Mx-Oy`
 - Design tickets: `Mx-Dy`
+- Review tickets: `Mx-Ry`
 - Implementation tickets: `Mx-z`
 - Review finding IDs after activation: `<ticket-id>-Rn`
 
@@ -116,7 +119,7 @@ Ticket identifiers in this active plan use these forms:
 | M1 | Foundation and release-gate validation | Live validation bootstrap, project scaffold, Linear adapter-boundary audit, shared persistence primitives, and an explicit `OQ-1` outcome |
 | M2 | Full snapshot materialization | Deterministic traversal, rendering, and whole-snapshot `sync` |
 | M3 | Incremental maintenance and drift inspection | `refresh`, `add`, `remove-root`, and `diff` with the ADR's missing-root and lock semantics |
-| M4 | CLI and release readiness | Human-facing commands, operational logging, validation coverage, and onboarding docs |
+| M4 | CLI and release readiness | Human-facing commands, separate CLI and API reviews, operational logging, validation coverage, and onboarding docs |
 
 The sequence intentionally moves from repository-shaping primitives to
 full-snapshot behavior and only then to incremental flows. That keeps the plan
@@ -458,14 +461,15 @@ rather than reopen the refresh design during implementation.
 ## 6. Milestone 4 - CLI and Release Readiness
 
 **Goal:** make the tool usable by human operators and automation with clear
-commands, durable docs, and validation coverage that matches the repository's
-documented contracts.
+commands, separately reviewed CLI and library interfaces, durable docs, and
+validation coverage that matches the repository's documented contracts.
 
-### 6.1 Design Tickets
+### 6.1 Review Tickets
 
 | # | Status | Ticket | Deliverable | Dependencies | Reviewers | Source |
 | --- | --- | --- | --- | --- | --- | --- |
-| <a id="m4-d1---cli-command-semantics-review"></a>M4-D1 | Todo | CLI command semantics review | A design artifact that reviews the overlap and redundancy among the current five CLI commands (`sync`, `refresh`, `add`, `remove-root`, `diff`), evaluates whether a smaller or differently factored action set would cover the required use cases more elegantly, and proposes either the current set with expanded user-facing documentation explaining the semantic differences, or a revised command surface with a migration path. Regardless of outcome, the deliverable must include expanded user-facing documentation that explains command semantics in sufficient detail for operators to choose the right command. | [M4-2](#m4-2---operational-logging-validation-hardening-and-user-docs) | Independent Stage 2 review session | [docs/adr.md](adr.md#51-sync-full-snapshot-rebuild), [docs/adr.md](adr.md#52-refresh-incremental-whole-snapshot-update), [docs/design/0-top-level-design.md](design/0-top-level-design.md#2-cli-interface) |
+| <a id="m4-r1---cli-interface-review"></a>M4-R1 | Todo | CLI interface review | A durable repository review artifact that evaluates the human-facing CLI command surface produced by this plan, including command semantics, overlap, output ergonomics, operator comprehension, and consistency between CLI behavior and user-facing docs. The deliverable must distinguish documentation-only clarifications from follow-on design/implementation work and must explicitly name any recommended new plan items or amendments. | [M4-2](#m4-2---operational-logging-validation-hardening-and-user-docs) | Independent Stage 2 review session | [docs/design/0-top-level-design.md](design/0-top-level-design.md#2-cli-interface), [README.md](../README.md), [docs/execution/M4-1-review.md](execution/M4-1-review.md) |
+| <a id="m4-r2---api-interface-review"></a>M4-R2 | Todo | API interface review | A durable repository review artifact that evaluates the public `ContextSync` library API after [M4-R1](#m4-r1---cli-interface-review) settles the command-surface semantics that may shape the library contract, including parameter naming, method boundaries, result/error ergonomics, exception taxonomy, docstring clarity, and terminology alignment between library, CLI, and user-facing docs. The deliverable must distinguish documentation-only clarifications from follow-on design/implementation work and must explicitly name any recommended new plan items or amendments. | [M4-R1](#m4-r1---cli-interface-review) | Independent Stage 2 review session | [docs/design/0-top-level-design.md](design/0-top-level-design.md#1-library-api), [README.md](../README.md), [docs/execution/M4-1-review.md](execution/M4-1-review.md) |
 
 ### 6.2 Implementation Tickets
 
@@ -473,7 +477,7 @@ documented contracts.
 | --- | --- | --- | --- | --- | --- | --- |
 | <a id="m4-1---cli-surface-and-command-output-contracts"></a>M4-1 | Done | CLI surface and command output contracts | Add the thin CLI wrapper over the async library, expose the documented commands and options, and define human-readable plus machine-readable output behavior for success and failure cases | [M2-3](#m2-3---full-snapshot-sync-flow), [M3-1](#m3-1---incremental-refresh-and-quarantined-root-recovery), [M3-2](#m3-2---add-and-remove-root-whole-snapshot-flows), [M3-3](#m3-3---diff-mode-and-lock-aware-drift-reporting) | CLI tests for command parsing, JSON output, lock-error text, and missing-root-policy selection | [docs/design/0-top-level-design.md](design/0-top-level-design.md#2-cli-interface), [docs/design/0-top-level-design.md](design/0-top-level-design.md#4-error-handling) |
 | <a id="m4-2---operational-logging-validation-hardening-and-user-docs"></a>M4-2 | In progress | Operational logging, validation hardening, and user docs | Add the INFO/DEBUG logging contract, end-to-end validation coverage, onboarding and usage docs, and the sample configuration artifact needed to satisfy the repository's documentation/security conventions | [M4-1](#m4-1---cli-surface-and-command-output-contracts) | End-to-end fixture tests covering all major modes plus manual CLI smoke checks documented in repo docs | [docs/adr.md](adr.md#61-snapshot-consistency-contract), [README.md](../README.md), [docs/policies/common/coding-guidelines.md](policies/common/coding-guidelines.md) |
-| <a id="m4-3---rename-root-ticket-id-to-key"></a>M4-3 | Todo | Rename `root_ticket_id` to `key` | Rename the `root_ticket_id` parameter on `ContextSync.sync()` (and any internal callers) to `key`, because the value accepted is a human-facing issue key (e.g. `TEAM-42`) or URL, not an internal ID/UUID. Update the CLI positional argument help text, docstrings, tests, and user-facing documentation to match. | [M4-2](#m4-2---operational-logging-validation-hardening-and-user-docs) | Update existing tests that reference the old parameter name | [README.md](../README.md) |
+| <a id="m4-3---rename-root-ticket-id-to-key"></a>M4-3 | Todo | Rename `root_ticket_id` to `key` | Rename the `root_ticket_id` parameter on `ContextSync.sync()` (and any internal callers) to `key`, because the value accepted is a human-facing issue key (e.g. `TEAM-42`) or URL, not an internal ID/UUID. Update the CLI positional argument help text, docstrings, tests, and user-facing documentation to match. | [M4-R2](#m4-r2---api-interface-review) | Update existing tests that reference the old parameter name | [README.md](../README.md), [docs/execution/M4-1-review.md](execution/M4-1-review.md) |
 
 ### 6.3 Detailed Ticket Notes
 
@@ -486,13 +490,18 @@ documented contracts.
   demonstrably stale-lock preemption, and root quarantine visible without
   requiring debug logging.
 
-#### M4-D1 - CLI command semantics review
+#### M4-R1 - CLI interface review
 
-- The current five-command surface (`sync`, `refresh`, `add`, `remove-root`,
-  `diff`) has significant semantic overlap. Specifically, `sync TICKET` on an
-  existing snapshot and `add TICKET` produce the same observable result: both
-  add the ticket as a root and rebuild the snapshot from all active roots. The
-  differences are:
+- Review the public CLI/operator surface produced by this plan, not the library
+  API. This top-level review is separate from the Phase B review of
+  [M4-1](#m4-1---cli-surface-and-command-output-contracts) and should focus on
+  command semantics, output ergonomics, operator comprehension, and whether the
+  CLI plus docs tell one coherent story to users.
+- The current five-command CLI surface (`sync`, `refresh`, `add`,
+  `remove-root`, `diff`) has significant semantic overlap. Specifically,
+  `sync TICKET` on an existing snapshot and `add TICKET` produce the same
+  observable result: both add the ticket as a root and rebuild the snapshot
+  from all active roots. The differences are:
   - `sync` allows per-call `--max-tickets-per-root` and `--depth-*` overrides
     that get persisted into the manifest; `add` uses the manifest's existing
     traversal configuration.
@@ -514,14 +523,43 @@ documented contracts.
   the efficiency benefits of incremental refresh.
 - Also evaluate `remove-root` vs a potential `sync --remove TICKET` or
   `unsync TICKET` surface.
+- If the CLI review concludes that command-surface changes would materially
+  affect the public library contract, carry those implications into
+  [M4-R2](#m4-r2---api-interface-review) rather than treating
+  [M4-R1](#m4-r1---cli-interface-review) as the API review too.
 - Regardless of whether the command surface changes, the deliverable must
   include expanded user-facing documentation (in
   [README.md](../README.md) and/or a dedicated operator guide) that explains
-  when to use each command, what each one does under the hood, and why the
-  distinction exists — or, if the surface is simplified, documents the
-  new simpler model.
-- If the review proposes changes to the command surface, those changes must go
+  when to use each command, what each interface does under the hood, and why
+  the distinctions exist, or, if the surface is simplified, documents the new
+  simpler model.
+- If the review identifies new work not already tracked in the active plan, add
+  it as one or more follow-on tickets through a plan amendment rather than
+  silently widening a `Done` ticket or leaving the recommendation only in the
+  review artifact.
+- If the review proposes changes to the command surface, or identifies
+  downstream API implications that need follow-on work, those changes must go
   through a plan amendment before implementation.
+
+#### M4-R2 - API interface review
+
+- Review the public `ContextSync` library API after
+  [M4-R1](#m4-r1---cli-interface-review) settles any command-semantics changes
+  that may need to propagate into library naming, factoring, or behavior.
+- The review should evaluate parameter naming, result/error ergonomics,
+  exception naming, method boundaries, docstring clarity, and library/CLI term
+  alignment for whether they communicate the accepted contract clearly to
+  callers.
+- [M4-3](#m4-3---rename-root-ticket-id-to-key) is an already-selected
+  follow-on API naming cleanup candidate. [M4-R2](#m4-r2---api-interface-review)
+  should confirm whether that ticket is still the right shape or whether a
+  broader or different API-only follow-on change set should replace it.
+- If the review identifies new work not already tracked in the active plan, add
+  it as one or more follow-on tickets through a plan amendment rather than
+  silently widening a `Done` ticket or leaving the recommendation only in the
+  review artifact.
+- If the review proposes changes to the public library contract, those changes
+  must go through a plan amendment before implementation.
 
 #### M4-2 - Operational logging, validation hardening, and user docs
 
@@ -547,9 +585,12 @@ documented contracts.
 
 1. Human operators can run the documented CLI commands for `sync`, `refresh`,
    `add`, `remove-root`, and `diff`.
-2. Logging and result output make operational failures diagnosable without
+2. The CLI surface and the public library API each have a durable
+   post-implementation review path that can feed explicit follow-on tickets
+   when needed.
+3. Logging and result output make operational failures diagnosable without
    exposing secrets.
-3. The repository includes user-facing docs and validation coverage that match
+4. The repository includes user-facing docs and validation coverage that match
    the implemented public behavior.
 
 ---
