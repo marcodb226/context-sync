@@ -133,7 +133,13 @@ context-sync diff
 
 ### Environment variables
 
-All Linear credentials are read from the environment at runtime.
+`context-sync` does not define its own environment variables. All credential
+and endpoint configuration is provided by the
+[`linear-client`](https://github.com/marcodb226/linear-client) library, which
+reads the following variables at runtime. They are documented here for
+convenience so that tool users do not need to consult the `linear-client`
+documentation separately. This list is complete as of `linear-client` v1.0.0;
+newer releases may introduce additional variables.
 
 | Variable | Required | Description |
 |----------|----------|-------------|
@@ -152,15 +158,17 @@ No secrets should appear in source files, logs, or error output.
 
 ### Logging
 
-Diagnostic logs are written to stderr. The `--log-level` flag controls
-verbosity:
+Diagnostic logs are written to stderr (never stdout). The `--log-level` flag
+controls verbosity for the entire process, including both `context-sync` and the
+underlying `linear-client` library:
 
 - **WARNING** (default): only warnings and errors.
 - **INFO**: run lifecycle events (start, end, mode, root count, ticket cap,
   reachable count, created/updated/unchanged/removed/error counts, duration,
   whether any roots hit their per-root cap).
 - **DEBUG**: per-ticket decisions (fresh, stale, pruned, renamed), lock
-  acquisition details, alias resolution traces.
+  acquisition details, alias resolution traces, plus `linear-client` transport
+  details.
 
 Typical operator usage:
 
@@ -168,7 +176,7 @@ Typical operator usage:
 # See what the tool is doing at a high level
 context-sync refresh --log-level INFO
 
-# Diagnose why a specific ticket was re-fetched
+# Diagnose why a specific ticket was re-fetched (stderr to file)
 context-sync refresh --log-level DEBUG 2>debug.log
 ```
 
@@ -219,8 +227,8 @@ For programmatic use, import the async `ContextSync` class directly:
 ```python
 from context_sync import ContextSync
 
-syncer = ContextSync(linear=linear_client, context_dir="./context")
-result = await syncer.sync(root_ticket_id="TEAM-42")
+ctx = ContextSync(linear=linear_client, context_dir="./context")
+result = await ctx.sync(root_ticket_id="TEAM-42")
 ```
 
 All five CLI operations (`sync`, `refresh`, `add`, `remove_root`, `diff`) are
@@ -235,10 +243,9 @@ parameter details.
 
 - Python 3.13+
 - SSH access to the private
-  [`linear-client`](https://github.com/marcodb226/linear-client) and
-  [`context-sync`](https://github.com/marcodb226/context-sync) repositories
-- A local clone of the shared policy repository
-  ([agent-policies](https://github.com/marcodb226/agent-policies))
+  [`linear-client`](https://github.com/marcodb226/linear-client),
+  [`context-sync`](https://github.com/marcodb226/context-sync), and
+  [`agent-policies`](https://github.com/marcodb226/agent-policies) repositories
 
 ### Developer setup
 

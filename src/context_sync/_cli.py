@@ -499,17 +499,20 @@ def main(argv: list[str] | None = None) -> NoReturn:
     args = parser.parse_args(argv)
 
     # Configure logging before any library code runs (R8).
-    pkg_logger = logging.getLogger("context_sync")
+    # All levels — including OFF — apply to the root logger so that
+    # context-sync and linear-client are controlled uniformly.
     if args.log_level == "OFF":
-        pkg_logger.setLevel(logging.CRITICAL + 1)
-        pkg_logger.addHandler(logging.NullHandler())
+        # Python logging has no built-in "silence everything" constant.
+        # CRITICAL is 50; setting 51 rejects all messages including CRITICAL.
+        effective_level = logging.CRITICAL + 1
     else:
-        logging.basicConfig(
-            level=getattr(logging, args.log_level),
-            format="%(levelname)s %(name)s: %(message)s",
-            stream=sys.stderr,
-            force=True,
-        )
+        effective_level = getattr(logging, args.log_level)
+    logging.basicConfig(
+        level=effective_level,
+        format="%(levelname)s %(name)s: %(message)s",
+        stream=sys.stderr,
+        force=True,
+    )
 
     handler = _HANDLERS.get(args.command)
     if handler is None:

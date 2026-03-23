@@ -473,6 +473,7 @@ documented contracts.
 | --- | --- | --- | --- | --- | --- | --- |
 | <a id="m4-1---cli-surface-and-command-output-contracts"></a>M4-1 | Done | CLI surface and command output contracts | Add the thin CLI wrapper over the async library, expose the documented commands and options, and define human-readable plus machine-readable output behavior for success and failure cases | [M2-3](#m2-3---full-snapshot-sync-flow), [M3-1](#m3-1---incremental-refresh-and-quarantined-root-recovery), [M3-2](#m3-2---add-and-remove-root-whole-snapshot-flows), [M3-3](#m3-3---diff-mode-and-lock-aware-drift-reporting) | CLI tests for command parsing, JSON output, lock-error text, and missing-root-policy selection | [docs/design/0-top-level-design.md](design/0-top-level-design.md#2-cli-interface), [docs/design/0-top-level-design.md](design/0-top-level-design.md#4-error-handling) |
 | <a id="m4-2---operational-logging-validation-hardening-and-user-docs"></a>M4-2 | In progress | Operational logging, validation hardening, and user docs | Add the INFO/DEBUG logging contract, end-to-end validation coverage, onboarding and usage docs, and the sample configuration artifact needed to satisfy the repository's documentation/security conventions | [M4-1](#m4-1---cli-surface-and-command-output-contracts) | End-to-end fixture tests covering all major modes plus manual CLI smoke checks documented in repo docs | [docs/adr.md](adr.md#61-snapshot-consistency-contract), [README.md](../README.md), [docs/policies/common/coding-guidelines.md](policies/common/coding-guidelines.md) |
+| <a id="m4-3---rename-root-ticket-id-to-key"></a>M4-3 | Todo | Rename `root_ticket_id` to `key` | Rename the `root_ticket_id` parameter on `ContextSync.sync()` (and any internal callers) to `key`, because the value accepted is a human-facing issue key (e.g. `TEAM-42`) or URL, not an internal ID/UUID. Update the CLI positional argument help text, docstrings, tests, and user-facing documentation to match. | [M4-2](#m4-2---operational-logging-validation-hardening-and-user-docs) | Update existing tests that reference the old parameter name | [README.md](../README.md) |
 
 ### 6.3 Detailed Ticket Notes
 
@@ -530,6 +531,17 @@ documented contracts.
 - Keep validation focused on the declared repository command set from
   [M1-1](#m1-1---project-scaffold-and-public-runtime-contracts) so later ticket
   work has one canonical lint/format/test surface.
+
+#### M4-3 - Rename `root_ticket_id` to `key`
+
+- The `sync()` method currently accepts a `root_ticket_id` parameter, but the
+  value is a human-facing issue key (e.g. `TEAM-42`) or a Linear URL — not an
+  internal UUID. The `_id` suffix is misleading, and `root_ticket_` is
+  unnecessarily verbose given the method context already implies the root.
+- Rename to `key` across the public API, CLI positional argument, docstrings,
+  tests, and user-facing documentation.
+- This is a breaking change to the library API. Acceptable at the current
+  `0.x` version, but should land before `1.0.0`.
 
 ### 6.4 Exit Criteria
 
