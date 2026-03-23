@@ -1,6 +1,6 @@
 # Review: [M4-R1](../implementation-plan.md#m4-r1---cli-interface-review)
 
-> **Status**: Phase B complete (one review pass)
+> **Status**: Phase B complete (two review passes)
 > **Plan ticket**:
 > [M4-R1](../implementation-plan.md#m4-r1---cli-interface-review)
 > **Execution record**:
@@ -80,3 +80,61 @@
   a design decision that must be resolved before the plan amendment can be
   properly scoped. Getting it wrong could change the `sync` command's behavior
   in a way that surprises existing users.
+
+---
+
+## Second Review Pass
+
+> **Reviewer references**:
+> [docs/policies/common/execution-model.md](../policies/common/execution-model.md),
+> [docs/policies/common/reviews/design-review.md](../policies/common/reviews/design-review.md),
+> [docs/implementation-plan.md](../implementation-plan.md),
+> [docs/design/0-top-level-design.md](../design/0-top-level-design.md#2-cli-interface),
+> [docs/execution/M4-R1.md](M4-R1.md),
+> [src/context_sync/_cli.py](../../src/context_sync/_cli.py),
+> [src/context_sync/_diff.py](../../src/context_sync/_diff.py)
+
+### Agreement with First Pass
+
+I agree with [M4-R1-R1](#m4-r1-r1) through [M4-R1-R4](#m4-r1-r4). The first
+pass correctly identified the missing user-facing documentation, the missing
+plan-level follow-on tracking, the omitted `unsync` comparison, and the
+underspecified unified-`sync` traversal semantics.
+
+[M4-R1-R5](#m4-r1-r5) and [M4-R1-R6](#m4-r1-r6) remain low-severity artifact
+completeness issues. I did not find new evidence that changes their
+disposition. This second pass adds two more medium-severity findings.
+
+### Additional Findings
+
+| ID | Severity | Status | Area | Finding | Evidence | Impact | Recommendation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| M4-R1-R7 | Medium | Todo | Output Ergonomics | The plan ticket explicitly requires this review to cover output ergonomics and operator comprehension, but the execution artifact limits itself to command overlap, policy-fit, and follow-on tracking. Its review method says it compared the parser/help contract, yet the artifact never evaluates the rendered top-level or subcommand help text, the human-readable success/failure surfaces, or the design-mandated `diff` lock-refusal message. The current terminal-facing help still leads with internal implementation wording such as "Full-snapshot sync" and "Incremental refresh", which is exactly the distinction the review says operators should not have to reason about. | [docs/implementation-plan.md:499](../implementation-plan.md#L499), [docs/implementation-plan.md:523–527](../implementation-plan.md#L523), [docs/execution/M4-R1.md:41–50](M4-R1.md#L41), [docs/execution/M4-R1.md:192–206](M4-R1.md#L192), [src/context_sync/_cli.py:408–465](../../src/context_sync/_cli.py#L408), [docs/design/0-top-level-design.md:134](../design/0-top-level-design.md#L134) | The ticket can close with a cleaner proposed verb model while leaving the actual in-terminal discovery and failure surfaces under-reviewed. Operators who rely on `context-sync --help` or lock-failure text could still see the old implementation-oriented story even after the plan-level simplification is accepted. | Add an explicit output-ergonomics section to [docs/execution/M4-R1.md](M4-R1.md) that evaluates rendered help output, human-readable success/failure text, and the `diff` lock-refusal wording. Classify any required follow-up as documentation-only clarification versus amendment-required command-surface work. |
+| M4-R1-R8 | Medium | Todo | Alternatives Analysis | The detailed ticket notes explicitly ask the review to evaluate whether the `sync`/`add` overlap should be resolved by a unified `sync` that is incremental when possible or by a factored surface such as `sync --full`. The execution artifact recommends removing `add`, but it never actually decides whether the full-vs-incremental distinction should stay entirely hidden or become an explicit operator choice; instead, it defers that question to a later plan amendment. That leaves one of the ticket's central requested tradeoff analyses unresolved. | [docs/implementation-plan.md:547–550](../implementation-plan.md#L547), [docs/execution/M4-R1.md:67–68](M4-R1.md#L67), [docs/execution/M4-R1.md:125–133](M4-R1.md#L125), [docs/execution/M4-R1.md:232–244](M4-R1.md#L232) | The future amendment still lacks the key semantic recommendation needed to scope the unified `sync` command: should operators ever see a `--full` concept, or should execution strategy remain entirely internal? Without that call, planners must reopen one of the core alternatives analyses that this review ticket was supposed to perform. | Extend [docs/execution/M4-R1.md](M4-R1.md) with a short alternatives subsection comparing hidden-strategy, `sync --full`, and current-model options, then recommend one explicitly so the amendment can carry a settled CLI contract. |
+
+### Second-Pass Reviewer Notes
+
+- Review scope: re-read [docs/execution/M4-R1.md](M4-R1.md) against the
+  [M4-R1 detailed notes](../implementation-plan.md#L521), then inspected the
+  actual operator-facing help and error surfaces in
+  [src/context_sync/_cli.py](../../src/context_sync/_cli.py) and the `diff`
+  lock-refusal contract in
+  [src/context_sync/_diff.py](../../src/context_sync/_diff.py) plus
+  [docs/design/0-top-level-design.md](../design/0-top-level-design.md#L134).
+- I rendered the parser help from the repository virtualenv to verify what an
+  operator actually sees, rather than relying only on static source reading.
+- The first pass already covered the biggest execution-phase misses. This pass
+  focused on whether the review ticket itself fully satisfied its stated scope.
+- I did not rerun lint, format, or test commands. This review-pass update is a
+  docs-only change to the review artifact, and the validation-scope gate says
+  not to run repository-wide validation for docs-only review work unless
+  explicitly requested.
+
+### Second-Pass Residual Risks and Testing Gaps
+
+- If Phase C addresses only [M4-R1-R1](#m4-r1-r1) through
+  [M4-R1-R4](#m4-r1-r4), the operator-facing help and failure-text surfaces may
+  still remain under-reviewed.
+- The plan amendment for CLI simplification is likely to stall or reopen design
+  debate unless [M4-R1-R8](#m4-r1-r8) is answered with an explicit recommendation
+  about whether full-vs-incremental behavior should ever be user-visible.
