@@ -43,7 +43,7 @@ from context_sync._config import (
     FORMAT_VERSION,
     resolve_dimensions,
 )
-from context_sync._diff import check_diff_lock, compute_changed_fields
+from context_sync._diff import run_diff
 from context_sync._errors import (
     ContextSyncError,
     ManifestError,
@@ -63,7 +63,7 @@ from context_sync._manifest import (
     load_manifest,
     save_manifest,
 )
-from context_sync._models import DiffEntry, DiffResult, SyncError, SyncResult
+from context_sync._models import DiffResult, SyncError, SyncResult
 from context_sync._pipeline import (
     compute_refresh_cursor,
     make_ticket_ref_provider,
@@ -594,10 +594,12 @@ class ContextSync:
         duration = time.monotonic() - mono_start
         logger.info(
             "sync: completed — reachable=%d, created=%d, updated=%d, "
-            "removed=%d, errors=%d, roots_at_cap=%d, duration=%.1fs",
+            "unchanged=%d, removed=%d, errors=%d, roots_at_cap=%d, "
+            "duration=%.1fs",
             len(graph.tickets),
             len(created),
             len(updated),
+            len(unchanged),
             len(removed),
             len(errors),
             len(graph.roots_at_cap),
@@ -935,9 +937,11 @@ class ContextSync:
                 roots_for_traversal[uid] = manifest.tickets[uid].current_key
 
         logger.info(
-            "refresh: started — active_roots=%d, quarantined=%d",
+            "%s: started — active_roots=%d, quarantined=%d, max_tickets_per_root=%d",
+            snapshot_mode,
             len(roots_for_traversal),
             sum(1 for e in manifest.roots.values() if e.state == "quarantined"),
+            effective_cap,
         )
 
         # -- Build Tier 3 ticket_ref provider ---------------------------------
@@ -1011,12 +1015,18 @@ class ContextSync:
 
                 # Staleness rules: missing/partial/invalid/format-incompatible
                 # local cursor, or any component differs.
+                ticket_key = manifest.tickets[uid].current_key
                 if local_fv is None or local_fv < FORMAT_VERSION:
                     stale_uuids.add(uid)
+                    logger.debug("refresh: stale (format_version) — %s", ticket_key)
                 elif local_cursor is None:
                     stale_uuids.add(uid)
+                    logger.debug("refresh: stale (missing cursor) — %s", ticket_key)
                 elif local_cursor != remote_cursor:
                     stale_uuids.add(uid)
+                    logger.debug("refresh: stale (cursor mismatch) — %s", ticket_key)
+                else:
+                    logger.debug("refresh: fresh — %s", ticket_key)
 
         # -- Fetch stale and newly discovered tickets -------------------------
         created: list[str] = []
@@ -1127,14 +1137,17 @@ class ContextSync:
 
         duration = time.monotonic() - mono_start
         logger.info(
-            "refresh: completed — reachable=%d, created=%d, updated=%d, "
-            "unchanged=%d, removed=%d, errors=%d, duration=%.1fs",
+            "%s: completed — reachable=%d, created=%d, updated=%d, "
+            "unchanged=%d, removed=%d, errors=%d, roots_at_cap=%d, "
+            "duration=%.1fs",
+            snapshot_mode,
             len(graph.tickets),
             len(created),
             len(updated),
             len(unchanged),
             len(removed),
             len(errors),
+            len(graph.roots_at_cap),
             duration,
         )
 
@@ -1474,146 +1487,7 @@ class ContextSync:
                 "instance."
             )
 
-        context_dir = self._context_dir
-        gateway = self._gateway
-
-        # --- Lock inspection (never acquire, clear, or preempt) ------------
-        check_diff_lock(context_dir)
-
-        # --- Load manifest -------------------------------------------------
-        manifest = load_manifest(context_dir)
-
-        tracked_uids = list(manifest.tickets.keys())
-        if not tracked_uids:
-            return DiffResult()
-
-        # --- Read local state ----------------------------------------------
-        #
-        # For each tracked ticket, read its frontmatter.  ``None`` means the
-        # file does not exist on disk (missing_locally); an empty dict means
-        # the file exists but its frontmatter is corrupt (treated as stale).
-        local_frontmatter: dict[str, dict[str, Any] | None] = {}
-        read_errors: list[SyncError] = []
-        for uid in tracked_uids:
-            entry = manifest.tickets[uid]
-            file_path = context_dir / entry.current_path
-            if not file_path.is_file():
-                local_frontmatter[uid] = None
-            else:
-                try:
-                    text = file_path.read_text(encoding="utf-8")
-                    local_frontmatter[uid] = parse_frontmatter(text)
-                except OSError as exc:
-                    logger.warning(
-                        "Cannot read ticket file %s: %s",
-                        file_path,
-                        exc,
-                    )
-                    read_errors.append(
-                        SyncError(
-                            ticket_id=entry.current_key,
-                            error_type="read_error",
-                            message=f"Cannot read ticket file: {exc}",
-                            retriable=True,
-                        )
-                    )
-                    local_frontmatter[uid] = None
-                except (ValueError, KeyError, ManifestError) as exc:
-                    logger.warning(
-                        "Corrupt frontmatter for %s: %s",
-                        file_path,
-                        exc,
-                    )
-                    read_errors.append(
-                        SyncError(
-                            ticket_id=entry.current_key,
-                            error_type="corrupt_frontmatter",
-                            message=f"Cannot parse ticket frontmatter: {exc}",
-                            retriable=False,
-                        )
-                    )
-                    local_frontmatter[uid] = None
-
-        # --- Fetch remote state (batch metadata) ---------------------------
-        issue_meta, comment_meta, relation_meta = await asyncio.gather(
-            gateway.get_refresh_issue_metadata(tracked_uids),
-            gateway.get_refresh_comment_metadata(tracked_uids),
-            gateway.get_refresh_relation_metadata(tracked_uids),
+        return await run_diff(
+            context_dir=self._context_dir,
+            gateway=self._gateway,
         )
-
-        # --- Compare and classify ------------------------------------------
-        entries: list[DiffEntry] = []
-        errors: list[SyncError] = list(read_errors)
-
-        # UUIDs that had read errors are already in errors; skip them below.
-        errored_uids = {e.ticket_id for e in read_errors}
-
-        for uid in tracked_uids:
-            manifest_entry = manifest.tickets[uid]
-
-            # Skip tickets that had read errors — already reported.
-            if manifest_entry.current_key in errored_uids:
-                continue
-
-            fm = local_frontmatter[uid]
-
-            # missing_locally: tracked in manifest but no file on disk.
-            if fm is None:
-                entries.append(
-                    DiffEntry(
-                        ticket_id=manifest_entry.current_key,
-                        status="missing_locally",
-                    )
-                )
-                continue
-
-            # Identity validation: ticket_uuid must match the manifest UUID.
-            local_uuid = fm.get("ticket_uuid")
-            if local_uuid != uid:
-                errors.append(
-                    SyncError(
-                        ticket_id=manifest_entry.current_key,
-                        error_type="identity_mismatch",
-                        message=(
-                            f"Local ticket_uuid {local_uuid!r} does not match manifest UUID {uid!r}"
-                        ),
-                        retriable=False,
-                    )
-                )
-                continue
-
-            # missing_remotely: not available in the current visible view.
-            remote_issue = issue_meta.get(uid)
-            if remote_issue is None or not remote_issue.visible:
-                entries.append(
-                    DiffEntry(
-                        ticket_id=manifest_entry.current_key,
-                        status="missing_remotely",
-                    )
-                )
-                continue
-
-            # format_version gate: a file whose format is too old for the
-            # accepted cursor contract is stale regardless of cursor match.
-            local_fv = fm.get("format_version")
-            format_stale = not isinstance(local_fv, int) or local_fv < FORMAT_VERSION
-
-            # Compare local cursor vs remote metadata.
-            changed = compute_changed_fields(
-                fm=fm,
-                remote_issue=remote_issue,
-                remote_comment_meta=comment_meta.get(uid, ([], [])),
-                remote_relation_meta=relation_meta.get(uid, []),
-            )
-
-            stale = bool(changed) or format_stale
-
-            entries.append(
-                DiffEntry(
-                    ticket_id=remote_issue.issue_key,
-                    status="stale" if stale else "current",
-                    changed_fields=changed,
-                )
-            )
-
-        return DiffResult(entries=entries, errors=errors)

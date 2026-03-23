@@ -1,20 +1,246 @@
 # context-sync
 
-Linear Context Sync Tool — a deterministic, offline-friendly utility for
-snapshotting Linear ticket neighborhoods so that agent loops and human operators
-can work from a stable, inspectable context graph without repeated API calls.
+Deterministic, offline-friendly snapshots of Linear ticket neighborhoods.
 
-See `docs/problem-statement.md` for the full motivation.
+`context-sync` walks the relation graph around one or more root tickets and
+materializes a local directory of Markdown files — one per ticket — so that
+agent loops, CI pipelines, and human operators can work from a stable,
+inspectable context graph without repeated API calls.
 
-## Prerequisites
+The project can be used in two ways:
+
+- **As a CLI tool** — the `context-sync` command provides five operations
+  (`sync`, `refresh`, `add`, `remove-root`, `diff`) for managing a local
+  snapshot directory.
+- **As a Python library** — the async `ContextSync` class exposes the same
+  operations programmatically, for embedding in agent frameworks or automation
+  scripts.
+
+See [`docs/problem-statement.md`](docs/problem-statement.md) for the full
+motivation.
+
+## Installation
+
+`context-sync` requires Python 3.13+ and depends on
+[`linear-client`](https://github.com/marcodb226/linear-client), a private
+package not published to PyPI. Both packages are installed from their private
+GitHub repositories via SSH.
+
+```bash
+pip install "linear-client @ git+ssh://git@github.com/marcodb226/linear-client.git@v1.0.0"
+pip install "context-sync @ git+ssh://git@github.com/marcodb226/context-sync.git"
+```
+
+This makes the `context-sync` command available wherever `pip` installed it.
+Use a virtualenv if you prefer isolation.
+
+### Credential setup
+
+All Linear credentials are read from the environment at runtime. Set the
+required variables before running any command:
+
+```bash
+export LINEAR_CLIENT_ID="<your-oauth-client-id>"
+export LINEAR_CLIENT_SECRET="<your-oauth-client-secret>"
+export LINEAR_OAUTH_SCOPE="read,write,app:assignable,app:mentionable"
+```
+
+See [Configuration](#configuration) for the complete variable reference and
+optional settings.
+
+### Quick start
+
+```bash
+# Create a snapshot rooted at a ticket
+context-sync sync TEAM-42
+
+# Later, refresh to pick up upstream changes
+context-sync refresh
+
+# Check what changed without modifying files
+context-sync diff
+```
+
+## CLI usage
+
+### Commands
+
+```bash
+# Full-snapshot sync from a root ticket
+context-sync sync TEAM-42
+
+# Incremental refresh of all tracked roots
+context-sync refresh
+
+# Add a second root to an existing snapshot
+context-sync add TEAM-99
+
+# Remove a root (derived-only tickets are pruned)
+context-sync remove-root TEAM-42
+
+# Non-mutating drift inspection (read-only)
+context-sync diff
+```
+
+### Global options
+
+| Flag | Description |
+|------|-------------|
+| `-v`, `--version` | Print tool name and version, then exit. |
+| `-h`, `--help` | Print help text, then exit. |
+| `--log-level LEVEL` | Diagnostic log verbosity to stderr. Choices: `DEBUG`, `INFO`, `WARNING` (default), `ERROR`, `OFF`. |
+
+### Per-command options
+
+| Command | Option | Default | Description |
+|---------|--------|---------|-------------|
+| `sync` | `--context-dir DIR` | `.` | Path to the context directory. |
+| `sync` | `--json` | off | Emit machine-readable JSON instead of text. |
+| `sync` | `--max-tickets-per-root N` | 200 | Per-root ticket cap for traversal. |
+| `sync` | `--depth-blocks N` | 3 | Traversal depth for `blocks` edges. |
+| `sync` | `--depth-is-blocked-by N` | 2 | Traversal depth for `is_blocked_by` edges. |
+| `sync` | `--depth-parent N` | 2 | Traversal depth for `parent` edges. |
+| `sync` | `--depth-child N` | 2 | Traversal depth for `child` edges. |
+| `sync` | `--depth-relates-to N` | 1 | Traversal depth for `relates_to` edges. |
+| `sync` | `--depth-ticket-ref N` | 1 | Traversal depth for `ticket_ref` (URL-discovered) edges. |
+| `refresh` | `--context-dir DIR` | `.` | Path to the context directory. |
+| `refresh` | `--json` | off | Emit machine-readable JSON instead of text. |
+| `refresh` | `--missing-root-policy` | `quarantine` | How to handle roots no longer visible: `quarantine` or `remove`. |
+| `add` | `--context-dir DIR` | `.` | Path to the context directory. |
+| `add` | `--json` | off | Emit machine-readable JSON instead of text. |
+| `remove-root` | `--context-dir DIR` | `.` | Path to the context directory. |
+| `remove-root` | `--json` | off | Emit machine-readable JSON instead of text. |
+| `diff` | `--context-dir DIR` | `.` | Path to the context directory. |
+| `diff` | `--json` | off | Emit machine-readable JSON instead of text. |
+
+### Exit codes
+
+| Code | Meaning |
+|------|---------|
+| `0` | Success. |
+| `1` | Operational error (lock contention, workspace mismatch, manifest error, root not found, remote failure). |
+| `2` | Usage / argument error. |
+
+### Output modes
+
+- **Text** (default): concise human-readable output on stdout, one line per
+  category (created, updated, unchanged, removed, errors).
+- **JSON** (`--json`): a single JSON object on stdout, parseable with `jq`. For
+  `sync`/`refresh`/`add`/`remove-root` the shape is `SyncResult`; for `diff`
+  it is `DiffResult`.
+
+## Configuration
+
+### Environment variables
+
+All Linear credentials are read from the environment at runtime.
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `LINEAR_CLIENT_ID` | Yes | Linear OAuth application client ID. |
+| `LINEAR_CLIENT_SECRET` | Yes | Linear OAuth application client secret. |
+| `LINEAR_OAUTH_SCOPE` | Yes | Comma-separated OAuth scopes (e.g. `read,write,app:assignable,app:mentionable`). |
+| `LINEAR_OAUTH_TOKEN_PATH` | No | Path to persisted token JSON file. Default: `~/.linear_client_oauth.json`. |
+| `LINEAR_OAUTH_URL` | No | OAuth token endpoint URL. Default: `https://api.linear.app/oauth/token`. |
+| `LINEAR_OAUTH_SKEW_SECONDS` | No | Expiry skew in seconds. Default: `30`. |
+| `LINEAR_API_URL` | No | Linear GraphQL API endpoint. Default: `https://api.linear.app/graphql`. |
+| `LINEAR_LOG_LEVEL` | No | Log level for the `linear-client` library. Default: `ERROR`. |
+
+No secrets should appear in source files, logs, or error output.
+
+## Operational guidance
+
+### Logging
+
+Diagnostic logs are written to stderr. The `--log-level` flag controls
+verbosity:
+
+- **WARNING** (default): only warnings and errors.
+- **INFO**: run lifecycle events (start, end, mode, root count, ticket cap,
+  reachable count, created/updated/unchanged/removed/error counts, duration,
+  whether any roots hit their per-root cap).
+- **DEBUG**: per-ticket decisions (fresh, stale, pruned, renamed), lock
+  acquisition details, alias resolution traces.
+
+Typical operator usage:
+
+```bash
+# See what the tool is doing at a high level
+context-sync refresh --log-level INFO
+
+# Diagnose why a specific ticket was re-fetched
+context-sync refresh --log-level DEBUG 2>debug.log
+```
+
+### Lock handling
+
+Mutating operations (`sync`, `refresh`, `add`, `remove-root`) acquire an
+exclusive writer lock (`.context-sync.lock`). If another process holds the
+lock:
+
+- **Active lock**: the CLI exits with code 1 and a clear message identifying
+  the holding writer (ID, host, PID, mode).
+- **Stale lock**: if the holding PID no longer exists on the same host, the
+  tool preempts the stale lock and proceeds (logged at WARNING level).
+- **Indeterminate lock**: if staleness cannot be determined (different host, no
+  PID recorded), the CLI refuses and exits with code 1.
+
+`diff` never acquires or modifies the lock. If a non-stale lock exists, `diff`
+refuses to run and explains that running it would compete for rate-limited
+Linear API capacity with the active writer.
+
+### Missing-root policy
+
+During `refresh`, roots that are no longer visible in the caller's Linear view
+are handled by the `--missing-root-policy` flag:
+
+- **`quarantine`** (default): marks the root as quarantined, rewrites its ticket
+  file with a warning preamble, and excludes it from traversal. If the root
+  becomes visible again, the next refresh automatically recovers it.
+- **`remove`**: deletes the root from the manifest and removes its local file
+  immediately.
+
+### Common failures
+
+| Symptom | Cause | Resolution |
+|---------|-------|------------|
+| `linear-client is not installed` | Missing dependency | Install `linear-client` into the active virtualenv (see [Installation](#installation)). |
+| `Failed to initialize Linear client` | Missing or invalid env vars | Set the required environment variables (see [Configuration](#configuration)). |
+| `Lock held by active process` | Another `context-sync` invocation is running | Wait for it to finish, or if the process is gone, the next run will preempt the stale lock. |
+| `Workspace mismatch` | Root ticket belongs to a different Linear workspace | Verify you are targeting the correct context directory or root ticket. |
+| `Root ticket not available` | Ticket is archived, deleted, or not visible | Check the ticket in Linear; use `--missing-root-policy remove` to clean up. |
+
+---
+
+## Library usage
+
+For programmatic use, import the async `ContextSync` class directly:
+
+```python
+from context_sync import ContextSync
+
+syncer = ContextSync(linear=linear_client, context_dir="./context")
+result = await syncer.sync(root_ticket_id="TEAM-42")
+```
+
+All five CLI operations (`sync`, `refresh`, `add`, `remove_root`, `diff`) are
+available as async methods on `ContextSync`. See the class docstring for
+parameter details.
+
+---
+
+## Contributing
+
+### Prerequisites
 
 - Python 3.13+
+- SSH access to the private
+  [`linear-client`](https://github.com/marcodb226/linear-client) and
+  [`context-sync`](https://github.com/marcodb226/context-sync) repositories
 - A local clone of the shared policy repository
   ([agent-policies](https://github.com/marcodb226/agent-policies))
-- SSH access to the private `linear-client` GitHub repository, or a human
-  operator who can install it into the project virtualenv
 
-## Getting started
+### Developer setup
 
 ```bash
 # 1. Clone this repository
@@ -32,15 +258,15 @@ ln -s ../../../agent-policies-context-sync/docs/policies/common docs/policies/co
 python3 -m venv .venv
 source .venv/bin/activate
 
-# 5. Human-only step: install the private linear-client dependency
-python -m pip install "linear-client @ git+ssh://git@github.com/marcodb226/linear-client.git@v1.0.0"
+# 5. Install the private linear-client dependency
+pip install "linear-client @ git+ssh://git@github.com/marcodb226/linear-client.git@v1.0.0"
 
-# 6. Install this project (with dev dependencies for lint/test)
-python -m pip install -e ".[dev]"
+# 6. Install this project with dev dependencies
+pip install -e ".[dev]"
 ```
 
-Before running Linear-dependent commands, create and source a local env file
-from the tracked sample:
+For running Linear-dependent commands during development, create and source a
+local env file from the tracked sample:
 
 ```bash
 cp scripts/.linear_env.sh.sample scripts/.linear_env.sh
@@ -48,23 +274,10 @@ $EDITOR scripts/.linear_env.sh
 source scripts/.linear_env.sh
 ```
 
-`scripts/.linear_env.sh` is gitignored on purpose. Create it from
-[`scripts/.linear_env.sh.sample`](scripts/.linear_env.sh.sample), then source
-it into the same shell session you will use for Linear-dependent commands.
-That satisfies the credential/bootstrap side of
-[`M1-O1`](docs/implementation-plan.md#m1-o1---live-linear-validation-environment-available);
-the remaining prerequisite is having `linear-client` installed in the repo-local
-`.venv`.
+[`scripts/.linear_env.sh.sample`](scripts/.linear_env.sh.sample) documents all
+available environment variables with comments. The local copy is gitignored.
 
-`linear-client` lives in a private GitHub repo and is not published to PyPI.
-Agents should not try to bootstrap that dependency themselves. If the active
-project virtualenv does not already contain `linear-client`, ask a human to
-install it before running imports, the CLI, or validations that depend on
-Linear access. See
-[`docs/design/linear-client.md`](docs/design/linear-client.md) for the
-repository's dependency-boundary and domain-layer guidance.
-
-## Common policies
+### Common policies
 
 This project uses a **shared common-policy layer** managed in the
 [agent-policies](https://github.com/marcodb226/agent-policies) repository.
@@ -85,7 +298,7 @@ For the full rationale behind the symlink approach, recommended workspace
 layout, one-checkout-per-client-repo best practice, and alternatives considered,
 see [`docs/policies/common/README.md`](docs/policies/common/README.md).
 
-## Agent sandbox setup
+### Agent sandbox setup
 
 Because `docs/policies/common` is a symlink whose target lives outside this
 repository, Claude Code needs explicit write access to the resolved path.
@@ -106,7 +319,7 @@ Add the following to `.claude/settings.json`:
 Read access is allowed by default across the filesystem; only write access
 needs to be explicitly granted for paths outside the project.
 
-## Developer commands
+### Developer commands
 
 The repository uses [Ruff](https://docs.astral.sh/ruff/) for linting and
 formatting, [pytest](https://docs.pytest.org/) with
@@ -146,7 +359,7 @@ pytest -v
 All three commands (lint, format check, test) must pass before a ticket can be
 marked complete.
 
-## Project layout
+### Project layout
 
 | Path | Purpose |
 |------|---------|

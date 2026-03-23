@@ -168,6 +168,11 @@ def acquire_lock(
 
     try:
         _atomic_create_lock(lock_path, record)
+        logger.debug(
+            "Lock acquired cleanly: writer_id=%s, mode=%s",
+            record.writer_id,
+            record.mode,
+        )
         return record
     except FileExistsError:
         pass

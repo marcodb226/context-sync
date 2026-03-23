@@ -463,16 +463,16 @@ documented contracts.
 
 ### 6.1 Design Tickets
 
-No additional design tickets are planned. This milestone should package and
-validate the already-implemented behavior rather than introduce new product
-scope.
+| # | Status | Ticket | Deliverable | Dependencies | Reviewers | Source |
+| --- | --- | --- | --- | --- | --- | --- |
+| <a id="m4-d1---cli-command-semantics-review"></a>M4-D1 | Todo | CLI command semantics review | A design artifact that reviews the overlap and redundancy among the current five CLI commands (`sync`, `refresh`, `add`, `remove-root`, `diff`), evaluates whether a smaller or differently factored action set would cover the required use cases more elegantly, and proposes either the current set with expanded user-facing documentation explaining the semantic differences, or a revised command surface with a migration path. Regardless of outcome, the deliverable must include expanded user-facing documentation that explains command semantics in sufficient detail for operators to choose the right command. | [M4-2](#m4-2---operational-logging-validation-hardening-and-user-docs) | Independent Stage 2 review session | [docs/adr.md](adr.md#51-sync-full-snapshot-rebuild), [docs/adr.md](adr.md#52-refresh-incremental-whole-snapshot-update), [docs/design/0-top-level-design.md](design/0-top-level-design.md#2-cli-interface) |
 
 ### 6.2 Implementation Tickets
 
 | # | Status | Ticket | Description | Dependencies | Tests | Source |
 | --- | --- | --- | --- | --- | --- | --- |
 | <a id="m4-1---cli-surface-and-command-output-contracts"></a>M4-1 | Done | CLI surface and command output contracts | Add the thin CLI wrapper over the async library, expose the documented commands and options, and define human-readable plus machine-readable output behavior for success and failure cases | [M2-3](#m2-3---full-snapshot-sync-flow), [M3-1](#m3-1---incremental-refresh-and-quarantined-root-recovery), [M3-2](#m3-2---add-and-remove-root-whole-snapshot-flows), [M3-3](#m3-3---diff-mode-and-lock-aware-drift-reporting) | CLI tests for command parsing, JSON output, lock-error text, and missing-root-policy selection | [docs/design/0-top-level-design.md](design/0-top-level-design.md#2-cli-interface), [docs/design/0-top-level-design.md](design/0-top-level-design.md#4-error-handling) |
-| <a id="m4-2---operational-logging-validation-hardening-and-user-docs"></a>M4-2 | Todo | Operational logging, validation hardening, and user docs | Add the INFO/DEBUG logging contract, end-to-end validation coverage, onboarding and usage docs, and the sample configuration artifact needed to satisfy the repository's documentation/security conventions | [M4-1](#m4-1---cli-surface-and-command-output-contracts) | End-to-end fixture tests covering all major modes plus manual CLI smoke checks documented in repo docs | [docs/adr.md](adr.md#61-snapshot-consistency-contract), [README.md](../README.md), [docs/policies/common/coding-guidelines.md](policies/common/coding-guidelines.md) |
+| <a id="m4-2---operational-logging-validation-hardening-and-user-docs"></a>M4-2 | In progress | Operational logging, validation hardening, and user docs | Add the INFO/DEBUG logging contract, end-to-end validation coverage, onboarding and usage docs, and the sample configuration artifact needed to satisfy the repository's documentation/security conventions | [M4-1](#m4-1---cli-surface-and-command-output-contracts) | End-to-end fixture tests covering all major modes plus manual CLI smoke checks documented in repo docs | [docs/adr.md](adr.md#61-snapshot-consistency-contract), [README.md](../README.md), [docs/policies/common/coding-guidelines.md](policies/common/coding-guidelines.md) |
 
 ### 6.3 Detailed Ticket Notes
 
@@ -484,6 +484,43 @@ scope.
 - Command output should make the difference between active-lock refusal,
   demonstrably stale-lock preemption, and root quarantine visible without
   requiring debug logging.
+
+#### M4-D1 - CLI command semantics review
+
+- The current five-command surface (`sync`, `refresh`, `add`, `remove-root`,
+  `diff`) has significant semantic overlap. Specifically, `sync TICKET` on an
+  existing snapshot and `add TICKET` produce the same observable result: both
+  add the ticket as a root and rebuild the snapshot from all active roots. The
+  differences are:
+  - `sync` allows per-call `--max-tickets-per-root` and `--depth-*` overrides
+    that get persisted into the manifest; `add` uses the manifest's existing
+    traversal configuration.
+  - `sync` fetches all reachable tickets before comparing locally (full
+    rebuild); `add` delegates to the incremental refresh pipeline which
+    batch-checks freshness and only re-fetches stale or newly discovered
+    tickets.
+  - `sync` is the only path that initializes a new context directory; `add`
+    on an empty directory also initializes, but was designed as an
+    "add to existing" operation.
+- A human operator who wants to "start tracking a new ticket" has no obvious
+  reason to prefer one command over the other. The distinction between "full
+  rebuild" and "incremental add" is an implementation detail, not a meaningful
+  user intent.
+- Evaluate whether a unified command (for example `sync` that is always
+  additive and always incremental when possible) or a different factoring
+  (for example `sync --full` for explicit full rebuild, `sync` for
+  incremental by default) would reduce operator confusion while preserving
+  the efficiency benefits of incremental refresh.
+- Also evaluate `remove-root` vs a potential `sync --remove TICKET` or
+  `unsync TICKET` surface.
+- Regardless of whether the command surface changes, the deliverable must
+  include expanded user-facing documentation (in
+  [README.md](../README.md) and/or a dedicated operator guide) that explains
+  when to use each command, what each one does under the hood, and why the
+  distinction exists — or, if the surface is simplified, documents the
+  new simpler model.
+- If the review proposes changes to the command surface, those changes must go
+  through a plan amendment before implementation.
 
 #### M4-2 - Operational logging, validation hardening, and user docs
 
