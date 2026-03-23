@@ -89,6 +89,16 @@ context-sync remove-root TEAM-42
 context-sync diff
 ```
 
+### When to use each command
+
+| Command | Use when you want to... | What it does |
+|---------|------------------------|--------------|
+| `sync TICKET` | Start tracking a ticket, or add another root to an existing snapshot | Adds the ticket as a root, persists any traversal overrides you supply (`--max-tickets-per-root`, `--depth-*`), then rebuilds the snapshot from **all** active roots. On an empty context directory this bootstraps the snapshot; on an existing one it expands the root set and reconciles. |
+| `refresh` | Update the snapshot without changing which tickets are tracked | Re-fetches all tracked roots using the manifest's existing traversal configuration. Only re-fetches tickets whose upstream state has changed (incremental). Does not add or remove roots. |
+| `add TICKET` | Add another root without changing traversal configuration | Adds the ticket as a root using the manifest's existing traversal settings (no per-call overrides), then refreshes the snapshot. **Note:** `sync TICKET` achieves the same visible result; `add` exists as a convenience when you want to preserve existing traversal configuration exactly. A future release may unify these commands. |
+| `remove-root TICKET` | Stop tracking a root ticket | Removes the ticket from the root set and prunes any derived tickets that are no longer reachable from the remaining roots. This is a destructive operation on the tracked set. |
+| `diff` | Inspect drift without modifying files | Compares the local snapshot against live Linear state. Read-only — never acquires a writer lock. If a mutating operation currently holds the lock, `diff` refuses to run rather than competing for rate-limited API capacity. |
+
 ### Global options
 
 | Flag | Description |

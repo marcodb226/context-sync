@@ -268,6 +268,44 @@ to `Next release` yet.
 **References**
 - [docs/execution/M4-R1.md](execution/M4-R1.md)
 
+<a id="fw-10-cli-simplification-amendment"></a>
+### FW-10 - CLI Simplification Amendment
+
+**Why deferred**
+- The [M4-R1](execution/M4-R1.md) CLI interface review concluded that the
+  five-command surface should be simplified to four by removing `add` and
+  renaming `remove-root` to `remove`. The recommendation is well-grounded but
+  requires a material plan amendment before implementation, which is a
+  planning-model concern outside the scope of the review ticket itself.
+- Interim user-facing documentation explaining the current surface was added to
+  [README.md](../README.md) as part of the
+  [M4-R1-R1](execution/M4-R1-review.md#m4-r1-r1) review response, so
+  operators are no longer without guidance while the simplification is pending.
+
+**Scope**
+- Draft and activate a material plan amendment that:
+  1. Removes the public `add` CLI action and folds its user intent into `sync`.
+  2. Renames the public CLI token `remove-root` to `remove`.
+  3. Defines a single public root-argument placeholder and help text for `sync`
+     and `remove` (recommended: `TICKET`).
+  4. Confirms that `sync` remains the only root-expanding public command.
+  5. When the operator supplies no `--max-tickets-per-root` or `--depth-*`
+     overrides, `sync` must preserve the manifest's existing traversal
+     configuration instead of overwriting it with CLI defaults. Today `sync`
+     always clobbers the manifest; the unified command should adopt `add`'s
+     preservation behavior as the no-override default.
+- Deferred finding [M4-R1-R2](execution/M4-R1-review.md#m4-r1-r2):
+  follow-on tracking for the CLI-scoped items in the review artifact's
+  §"Follow-on tracking required before implementation."
+
+**Completion signal**
+- The plan amendment is activated and the implementation tickets for the CLI
+  simplification are tracked in the active plan.
+
+**References**
+- [docs/execution/M4-R1.md](execution/M4-R1.md)
+- [docs/execution/M4-R1-review.md](execution/M4-R1-review.md)
+
 ## Historical
 
 No historical items are tracked yet.
