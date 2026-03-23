@@ -9,9 +9,9 @@
 > [docs/policies/common/execution-model.md](../policies/common/execution-model.md),
 > [docs/policies/common/reviews/code-review.md](../policies/common/reviews/code-review.md),
 > [docs/policies/common/coding-guidelines.md](../policies/common/coding-guidelines.md),
-> [docs/policies/common/coding-guidelines-python.md](../policies/common/coding-guidelines-python.md),
+> [docs/policies/common/python/coding-guidelines.md](../policies/common/python/coding-guidelines.md),
 > [docs/policies/common/cli-conventions.md](../policies/common/cli-conventions.md),
-> [docs/policies/common/cli-conventions-python.md](../policies/common/cli-conventions-python.md),
+> [docs/policies/common/python/cli-conventions.md](../policies/common/python/cli-conventions.md),
 > [docs/implementation-plan.md](../implementation-plan.md),
 > [docs/design/0-top-level-design.md](../design/0-top-level-design.md#2-cli-interface),
 > [docs/design/0-top-level-design.md](../design/0-top-level-design.md#4-error-handling)

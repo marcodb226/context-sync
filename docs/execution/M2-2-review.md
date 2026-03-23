@@ -9,7 +9,7 @@
 > [docs/policies/common/execution-model.md](../policies/common/execution-model.md),
 > [docs/policies/common/reviews/code-review.md](../policies/common/reviews/code-review.md),
 > [docs/policies/common/coding-guidelines.md](../policies/common/coding-guidelines.md),
-> [docs/policies/common/coding-guidelines-python.md](../policies/common/coding-guidelines-python.md),
+> [docs/policies/common/python/coding-guidelines.md](../policies/common/python/coding-guidelines.md),
 > [docs/implementation-plan.md](../implementation-plan.md),
 > [docs/adr.md](../adr.md#2-persistence-format),
 > [docs/adr.md](../adr.md#41-error-handling-and-safety),
