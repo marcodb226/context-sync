@@ -1,4 +1,4 @@
-# Implementation Plan - Context Sync v1 Bootstrap
+# Implementation Plan - Context Sync v1.0 Delivery
 
 > **Status**: Active
 > **Governing artifacts**:
@@ -14,9 +14,11 @@
 
 ## 1. Scope and Strategy
 
-This active plan is the repository's first formal implementation plan. It turns the
-existing problem statement, ADR, design notes, and ADR review outcomes into a
-bootstrap delivery sequence for the initial `context-sync` release.
+This active plan is the repository's formal delivery plan for a shippable
+`context-sync` `1.0.0`. It turns the existing problem statement, ADR, design
+notes, ADR review outcomes, and later accepted planning amendments into a
+sequenced path from foundation work through supported runtime wiring,
+user-facing docs, and the first stable release.
 
 **Implementation strategy - foundation first, then whole-snapshot behavior.**
 
@@ -25,6 +27,13 @@ file-system/runtime primitives before building `sync`, then layers incremental
 operations and CLI/readiness work on top of that base. This sequencing keeps
 the early tickets focused on repository-shaping decisions that later milestones
 should not have to rediscover.
+
+Milestone 4 remains the existing CLI/review/readiness layer and is unchanged
+by the 2026-03-23 amendment. The repository is still pre-release after
+Milestone 4 because the real gateway, supported docs surface, and canonical
+release workflow are still missing. This plan therefore continues through
+Milestone 5 and Milestone 6 before the product can be treated as a credible
+`1.0.0`.
 
 **Guiding principles:**
 - Preserve the contracts already defined in
@@ -42,8 +51,10 @@ should not have to rediscover.
 **What this plan covers:** the initial Python package and project scaffold, the
 async library surface, deterministic context-directory persistence, whole-
 snapshot `sync`, incremental `refresh`, `add`, `remove-root`, `diff`, a thin
-CLI wrapper, a post-implementation interface review pass, and the
-validation/documentation work needed to ship that first release.
+CLI wrapper, post-implementation CLI and API review passes, the real
+`linear-client`-backed gateway, supported public-runtime validation, supported
+user-facing docs, the canonical release workflow, a dedicated `1.0.0`
+readiness review, and the actual `1.0.0` cut plus next-cycle bootstrap.
 
 ### 1.1 Stage 1 Planning Inputs
 
@@ -58,15 +69,28 @@ validation/documentation work needed to ship that first release.
   the repository.
 - Prior release / archival context: none. The repository is still in bootstrap
   planning state and does not yet have an active plan artifact.
+- Material-amendment candidate sources applied on 2026-03-23:
+  [docs/execution/M4-1-review.md](execution/M4-1-review.md),
+  [docs/execution/M4-2-review.md](execution/M4-2-review.md),
+  [README.md](../README.md),
+  [src/context_sync/version.py](../src/context_sync/version.py),
+  [docs/design/linear-domain-coverage-audit.md](design/linear-domain-coverage-audit.md),
+  [docs/policies/common/documentation-workflow.md](policies/common/documentation-workflow.md),
+  [docs/policies/common/release-workflow.md](policies/common/release-workflow.md),
+  [docs/policies/common/python/release-workflow.md](policies/common/python/release-workflow.md),
+  [docs/policies/common/release-checklist-template.md](policies/common/release-checklist-template.md),
+  [docs/policies/common/coding-guidelines.md](policies/common/coding-guidelines.md),
+  and direct human request to extend the plan from Milestone 5 onward to a
+  shippable `1.0.0` without changing the remaining Milestone 4 items.
 
 ### 1.2 Candidate Decisions
 
 Because
 [docs/future-work.md](future-work.md)
-has no shortlisted `Next release` items, this bootstrap planning pass selected
-concrete scope from the problem statement, ADR/design artifacts, and accepted
-ADR review outcomes while explicitly keeping the current `FW-*` backlog
-deferred.
+has no shortlisted `Next release` items, the initial bootstrap planning pass
+and later accepted material amendments selected concrete scope from the
+problem statement, ADR/design artifacts, accepted review outcomes, and direct
+human requests while explicitly keeping the current `FW-*` backlog deferred.
 
 | Candidate | Decision | Plan destination | Notes |
 | --- | --- | --- | --- |
@@ -84,6 +108,8 @@ deferred.
 | CLI packaging and operator-facing runtime docs from [docs/design/0-top-level-design.md](design/0-top-level-design.md#2-cli-interface), [README.md](../README.md), and [docs/policies/common/coding-guidelines.md](policies/common/coding-guidelines.md) | Keep | [M4-1](#m4-1---cli-surface-and-command-output-contracts), [M4-2](#m4-2---operational-logging-validation-hardening-and-user-docs) | The repo currently has no runtime scaffold, so the first implementation pass must also define how humans run and validate the tool. |
 | Post-implementation CLI interface review of the command surface from direct human request, [docs/execution/M4-1-review.md](execution/M4-1-review.md), and [docs/design/0-top-level-design.md](design/0-top-level-design.md#2-cli-interface) | Keep | [M4-R1](#m4-r1---cli-interface-review) | Adds a dedicated top-level CLI review ticket that stays distinct from the Phase B review of [M4-1](#m4-1---cli-surface-and-command-output-contracts) and settles command-surface semantics before the separate API review. |
 | Post-implementation public API review of the `ContextSync` library surface from direct human request, [docs/design/0-top-level-design.md](design/0-top-level-design.md#1-library-api), and the planned CLI review outcome | Keep | [M4-R2](#m4-r2---api-interface-review) | Keeps the public library API review separate from the CLI review, lets [M4-R1](#m4-r1---cli-interface-review) resolve command-surface semantics first, and preserves room for API-only follow-on work such as [M4-3](#m4-3---rename-root-ticket-id-to-key). |
+| Post-M4 runtime gateway and public-entrypoint validation from [docs/execution/M4-1-review.md](execution/M4-1-review.md), [docs/execution/M4-2-review.md](execution/M4-2-review.md), [README.md](../README.md), and direct human request | Keep | [M5-1](#m5-1---real-linear-gateway-and-runtime-wiring), [M5-2](#m5-2---supported-public-runtime-validation-and-smoke-path) | Extends the plan past the fake-gateway-only dead end without rewriting the remaining Milestone 4 items. |
+| Post-M4 supported docs, release workflow, and actual `1.0.0` cut from [docs/execution/M4-2-review.md](execution/M4-2-review.md), [docs/policies/common/documentation-workflow.md](policies/common/documentation-workflow.md), [docs/policies/common/release-workflow.md](policies/common/release-workflow.md), [docs/policies/common/python/release-workflow.md](policies/common/python/release-workflow.md), [docs/policies/common/release-checklist-template.md](policies/common/release-checklist-template.md), and direct human request | Keep | [M6-O1](#m6-o1---release-channel-and-install-path-chosen), [M6-O2](#m6-o2---release-publication-credentials-and-approval-window-available), [M6-R1](#m6-r1---100-release-readiness-review), [M6-1](#m6-1---supported-user-facing-docs-and-installoperator-guide), [M6-2](#m6-2---canonical-release-workflow-checklist-and-version-state-guardrails), [M6-3](#m6-3---100-release-cut-archive-and-next-cycle-bootstrap) | Makes the supported install path, release automation/checklist, version guardrails, readiness review, and first stable release part of the active plan. |
 | [FW-1](future-work.md#fw-1-comment-storage-optimizations) | Defer | None in this plan | Keep the first-release full-comment-history contract. |
 | [FW-2](future-work.md#fw-2-attachment-content-handling) | Defer | None in this plan | Attachment and resource handling remains metadata-only in v1, and attachment-only freshness drift is not part of the first-release incremental-refresh correctness contract. |
 | [FW-3](future-work.md#fw-3-whole-snapshot-atomic-commit) | Defer | None in this plan | Preserve atomic file writes, but defer whole-directory atomic commit. |
@@ -120,6 +146,8 @@ Ticket identifiers in this active plan use these forms:
 | M2 | Full snapshot materialization | Deterministic traversal, rendering, and whole-snapshot `sync` |
 | M3 | Incremental maintenance and drift inspection | `refresh`, `add`, `remove-root`, and `diff` with the ADR's missing-root and lock semantics |
 | M4 | CLI and release readiness | Human-facing commands, separate CLI and API reviews, operational logging, validation coverage, and onboarding docs |
+| M5 | Supported runtime gateway | A real `linear-client`-backed gateway, wired public CLI/library entry points, and supported validation of the shipped runtime path |
+| M6 | Supported docs and `1.0.0` release workflow | Canonical user-facing docs, release automation/checklist/version guardrails, an explicit `1.0.0` readiness review, and the actual `1.0.0` cut plus next-cycle bootstrap |
 
 The sequence intentionally moves from repository-shaping primitives to
 full-snapshot behavior and only then to incremental flows. That keeps the plan
@@ -595,7 +623,195 @@ validation coverage that matches the repository's documented contracts.
 
 ---
 
-## 7. Validation Strategy
+## 7. Milestone 5 - Supported Runtime Gateway
+
+**Goal:** replace the current fake-gateway-only public runtime with a real
+`linear-client`-backed execution path, keep the adapter boundary aligned with
+the existing design artifacts, and validate the actual public CLI/library
+entry points rather than only private testing hooks.
+
+### 7.1 Implementation Tickets
+
+| # | Status | Ticket | Description | Dependencies | Tests | Source |
+| --- | --- | --- | --- | --- | --- | --- |
+| <a id="m5-1---real-linear-gateway-and-runtime-wiring"></a>M5-1 | Todo | Real Linear gateway and runtime wiring | Implement the concrete `RealLinearGateway` over the [M1-D2](#m1-d2---linear-domain-coverage-audit-and-adapter-boundary) boundary, map all required ticket-bundle and refresh-metadata reads, and wire `ContextSync(linear=...)` plus CLI startup to create that gateway instead of failing with "No gateway available"; this ticket is the explicit defer target for [M4-2-R1](execution/M4-2-review.md) | [M1-D2](#m1-d2---linear-domain-coverage-audit-and-adapter-boundary), [M3-O1](#m3-o1---comments-signature-input-settlement), [M4-1](#m4-1---cli-surface-and-command-output-contracts) | Automated tests for the real gateway implementation using maintained fake/fixture transport inputs at the adapter boundary, integration tests that route `sync` / `refresh` / `add` / `remove-root` / `diff` through that real gateway implementation without a live workspace, and bootstrap error-path coverage for missing auth or unavailable upstream services | [docs/design/linear-domain-coverage-audit.md](design/linear-domain-coverage-audit.md), [docs/execution/M4-1-review.md](execution/M4-1-review.md), [docs/execution/M4-2-review.md](execution/M4-2-review.md), [README.md](../README.md) |
+| <a id="m5-2---supported-public-runtime-validation-and-smoke-path"></a>M5-2 | Todo | Supported public runtime validation and smoke path | Exercise the supported CLI and library entry points through `main()` or the installed console script, replace private-handler-only "end-to-end" claims with real public-surface coverage, and add a maintained smoke-validation recipe for one successful run plus one representative failure path; this ticket is the explicit defer target for [M4-2-R2](execution/M4-2-review.md) and [M4-2-R3](execution/M4-2-review.md) | [M5-1](#m5-1---real-linear-gateway-and-runtime-wiring), [M4-2](#m4-2---operational-logging-validation-hardening-and-user-docs) | CLI integration tests through the real parser/dispatch path with maintained fake/fixture-backed runtime inputs, plus real-environment smoke validation in a credentialed Linear workspace or equivalent maintained live validation environment, and JSON/text failure-contract regression tests | [docs/execution/M4-1-review.md](execution/M4-1-review.md), [docs/execution/M4-2-review.md](execution/M4-2-review.md), [README.md](../README.md) |
+
+### 7.2 Detailed Ticket Notes
+
+#### M5-1 - Real Linear gateway and runtime wiring
+
+- Implement the real gateway strictly inside the boundary already defined by
+  [docs/design/linear-domain-coverage-audit.md](design/linear-domain-coverage-audit.md).
+  Do not widen raw `linear.gql.*` usage beyond the audited helper set without
+  a separate accepted amendment.
+- This ticket is the explicit defer destination for
+  [M4-2-R1](execution/M4-2-review.md), which concluded that the current
+  operator-facing CLI and library docs cannot be treated as shippable while
+  the real gateway path is still missing.
+- The ticket must make the currently documented public runtime path actually
+  usable: the library constructor and shipped CLI should stop failing solely
+  because the concrete gateway is missing.
+- Treat workspace identity, traversal relations, and the composite refresh
+  metadata helpers as first-class gateway responsibilities rather than
+  scattering those queries across orchestration code.
+- Keep the gateway read-only with respect to Linear. The local adapter may use
+  raw GraphQL only for the audited read helpers, never for mutations.
+- The automated tests in this ticket should exercise the real gateway
+  implementation against maintained fake/fixture transport inputs at the
+  adapter boundary. They are not the live-Linear proof; they exist so the real
+  adapter code is under automated coverage without requiring credentials for
+  routine validation.
+- If `linear-client` 1.0.0 proves insufficient for one of the required audited
+  reads, record that gap explicitly in repository artifacts rather than hiding
+  the limitation in code comments.
+
+#### M5-2 - Supported public runtime validation and smoke path
+
+- This ticket exists because [M4-2-R2](execution/M4-2-review.md) showed that
+  the current "end-to-end" coverage does not exercise the real public CLI
+  surface. The amended plan should not call the runtime shippable until that
+  gap is closed.
+- This ticket is the explicit defer destination for
+  [M4-2-R2](execution/M4-2-review.md) and
+  [M4-2-R3](execution/M4-2-review.md): once the real gateway exists, it owns
+  both the supported public-entrypoint integration proof and the durable smoke
+  procedure covering environment bootstrap, one successful command path, and
+  one representative failure mode.
+- The maintained smoke path should cover the supported operator workflow, not a
+  testing-only hook. It should include one happy-path command and one
+  representative failure mode with expected stdout/stderr behavior, and it
+  should run against a real Linear workspace or equivalent maintained live
+  validation environment rather than against only the fake gateway.
+- If the repository keeps private-handler coverage for targeted component
+  testing, retain it honestly as component coverage; do not let it stand in
+  for the supported runtime proof.
+- If [M4-R1](#m4-r1---cli-interface-review) or
+  [M4-R2](#m4-r2---api-interface-review) accepts follow-on public-surface
+  changes, refresh the M5-2 CLI/library validation artifacts and smoke recipe
+  so they continue to match the shipped surface.
+- Once the public runtime genuinely works, remove or rewrite the README's
+  current pre-release runtime warning so the supported docs no longer
+  advertise a deliberately inert surface.
+
+### 7.3 Exit Criteria
+
+1. The public `ContextSync(linear=...)` path and shipped CLI can execute
+   against a real `linear-client`-backed gateway without `_gateway_override`.
+2. The repository has automated validation that exercises the real gateway
+   implementation and the real public entry points with maintained
+   fake/fixture-backed inputs rather than only private handler coverage.
+3. The repository has a durable smoke-validation recipe that exercises the
+   shipped runtime path against a real Linear workspace or equivalent
+   credentialed live validation environment.
+4. The repository docs no longer claim a working surface that still
+   intentionally fails.
+
+---
+
+## 8. Milestone 6 - Supported Docs and `1.0.0` Release Workflow
+
+**Goal:** define and exercise the repository's supported documentation and
+release boundary so the real runtime from Milestone 5 can ship as `1.0.0`
+under a documented, repeatable process with durable review and close-out
+artifacts.
+
+### 8.1 Operational Prerequisites
+
+| # | Status | Item | Requirement | Unblocks | Verification | Source |
+| --- | --- | --- | --- | --- | --- | --- |
+| <a id="m6-o1---release-channel-and-install-path-chosen"></a>M6-O1 | Todo | Release channel and install path chosen | The supported `1.0.0` publication destination and install path are chosen and recorded before docs, release-workflow, or release-readiness work begins | [M6-1](#m6-1---supported-user-facing-docs-and-installoperator-guide), [M6-2](#m6-2---canonical-release-workflow-checklist-and-version-state-guardrails), [M6-R1](#m6-r1---100-release-readiness-review) | Record the chosen publication channel and supported install path in repository artifacts before Milestone 6 drafting proceeds | [docs/policies/common/release-workflow.md](policies/common/release-workflow.md), direct human request |
+| <a id="m6-o2---release-publication-credentials-and-approval-window-available"></a>M6-O2 | Todo | Release publication credentials and approval window available | The required tag/publish credentials and any human approval window needed for the canonical release path are available before the final release cut begins | [M6-3](#m6-3---100-release-cut-archive-and-next-cycle-bootstrap) | Confirm access to the required credentials and approvals before running the final release workflow | [docs/policies/common/release-workflow.md](policies/common/release-workflow.md), direct human request |
+
+### 8.2 Review Tickets
+
+| # | Status | Ticket | Deliverable | Dependencies | Reviewers | Source |
+| --- | --- | --- | --- | --- | --- | --- |
+| <a id="m6-r1---100-release-readiness-review"></a>M6-R1 | Todo | `1.0.0` release-readiness review | A durable repository review artifact that evaluates whether the real runtime, supported docs, install path, release checklist, version-state guardrails, and known deferrals together define a credible `1.0.0` boundary. The deliverable must distinguish must-fix blockers from post-`1.0.0` backlog items. | [M6-O1](#m6-o1---release-channel-and-install-path-chosen), [M6-1](#m6-1---supported-user-facing-docs-and-installoperator-guide), [M6-2](#m6-2---canonical-release-workflow-checklist-and-version-state-guardrails) | Independent Stage 2 review session | [docs/policies/common/documentation-workflow.md](policies/common/documentation-workflow.md), [docs/policies/common/release-workflow.md](policies/common/release-workflow.md), [README.md](../README.md) |
+
+### 8.3 Implementation Tickets
+
+| # | Status | Ticket | Description | Dependencies | Tests | Source |
+| --- | --- | --- | --- | --- | --- | --- |
+| <a id="m6-1---supported-user-facing-docs-and-installoperator-guide"></a>M6-1 | Todo | Supported user-facing docs and install/operator guide | Replace the current pre-release README surface with the supported `1.0.0` documentation set: installation guidance for the chosen distribution channel, configuration/bootstrap docs, operator workflows, manual smoke steps, and library/CLI examples aligned with the real shipped behavior | [M6-O1](#m6-o1---release-channel-and-install-path-chosen), [M5-2](#m5-2---supported-public-runtime-validation-and-smoke-path), [M4-R2](#m4-r2---api-interface-review), [M4-3](#m4-3---rename-root-ticket-id-to-key) | Documentation validation command for the supported docs surface, checked examples for the published install/run path, and review of all user-facing command examples against the shipped CLI/API | [docs/policies/common/documentation-workflow.md](policies/common/documentation-workflow.md), [docs/execution/M4-2-review.md](execution/M4-2-review.md), [README.md](../README.md) |
+| <a id="m6-2---canonical-release-workflow-checklist-and-version-state-guardrails"></a>M6-2 | Todo | Canonical release workflow, checklist, and version-state guardrails | Define and implement the repository's canonical `1.0.0` release process, including the release automation entrypoint, human-readable release checklist, the standard maintained Python-package release scripts unless a justified exception is documented, artifact build/install validation, top-level `CHANGELOG.md` bootstrap for the first stable release, and a machine-checkable version-state guardrail for release tags versus unreleased development state | [M6-O1](#m6-o1---release-channel-and-install-path-chosen), [M6-1](#m6-1---supported-user-facing-docs-and-installoperator-guide) | Release dry-run or equivalent local validation, artifact build/install checks, version-state tests, and docs-gate evidence for the supported docs surface | [docs/policies/common/release-workflow.md](policies/common/release-workflow.md), [docs/policies/common/python/release-workflow.md](policies/common/python/release-workflow.md), [docs/policies/common/release-checklist-template.md](policies/common/release-checklist-template.md), [docs/policies/common/coding-guidelines.md](policies/common/coding-guidelines.md) |
+| <a id="m6-3---100-release-cut-archive-and-next-cycle-bootstrap"></a>M6-3 | Todo | `1.0.0` release cut, archive, and next-cycle bootstrap | Run the canonical release workflow for `1.0.0`, publish the release through the chosen channel, archive the active plan / planning / execution artifacts under the release archive layout, and bootstrap the next unreleased development version and planning state | [M6-O2](#m6-o2---release-publication-credentials-and-approval-window-available), [M6-R1](#m6-r1---100-release-readiness-review) | Tagged-release verification, archive-layout verification, and post-release version/bootstrap checks proving the repo is back in a valid unreleased state | [docs/policies/common/release-workflow.md](policies/common/release-workflow.md), [docs/policies/common/python/release-workflow.md](policies/common/python/release-workflow.md), [docs/policies/common/planning-model.md](policies/common/planning-model.md), [src/context_sync/version.py](../src/context_sync/version.py) |
+
+### 8.4 Detailed Ticket Notes
+
+#### M6-1 - Supported user-facing docs and install/operator guide
+
+- This ticket should define the repository's canonical supported docs surface
+  for the first stable release. That may stay in `README.md` plus selected
+  `docs/` pages, but the source tree and validation command must be explicit.
+- Installation guidance must describe the real supported distribution channel
+  for `context-sync` and any required `linear-client` precondition. Do not
+  assume a public package index if the repository's chosen channel is still a
+  git tag or private artifact source.
+- The docs must cover at least: installation, credential/bootstrap setup, one
+  first-time `sync`, routine `refresh`, root-management workflows, `diff`,
+  logging/lock behavior, common failures, and the supported smoke path.
+- If [M4-R2](#m4-r2---api-interface-review) accepts follow-on public API
+  changes beyond [M4-3](#m4-3---rename-root-ticket-id-to-key), land those
+  blockers before freezing the `1.0.0` docs set.
+
+#### M6-2 - Canonical release workflow, checklist, and version-state guardrails
+
+- The release workflow should define one canonical release entrypoint, one
+  canonical checklist artifact, and the version/bootstrap rules needed after
+  publication. Do not leave release steps scattered across chat, local notes,
+  or execution artifacts.
+- Because this repository ships Python package artifacts, the default
+  Milestone 6 expectation is the standard maintained script split from
+  [docs/policies/common/python/release-workflow.md](policies/common/python/release-workflow.md):
+  `scripts/build_release.sh`, `scripts/build_validate.sh`,
+  `scripts/next_release.sh`, and `scripts/check_version_state.py`, plus the
+  matching README and checklist exposure. If the repo intentionally chooses a
+  different maintained layout, document that exception explicitly rather than
+  drifting into an ad hoc release flow.
+- The first stable release must add a top-level `CHANGELOG.md` per
+  [docs/policies/common/coding-guidelines.md](policies/common/coding-guidelines.md).
+- The release path must prove the chosen artifact/install story actually
+  works. A wheel or sdist build alone is not enough if the supported install
+  contract requires additional validation.
+- The version-state guardrail should fail loudly when the repository version
+  and tag/bootstrap state disagree.
+
+#### M6-R1 - `1.0.0` release-readiness review
+
+- This review is separate from the Phase B review of any one implementation
+  ticket. It evaluates the total shipped boundary: runtime, docs, install
+  path, release checklist, known deferrals, and the credibility of the
+  `1.0.0` promise.
+- If the review identifies missing must-fix work, add it as explicit follow-on
+  ticket(s) or a further plan amendment rather than burying it in review
+  prose.
+
+#### M6-3 - `1.0.0` release cut, archive, and next-cycle bootstrap
+
+- The release cut should follow the canonical release order from
+  [docs/policies/common/release-workflow.md](policies/common/release-workflow.md):
+  automated validation, docs validation, artifact build/validation, annotated
+  tag creation, publication, and post-release verification.
+- Close-out must archive the active plan, planning change requests, and
+  execution artifacts together under the release archive layout.
+- The next-cycle bootstrap must leave the repository in a valid unreleased
+  development state rather than stranded on the release version after publish.
+
+### 8.5 Exit Criteria
+
+1. The repository has a supported `1.0.0` docs surface aligned with actual
+   installation, configuration, CLI, and library behavior.
+2. The repository has a canonical release workflow, release checklist,
+   `CHANGELOG.md`, and machine-checkable version-state guardrail for stable
+   releases.
+3. An independent release-readiness review has concluded that the `1.0.0`
+   boundary is credible, and the actual `1.0.0` cut/archive/bootstrap path has
+   been executed successfully.
+
+---
+
+## 9. Validation Strategy
 
 **Unit and component tests**
 - [M1-1](#m1-1---project-scaffold-and-public-runtime-contracts) should define
@@ -611,14 +827,21 @@ validation coverage that matches the repository's documented contracts.
 - Use fixture-driven or fake-client-backed tests to exercise `sync`,
   `refresh`, `add`, `remove-root`, and `diff` end to end without requiring live
   network access for routine validation.
+- [M5-1](#m5-1---real-linear-gateway-and-runtime-wiring) should add automated
+  coverage for the real gateway implementation itself using maintained
+  fake/fixture transport inputs at the audited adapter boundary.
+- [M5-2](#m5-2---supported-public-runtime-validation-and-smoke-path) should
+  exercise the shipped CLI through `main()` or the installed console script
+  with maintained fake/fixture-backed runtime inputs, and keep the private
+  handler path classified as component coverage only.
 - Treat directory-level idempotency as a named cross-cutting check: run
   `sync` twice against the same fixture and verify the second pass performs no
   file rewrites, then run `refresh` against unchanged upstream fixtures and
   verify zero local churn there as well.
 - Keep live Linear behavior checks narrowly scoped to
-  [M1-D1](#m1-d1---refresh-freshness-validation-spike)
-  and any explicit follow-up needed to confirm `linear-client` integration
-  assumptions.
+  [M1-D1](#m1-d1---refresh-freshness-validation-spike) and the explicit
+  real-environment smoke path in
+  [M5-2](#m5-2---supported-public-runtime-validation-and-smoke-path).
 
 **Documentation and release gates**
 - Update README and operator-facing docs in the same tickets that change public
@@ -626,16 +849,31 @@ validation coverage that matches the repository's documented contracts.
 - Because the repository has not yet declared a runtime toolchain, the first
   implementation milestone must make the command surface explicit before later
   tickets can satisfy the validation gate consistently.
+- [M6-1](#m6-1---supported-user-facing-docs-and-installoperator-guide) should
+  define the supported docs surface explicitly and validate checked examples
+  against the chosen install/run path.
+- [M6-2](#m6-2---canonical-release-workflow-checklist-and-version-state-guardrails)
+  should add the canonical release dry-run/build/install validation,
+  version-state guardrail checks, and release-checklist evidence for the chosen
+  publication channel.
+- [M6-3](#m6-3---100-release-cut-archive-and-next-cycle-bootstrap) should
+  verify tagged release publication, archive layout, and post-release
+  bootstrap state.
 
 **Manual validation**
 - Smoke-test CLI commands against a temporary context directory and inspect the
   rendered manifest, lock, and ticket files for readability and determinism.
-- Manually verify root quarantine warnings, issue-key rename behavior, and
-  changed-field reporting in representative scenarios.
+- The durable smoke path from
+  [M5-2](#m5-2---supported-public-runtime-validation-and-smoke-path) should
+  cover environment bootstrap, one successful command path, and one
+  representative failure path against a real Linear workspace or equivalent
+  maintained live validation environment.
+- Manually verify root quarantine warnings, changed-field reporting, and the
+  final install/run/docs story in representative scenarios.
 
 ---
 
-## 8. Open Items to Resolve Before Execution
+## 10. Open Items to Resolve Before Execution
 
 | Item | Blocks | Resolution path |
 | --- | --- | --- |
@@ -643,18 +881,21 @@ validation coverage that matches the repository's documented contracts.
 
 ---
 
-## 9. Risk Register
+## 11. Risk Register
 
 | Risk | Impact | Mitigation |
 | --- | --- | --- |
 | [OQ-1](adr.md#oq-1-refresh-freshness-validation-against-live-linear-behavior) invalidates issue-level `updated_at` as the refresh cursor | High | Front-load [M1-D1](#m1-d1---refresh-freshness-validation-spike), route the governing design response through [M1-D3](#m1-d3---refresh-composite-freshness-contract-amendment), and keep [M3-1](#m3-1---incremental-refresh-and-quarantined-root-recovery) blocked until [M1-D2](#m1-d2---linear-domain-coverage-audit-and-adapter-boundary) audits the required refresh operations against that accepted contract |
-| `linear-client` lacks one or more required domain operations for v1 | Medium | Audit the required operations in [M1-D2](#m1-d2---linear-domain-coverage-audit-and-adapter-boundary), keep a narrow adapter boundary in [M1-1](#m1-1---project-scaffold-and-public-runtime-contracts), and explicitly document any GraphQL fallbacks instead of scattering them across later tickets |
+| `linear-client` lacks one or more required domain operations for v1, or a required audited read still proves insufficient during [M5-1](#m5-1---real-linear-gateway-and-runtime-wiring) | High | Audit the required operations in [M1-D2](#m1-d2---linear-domain-coverage-audit-and-adapter-boundary), keep a narrow adapter boundary in [M1-1](#m1-1---project-scaffold-and-public-runtime-contracts), and require [M5-1](#m5-1---real-linear-gateway-and-runtime-wiring) to record any remaining upstream gap explicitly instead of hiding it in ad hoc adapter changes |
+| Real gateway wiring drifts away from the audited `linear-client` boundary | Medium | Constrain [M5-1](#m5-1---real-linear-gateway-and-runtime-wiring) to the helper set already documented in [docs/design/linear-domain-coverage-audit.md](design/linear-domain-coverage-audit.md), and route any new raw GraphQL need through an explicit accepted amendment rather than widening the shipped boundary silently |
 | Deterministic rendering or alias-renaming bugs produce misleading local context | Medium | Centralize rendering/verification in [M1-2](#m1-2---manifest-lock-and-rendering-primitives) and cover rename/threading cases in [M2-2](#m2-2---ticket-fetch-normalization-and-render-pipeline) |
 | Interrupted runs still leave a partially updated directory at snapshot scope in v1 | Medium | Preserve atomic per-file writes, document the limitation clearly, and keep stronger directory-level atomicity deferred to [FW-3](future-work.md#fw-3-whole-snapshot-atomic-commit) |
+| Supported docs, install guidance, or smoke steps drift away from the actual shipped runtime and publication path | Medium | Gate [M6-1](#m6-1---supported-user-facing-docs-and-installoperator-guide) on [M5-2](#m5-2---supported-public-runtime-validation-and-smoke-path) plus the chosen publication channel in [M6-O1](#m6-o1---release-channel-and-install-path-chosen), and keep [M6-R1](#m6-r1---100-release-readiness-review) responsible for checking the final docs/install story against the real boundary |
+| Release tag, changelog, or bootstrap state diverges from the canonical version source | Medium | Use [M6-2](#m6-2---canonical-release-workflow-checklist-and-version-state-guardrails) to add the canonical release scripts, checklist, `CHANGELOG.md`, and version-state guardrail, then require [M6-3](#m6-3---100-release-cut-archive-and-next-cycle-bootstrap) to verify tagged release publication and valid post-release bootstrap state |
 
 ---
 
-## 10. Notes
+## 12. Notes
 
 - This active plan was promoted from the reviewed Stage 3 draft on 2026-03-17
   under
@@ -664,6 +905,9 @@ validation coverage that matches the repository's documented contracts.
 - The active plan was materially amended on 2026-03-18 by accepting and
   applying
   [docs/planning/change-requests/CR-26.03.18.md](planning/change-requests/CR-26.03.18.md).
+- The active plan was materially amended again on 2026-03-23 by accepting and
+  applying
+  [docs/planning/change-requests/CR-26.03.23.md](planning/change-requests/CR-26.03.23.md).
 - If future work currently deferred in
   [docs/future-work.md](future-work.md)
   is pulled into this release, treat that as a material planning change rather
