@@ -182,6 +182,25 @@ async def run_diff(
     """
     mono_start = time.monotonic()
 
+    try:
+        return await _run_diff_inner(
+            context_dir=context_dir,
+            gateway=gateway,
+            mono_start=mono_start,
+        )
+    except BaseException as exc:
+        duration = time.monotonic() - mono_start
+        logger.info("diff: aborted — %s, duration=%.1fs", exc, duration)
+        raise
+
+
+async def _run_diff_inner(
+    *,
+    context_dir: Path,
+    gateway: LinearGateway,
+    mono_start: float,
+) -> DiffResult:
+    """Inner diff pipeline, separated for abort-logging wrapper."""
     # --- Lock inspection (never acquire, clear, or preempt) ----------------
     check_diff_lock(context_dir)
 
@@ -254,13 +273,13 @@ async def run_diff(
     errors: list[SyncError] = list(read_errors)
 
     # UUIDs that had read errors are already in errors; skip them below.
-    errored_uids = {e.ticket_id for e in read_errors}
+    errored_keys = {e.ticket_id for e in read_errors}
 
     for uid in tracked_uids:
         manifest_entry = manifest.tickets[uid]
 
         # Skip tickets that had read errors — already reported.
-        if manifest_entry.current_key in errored_uids:
+        if manifest_entry.current_key in errored_keys:
             continue
 
         fm = local_frontmatter[uid]

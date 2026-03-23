@@ -1,11 +1,15 @@
 """
-End-to-end fixture tests covering all major modes (M4-2).
+Library pipeline and component tests for all major modes (M4-2).
 
-These tests exercise the full CLI → library → fake gateway → output pipeline
-for ``sync``, ``refresh``, ``add``, ``remove-root``, and ``diff``.  They
-verify:
-- correct exit codes and output (text + JSON),
-- INFO-level logging contract per ADR §6.1,
+These tests exercise the library pipeline through private CLI handler functions
+(``_run_sync``, ``_run_refresh``, etc.) and directly via ``make_syncer()`` with
+a :class:`FakeLinearGateway`.  They do **not** exercise ``main()``,
+``build_parser()``, or the installed console-script entry point — those are
+covered by :mod:`test_cli`.
+
+Coverage includes:
+- correct exit codes and output (text + JSON) from private handlers,
+- INFO- and DEBUG-level logging contract per ADR §6.1,
 - idempotent second-run behavior (no rewrites on unchanged upstream),
 - operational scenarios (multi-root, quarantine, add, remove, diff).
 """
@@ -19,6 +23,7 @@ from pathlib import Path
 import pytest
 
 from context_sync._cli import (
+    DEFAULT_LOG_LEVEL,
     EXIT_SUCCESS,
     _run_add,
     _run_diff,
@@ -26,7 +31,7 @@ from context_sync._cli import (
     _run_remove_root,
     _run_sync,
 )
-from context_sync._config import Dimension
+from context_sync._config import DEFAULT_MAX_TICKETS_PER_ROOT, Dimension
 from context_sync._gateway import RelationData
 from context_sync._manifest import load_manifest
 from context_sync._testing import FakeLinearGateway, make_issue, make_syncer
@@ -44,10 +49,10 @@ def _make_args(**overrides: object) -> object:
         "context_dir": ".",
         "root_ticket": None,
         "ticket_ref": None,
-        "max_tickets_per_root": 200,
+        "max_tickets_per_root": DEFAULT_MAX_TICKETS_PER_ROOT,
         "missing_root_policy": "quarantine",
         "json": False,
-        "log_level": "WARNING",
+        "log_level": DEFAULT_LOG_LEVEL,
     }
     # Default all depth_* overrides to None.
     for d in Dimension:
@@ -196,7 +201,7 @@ class TestLoggingContract:
 
         log_text = caplog.text
         assert "sync: started" in log_text
-        assert "root_count=" in log_text
+        assert "active_roots=" in log_text
         assert "max_tickets_per_root=" in log_text
         assert "sync: completed" in log_text
         assert "created=" in log_text

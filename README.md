@@ -19,6 +19,13 @@ The project can be used in two ways:
 See [`docs/problem-statement.md`](docs/problem-statement.md) for the full
 motivation.
 
+> **Pre-release notice:** This project is at version `0.1.0.dev0`. The library
+> and CLI interfaces are implemented and tested against a fake gateway, but the
+> real `linear-client`-backed gateway adapter is not yet wired. Until that
+> adapter lands, the installed CLI and the `ContextSync(linear=...)` constructor
+> path will raise an error at runtime. The `_gateway_override` testing hook is
+> the only functional entry point today.
+
 ## Installation
 
 `context-sync` requires Python 3.13+ and depends on
@@ -163,9 +170,12 @@ controls verbosity for the entire process, including both `context-sync` and the
 underlying `linear-client` library:
 
 - **WARNING** (default): only warnings and errors.
-- **INFO**: run lifecycle events (start, end, mode, root count, ticket cap,
-  reachable count, created/updated/unchanged/removed/error counts, duration,
-  whether any roots hit their per-root cap).
+- **INFO**: run lifecycle events. For mutating modes (`sync`, `refresh`, `add`,
+  `remove-root`): active root count, ticket cap, reachable count,
+  created/updated/unchanged/removed/error counts, roots-at-cap count, and
+  duration. For `diff`: tracked ticket count, current/stale/missing-locally/
+  missing-remotely counts, and duration. All modes log an abort reason if the
+  run fails.
 - **DEBUG**: per-ticket decisions (fresh, stale, pruned, renamed), lock
   acquisition details, alias resolution traces, plus `linear-client` transport
   details.

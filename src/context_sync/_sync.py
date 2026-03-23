@@ -364,6 +364,10 @@ class ContextSync:
                 started_at=started_at,
                 mono_start=mono_start,
             )
+        except BaseException as exc:
+            duration = time.monotonic() - mono_start
+            logger.info("sync: aborted — %s, duration=%.1fs", exc, duration)
+            raise
         finally:
             release_lock(context_dir, lock.writer_id)
 
@@ -471,7 +475,7 @@ class ContextSync:
                 roots_for_traversal[uid] = manifest.tickets[uid].current_key
 
         logger.info(
-            "sync: started — root_count=%d, max_tickets_per_root=%d",
+            "sync: started — active_roots=%d, max_tickets_per_root=%d",
             len(roots_for_traversal),
             effective_cap,
         )
@@ -685,6 +689,10 @@ class ContextSync:
                 started_at=started_at,
                 mono_start=mono_start,
             )
+        except BaseException as exc:
+            duration = time.monotonic() - mono_start
+            logger.info("refresh: aborted — %s, duration=%.1fs", exc, duration)
+            raise
         finally:
             release_lock(context_dir, lock.writer_id)
 
@@ -1220,6 +1228,10 @@ class ContextSync:
                 started_at=started_at,
                 mono_start=mono_start,
             )
+        except BaseException as exc:
+            duration = time.monotonic() - mono_start
+            logger.info("add: aborted — %s, duration=%.1fs", exc, duration)
+            raise
         finally:
             release_lock(context_dir, lock.writer_id)
 
@@ -1383,6 +1395,10 @@ class ContextSync:
                 started_at=started_at,
                 mono_start=mono_start,
             )
+        except BaseException as exc:
+            duration = time.monotonic() - mono_start
+            logger.info("remove_root: aborted — %s, duration=%.1fs", exc, duration)
+            raise
         finally:
             release_lock(context_dir, lock.writer_id)
 
