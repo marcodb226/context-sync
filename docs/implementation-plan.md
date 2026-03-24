@@ -497,7 +497,7 @@ validation coverage that matches the repository's documented contracts.
 | # | Status | Ticket | Deliverable | Dependencies | Reviewers | Source |
 | --- | --- | --- | --- | --- | --- | --- |
 | <a id="m4-r1---cli-interface-review"></a>M4-R1 | Done | CLI interface review | A durable repository review artifact that evaluates the human-facing CLI command surface produced by this plan, including command semantics, overlap, output ergonomics, operator comprehension, and consistency between CLI behavior and user-facing docs. The deliverable must distinguish documentation-only clarifications from follow-on design/implementation work and must explicitly name any recommended new plan items or amendments. | [M4-2](#m4-2---operational-logging-validation-hardening-and-user-docs) | Independent Stage 2 review session | [docs/design/0-top-level-design.md](design/0-top-level-design.md#2-cli-interface), [README.md](../README.md), [docs/execution/M4-1-review.md](execution/M4-1-review.md) |
-| <a id="m4-r2---api-interface-review"></a>M4-R2 | Todo | API interface review | A durable repository review artifact that evaluates the public `ContextSync` library API after [M4-R1](#m4-r1---cli-interface-review) settles the command-surface semantics that may shape the library contract, including parameter naming, method boundaries, result/error ergonomics, exception taxonomy, docstring clarity, and terminology alignment between library, CLI, and user-facing docs. The deliverable must distinguish documentation-only clarifications from follow-on design/implementation work and must explicitly name any recommended new plan items or amendments. | [M4-R1](#m4-r1---cli-interface-review) | Independent Stage 2 review session | [docs/design/0-top-level-design.md](design/0-top-level-design.md#1-library-api), [README.md](../README.md), [docs/execution/M4-1-review.md](execution/M4-1-review.md) |
+| <a id="m4-r2---api-interface-review"></a>M4-R2 | In progress | API interface review | A durable repository review artifact that evaluates the public `ContextSync` library API after [M4-R1](#m4-r1---cli-interface-review) settles the command-surface semantics that may shape the library contract, including parameter naming, method boundaries, result/error ergonomics, exception taxonomy, docstring clarity, and terminology alignment between library, CLI, and user-facing docs. The deliverable must distinguish documentation-only clarifications from follow-on design/implementation work and must explicitly name any recommended new plan items or amendments. | [M4-R1](#m4-r1---cli-interface-review) | Independent Stage 2 review session | [docs/design/0-top-level-design.md](design/0-top-level-design.md#1-library-api), [README.md](../README.md), [docs/execution/M4-1-review.md](execution/M4-1-review.md) |
 
 ### 6.2 Implementation Tickets
 
@@ -611,6 +611,16 @@ validation coverage that matches the repository's documented contracts.
   unnecessarily verbose given the method context already implies the root.
 - Rename to `key` across the public API, CLI positional argument, docstrings,
   tests, and user-facing documentation.
+- [M4-R2](execution/M4-R2.md#m4-3-assessment) concluded that this ticket
+  should be broadened to cover the full `_id` naming problem:
+  - `sync(root_ticket_id=...)` → `sync(key=...)`
+  - `add(ticket_ref=...)` → `add(key=...)` (or internal only, per
+    [FW-10](future-work.md#fw-10-cli-simplification-amendment))
+  - `remove_root(ticket_ref=...)` → unified `key` parameter name
+  - `SyncError.ticket_id` → `SyncError.ticket_key`
+  - `DiffEntry.ticket_id` → `DiffEntry.ticket_key`
+- Documentation-only improvements identified by M4-R2 (docstring summary
+  rewording, banned-term removal) can land alongside the rename.
 - This is a breaking change to the library API. Acceptable at the current
   `0.x` version, but should land before `1.0.0`.
 

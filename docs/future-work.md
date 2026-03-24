@@ -297,14 +297,24 @@ to `Next release` yet.
 - Deferred finding [M4-R1-R2](execution/M4-R1-review.md#m4-r1-r2):
   follow-on tracking for the CLI-scoped items in the review artifact's
   §"Follow-on tracking required before implementation."
+- Library-side consequences from
+  [M4-R2](execution/M4-R2.md#3-add-should-become-internal-when-the-cli-simplification-lands):
+  6. Make `ContextSync.add()` internal (or remove from `__all__`) when `sync`
+     subsumes its role.
+  7. Rename `ContextSync.remove_root()` to `ContextSync.remove()` to match
+     the CLI rename.
+  8. When `sync()` subsumes `add()`, adopt `add()`'s traversal-config
+     preservation semantics as the no-override default at the library level
+     (not only at the CLI level).
 
 **Completion signal**
 - The plan amendment is activated and the implementation tickets for the CLI
-  simplification are tracked in the active plan.
+  and library simplification are tracked in the active plan.
 
 **References**
 - [docs/execution/M4-R1.md](execution/M4-R1.md)
 - [docs/execution/M4-R1-review.md](execution/M4-R1-review.md)
+- [docs/execution/M4-R2.md](execution/M4-R2.md)
 
 ## Historical
 
