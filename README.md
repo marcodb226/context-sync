@@ -9,9 +9,9 @@ inspectable context graph without repeated API calls.
 
 The project can be used in two ways:
 
-- **As a CLI tool** — the `context-sync` command provides five operations
-  (`sync`, `refresh`, `add`, `remove-root`, `diff`) for managing a local
-  snapshot directory.
+- **As a CLI tool** — the `context-sync` command provides four operations
+  (`sync`, `refresh`, `remove`, `diff`) for managing a local snapshot
+  directory.
 - **As a Python library** — the async `ContextSync` class exposes the same
   operations programmatically, for embedding in agent frameworks or automation
   scripts.
@@ -73,31 +73,32 @@ context-sync diff
 ### Commands
 
 ```bash
-# Full-snapshot sync from a root ticket
+# Fully rebuild the snapshot from a root ticket
 context-sync sync TEAM-42
 
-# Incremental refresh of all tracked roots
+# Fully rebuild all tracked roots (no root-membership change)
+context-sync sync
+
+# Re-fetch the latest data for all tracked tickets
 context-sync refresh
 
-# Add a second root to an existing snapshot
-context-sync add TEAM-99
-
 # Remove a root (derived-only tickets are pruned)
-context-sync remove-root TEAM-42
+context-sync remove TEAM-42
 
 # Non-mutating drift inspection (read-only)
 context-sync diff
 ```
 
-### When to use each command
+### Use cases
 
-| Command | Use when you want to... | What it does |
-|---------|------------------------|--------------|
-| `sync TICKET` | Start tracking a ticket, or add another root to an existing snapshot | Adds the ticket as a root, persists any traversal overrides you supply (`--max-tickets-per-root`, `--depth-*`), then rebuilds the snapshot from **all** active roots. On an empty context directory this bootstraps the snapshot; on an existing one it expands the root set and reconciles. |
-| `refresh` | Update the snapshot without changing which tickets are tracked | Re-fetches all tracked roots using the manifest's existing traversal configuration. Only re-fetches tickets whose upstream state has changed (incremental). Does not add or remove roots. |
-| `add TICKET` | Add another root without changing traversal configuration | Adds the ticket as a root using the manifest's existing traversal settings (no per-call overrides), then refreshes the snapshot. **Note:** `sync TICKET` achieves the same visible result; `add` exists as a convenience when you want to preserve existing traversal configuration exactly. A future release may unify these commands. |
-| `remove-root TICKET` | Stop tracking a root ticket | Removes the ticket from the root set and prunes any derived tickets that are no longer reachable from the remaining roots. This is a destructive operation on the tracked set. |
-| `diff` | Inspect drift without modifying files | Compares the local snapshot against live Linear state. Read-only — never acquires a writer lock. If a mutating operation currently holds the lock, `diff` refuses to run rather than competing for rate-limited API capacity. |
+| # | Use case | CLI command | Notes |
+|---|----------|-------------|-------|
+| 1 | Add the first tracked root | `sync TICKET` | Bootstraps the snapshot; TICKET becomes the initial root. |
+| 2 | Add a new root to an existing snapshot | `sync TICKET` | Same command; idempotent if TICKET is already tracked. |
+| 3 | Lightweight incremental refresh | `refresh` | Re-fetches only tickets identified as new or modified since the last run. |
+| 4 | Full rebuild (nuke and rebuild) | `sync` | Rebuilds all tracked roots unconditionally; no root-membership change. |
+| 5 | Remove a root and prune orphaned nodes | `remove TICKET` | Stops tracking TICKET and removes tickets not reachable from any remaining root. |
+| 6 | Diff without writing to disk | `diff` | Read-only comparison between local snapshot and Linear. |
 
 ### Global options
 
@@ -113,20 +114,18 @@ context-sync diff
 |---------|--------|---------|-------------|
 | `sync` | `--context-dir DIR` | `.` | Path to the context directory. |
 | `sync` | `--json` | off | Emit machine-readable JSON instead of text. |
-| `sync` | `--max-tickets-per-root N` | 200 | Per-root ticket cap for traversal. |
-| `sync` | `--depth-blocks N` | 3 | Traversal depth for `blocks` edges. |
-| `sync` | `--depth-is-blocked-by N` | 2 | Traversal depth for `is_blocked_by` edges. |
-| `sync` | `--depth-parent N` | 2 | Traversal depth for `parent` edges. |
-| `sync` | `--depth-child N` | 2 | Traversal depth for `child` edges. |
-| `sync` | `--depth-relates-to N` | 1 | Traversal depth for `relates_to` edges. |
-| `sync` | `--depth-ticket-ref N` | 1 | Traversal depth for `ticket_ref` (URL-discovered) edges. |
+| `sync` | `--max-tickets-per-root N` | manifest value | Per-root ticket cap for traversal. Only persisted when explicitly supplied. |
+| `sync` | `--depth-blocks N` | manifest value | Traversal depth for `blocks` edges. Only persisted when explicitly supplied. |
+| `sync` | `--depth-is-blocked-by N` | manifest value | Traversal depth for `is_blocked_by` edges. Only persisted when explicitly supplied. |
+| `sync` | `--depth-parent N` | manifest value | Traversal depth for `parent` edges. Only persisted when explicitly supplied. |
+| `sync` | `--depth-child N` | manifest value | Traversal depth for `child` edges. Only persisted when explicitly supplied. |
+| `sync` | `--depth-relates-to N` | manifest value | Traversal depth for `relates_to` edges. Only persisted when explicitly supplied. |
+| `sync` | `--depth-ticket-ref N` | manifest value | Traversal depth for `ticket_ref` (URL-discovered) edges. Only persisted when explicitly supplied. |
 | `refresh` | `--context-dir DIR` | `.` | Path to the context directory. |
 | `refresh` | `--json` | off | Emit machine-readable JSON instead of text. |
 | `refresh` | `--missing-root-policy` | `quarantine` | How to handle roots no longer visible: `quarantine` or `remove`. |
-| `add` | `--context-dir DIR` | `.` | Path to the context directory. |
-| `add` | `--json` | off | Emit machine-readable JSON instead of text. |
-| `remove-root` | `--context-dir DIR` | `.` | Path to the context directory. |
-| `remove-root` | `--json` | off | Emit machine-readable JSON instead of text. |
+| `remove` | `--context-dir DIR` | `.` | Path to the context directory. |
+| `remove` | `--json` | off | Emit machine-readable JSON instead of text. |
 | `diff` | `--context-dir DIR` | `.` | Path to the context directory. |
 | `diff` | `--json` | off | Emit machine-readable JSON instead of text. |
 
@@ -143,8 +142,8 @@ context-sync diff
 - **Text** (default): concise human-readable output on stdout, one line per
   category (created, updated, unchanged, removed, errors).
 - **JSON** (`--json`): a single JSON object on stdout, parseable with `jq`. For
-  `sync`/`refresh`/`add`/`remove-root` the shape is `SyncResult`; for `diff`
-  it is `DiffResult`.
+  `sync`/`refresh`/`remove` the shape is `SyncResult`; for `diff` it is
+  `DiffResult`.
 
 ## Configuration
 
@@ -180,8 +179,8 @@ controls verbosity for the entire process, including both `context-sync` and the
 underlying `linear-client` library:
 
 - **WARNING** (default): only warnings and errors.
-- **INFO**: run lifecycle events. For mutating modes (`sync`, `refresh`, `add`,
-  `remove-root`): active root count, ticket cap, reachable count,
+- **INFO**: run lifecycle events. For mutating modes (`sync`, `refresh`,
+  `remove`): active root count, ticket cap, reachable count,
   created/updated/unchanged/removed/error counts, roots-at-cap count, and
   duration. For `diff`: tracked ticket count, current/stale/missing-locally/
   missing-remotely counts, and duration. All modes log an abort reason if the
@@ -202,7 +201,7 @@ context-sync refresh --log-level DEBUG 2>debug.log
 
 ### Lock handling
 
-Mutating operations (`sync`, `refresh`, `add`, `remove-root`) acquire an
+Mutating operations (`sync`, `refresh`, `remove`) acquire an
 exclusive writer lock (`.context-sync.lock`). If another process holds the
 lock:
 
@@ -251,9 +250,8 @@ ctx = ContextSync(linear=linear_client, context_dir="./context")
 result = await ctx.sync(key="TEAM-42")
 ```
 
-All five CLI operations (`sync`, `refresh`, `add`, `remove_root`, `diff`) are
-available as async methods on `ContextSync`. See the class docstring for
-parameter details.
+All four CLI operations (`sync`, `refresh`, `remove`, `diff`) are available as
+async methods on `ContextSync`. See the class docstring for parameter details.
 
 ---
 

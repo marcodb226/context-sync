@@ -214,10 +214,20 @@ async def _run_sync(
             linear=linear,
             context_dir=Path(args.context_dir),
         )
+
+    # ticket is optional: None means standalone full rebuild.
+    ticket: str | None = getattr(args, "ticket", None)
+
+    # Traversal overrides are only meaningful when explicitly supplied.
+    # Pass None when args hold only defaults so sync() preserves the
+    # manifest's existing configuration.
+    cap: int | None = getattr(args, "max_tickets_per_root", None)
+    dims = _build_dimensions(args)
+
     result = await ctx.sync(
-        key=args.ticket,
-        max_tickets_per_root=args.max_tickets_per_root,
-        dimensions=_build_dimensions(args),
+        key=ticket,
+        max_tickets_per_root=cap,
+        dimensions=dims,
     )
     text = _format_sync_result_text(result)
     _emit(text, asdict(result), use_json=args.json)
@@ -249,12 +259,12 @@ async def _run_refresh(
     return EXIT_SUCCESS
 
 
-async def _run_add(
+async def _run_remove(
     args: argparse.Namespace,
     *,
     _gateway_override: Any = None,
 ) -> int:
-    """Execute the ``add`` subcommand."""
+    """Execute the ``remove`` subcommand."""
     from context_sync._sync import ContextSync
 
     if _gateway_override is not None:
@@ -268,32 +278,7 @@ async def _run_add(
             linear=linear,
             context_dir=Path(args.context_dir),
         )
-    result = await ctx.add(key=args.ticket)
-    text = _format_sync_result_text(result)
-    _emit(text, asdict(result), use_json=args.json)
-    return EXIT_SUCCESS
-
-
-async def _run_remove_root(
-    args: argparse.Namespace,
-    *,
-    _gateway_override: Any = None,
-) -> int:
-    """Execute the ``remove-root`` subcommand."""
-    from context_sync._sync import ContextSync
-
-    if _gateway_override is not None:
-        ctx = ContextSync(
-            context_dir=Path(args.context_dir),
-            _gateway_override=_gateway_override,
-        )
-    else:
-        linear = _create_linear_client()
-        ctx = ContextSync(
-            linear=linear,
-            context_dir=Path(args.context_dir),
-        )
-    result = await ctx.remove_root(key=args.ticket)
+    result = await ctx.remove(key=args.ticket)
     text = _format_sync_result_text(result)
     _emit(text, asdict(result), use_json=args.json)
     return EXIT_SUCCESS
@@ -407,16 +392,21 @@ def build_parser() -> argparse.ArgumentParser:
     # -- sync ---------------------------------------------------------------
     sync_parser = subparsers.add_parser(
         "sync",
-        help="Full-snapshot sync from a root ticket.",
+        help=(
+            "Fully rebuild the snapshot from all tracked roots. "
+            "With TICKET, add or reaffirm that root first."
+        ),
     )
     sync_parser.add_argument(
         "ticket",
-        help="Issue key or Linear URL of the root ticket to track.",
+        nargs="?",
+        default=None,
+        help="Issue key or Linear URL of the root ticket to track (optional).",
     )
     sync_parser.add_argument(
         "--max-tickets-per-root",
         type=int,
-        default=DEFAULT_MAX_TICKETS_PER_ROOT,
+        default=None,
         metavar="N",
         help=f"Per-root ticket cap (default: {DEFAULT_MAX_TICKETS_PER_ROOT}).",
     )
@@ -426,7 +416,7 @@ def build_parser() -> argparse.ArgumentParser:
     # -- refresh ------------------------------------------------------------
     refresh_parser = subparsers.add_parser(
         "refresh",
-        help="Incremental refresh of all tracked roots.",
+        help="Re-fetch the latest data for all tracked tickets.",
     )
     refresh_parser.add_argument(
         "--missing-root-policy",
@@ -436,27 +426,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_common_args(refresh_parser)
 
-    # -- add ----------------------------------------------------------------
-    add_parser = subparsers.add_parser(
-        "add",
-        help="Add a new root ticket and refresh the snapshot.",
-    )
-    add_parser.add_argument(
-        "ticket",
-        help="Issue key or Linear URL of the ticket to add as root.",
-    )
-    _add_common_args(add_parser)
-
-    # -- remove-root --------------------------------------------------------
-    remove_root_parser = subparsers.add_parser(
-        "remove-root",
+    # -- remove -------------------------------------------------------------
+    remove_parser = subparsers.add_parser(
+        "remove",
         help="Remove a root ticket and refresh the snapshot.",
     )
-    remove_root_parser.add_argument(
+    remove_parser.add_argument(
         "ticket",
         help="Issue key or Linear URL of the root to remove.",
     )
-    _add_common_args(remove_root_parser)
+    _add_common_args(remove_parser)
 
     # -- diff ---------------------------------------------------------------
     diff_parser = subparsers.add_parser(
@@ -476,8 +455,7 @@ def build_parser() -> argparse.ArgumentParser:
 _HANDLERS: dict[str, _Handler] = {
     "sync": _run_sync,
     "refresh": _run_refresh,
-    "add": _run_add,
-    "remove-root": _run_remove_root,
+    "remove": _run_remove,
     "diff": _run_diff,
 }
 

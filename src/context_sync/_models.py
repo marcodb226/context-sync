@@ -39,7 +39,7 @@ class SyncError:
 @dataclass(frozen=True)
 class SyncResult:
     """
-    Outcome of a ``sync``, ``refresh``, ``add``, or ``remove_root`` operation.
+    Outcome of a ``sync``, ``refresh``, or ``remove`` operation.
 
     Each list contains current issue keys.  The sets are disjoint: a ticket
     appears in exactly one of *created*, *updated*, *unchanged*, or *removed*.

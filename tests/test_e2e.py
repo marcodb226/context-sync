@@ -11,7 +11,7 @@ Coverage includes:
 - correct exit codes and output (text + JSON) from private handlers,
 - INFO- and DEBUG-level logging contract per ADR §6.1,
 - idempotent second-run behavior (no rewrites on unchanged upstream),
-- operational scenarios (multi-root, quarantine, add, remove, diff).
+- operational scenarios (multi-root, quarantine, remove, diff).
 """
 
 from __future__ import annotations
@@ -25,13 +25,12 @@ import pytest
 from context_sync._cli import (
     DEFAULT_LOG_LEVEL,
     EXIT_SUCCESS,
-    _run_add,
     _run_diff,
     _run_refresh,
-    _run_remove_root,
+    _run_remove,
     _run_sync,
 )
-from context_sync._config import DEFAULT_MAX_TICKETS_PER_ROOT, Dimension
+from context_sync._config import Dimension
 from context_sync._gateway import RelationData
 from context_sync._manifest import load_manifest
 from context_sync._testing import FakeLinearGateway, make_context_sync, make_issue
@@ -48,7 +47,7 @@ def _make_args(**overrides: object) -> object:
     defaults = {
         "context_dir": ".",
         "ticket": None,
-        "max_tickets_per_root": DEFAULT_MAX_TICKETS_PER_ROOT,
+        "max_tickets_per_root": None,
         "missing_root_policy": "quarantine",
         "json": False,
         "log_level": DEFAULT_LOG_LEVEL,
@@ -61,12 +60,12 @@ def _make_args(**overrides: object) -> object:
 
 
 # ---------------------------------------------------------------------------
-# Full-cycle sync → refresh → diff → add → remove-root
+# Full-cycle sync → refresh → diff → sync (add root) → remove
 # ---------------------------------------------------------------------------
 
 
 class TestFullCycleE2E:
-    """Exercise a complete lifecycle across all five modes."""
+    """Exercise a complete lifecycle across all four modes."""
 
     @pytest.fixture()
     def gateway(self) -> FakeLinearGateway:
@@ -138,25 +137,27 @@ class TestFullCycleE2E:
         code = await _run_diff(args, _gateway_override=gateway)
         assert code == EXIT_SUCCESS
 
-    async def test_add_second_root(self, context_dir: Path, gateway: FakeLinearGateway) -> None:
-        """Add introduces a second root and refreshes the snapshot."""
+    async def test_sync_adds_second_root(
+        self, context_dir: Path, gateway: FakeLinearGateway
+    ) -> None:
+        """Sync TICKET introduces a second root and rebuilds the snapshot."""
         gateway.add_issue(make_issue(issue_id="uuid-new", issue_key="PROJ-3", title="New Root"))
 
         # Bootstrap with first root
         args = _make_args(context_dir=str(context_dir), ticket="PROJ-1")
         await _run_sync(args, _gateway_override=gateway)
 
-        # Add second root
+        # Add second root via sync
         args = _make_args(context_dir=str(context_dir), ticket="PROJ-3")
-        code = await _run_add(args, _gateway_override=gateway)
+        code = await _run_sync(args, _gateway_override=gateway)
         assert code == EXIT_SUCCESS
         assert (context_dir / "PROJ-3.md").is_file()
 
         manifest = load_manifest(context_dir)
         assert "uuid-new" in manifest.roots
 
-    async def test_remove_root_prunes(self, context_dir: Path, gateway: FakeLinearGateway) -> None:
-        """remove-root drops the root and prunes its unreachable children."""
+    async def test_remove_prunes(self, context_dir: Path, gateway: FakeLinearGateway) -> None:
+        """Remove drops the root and prunes its unreachable children."""
         # Bootstrap
         args = _make_args(context_dir=str(context_dir), ticket="PROJ-1")
         await _run_sync(args, _gateway_override=gateway)
@@ -164,7 +165,7 @@ class TestFullCycleE2E:
 
         # Remove the only root
         args = _make_args(context_dir=str(context_dir), ticket="PROJ-1")
-        code = await _run_remove_root(args, _gateway_override=gateway)
+        code = await _run_remove(args, _gateway_override=gateway)
         assert code == EXIT_SUCCESS
 
         manifest = load_manifest(context_dir)
@@ -362,9 +363,9 @@ class TestMultiRootE2E:
         args = _make_args(context_dir=str(context_dir), ticket="MR-A")
         await _run_sync(args, _gateway_override=gw)
 
-        # Add root B
+        # Add root B via sync
         args = _make_args(context_dir=str(context_dir), ticket="MR-B")
-        code = await _run_add(args, _gateway_override=gw)
+        code = await _run_sync(args, _gateway_override=gw)
         assert code == EXIT_SUCCESS
 
         manifest = load_manifest(context_dir)

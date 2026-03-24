@@ -22,10 +22,9 @@ from context_sync._cli import (
     EXIT_SUCCESS,
     _format_diff_result_text,
     _format_sync_result_text,
-    _run_add,
     _run_diff,
     _run_refresh,
-    _run_remove_root,
+    _run_remove,
     _run_sync,
     build_parser,
     main,
@@ -80,12 +79,12 @@ class TestParserConstruction:
             parser.parse_args([])
         assert exc_info.value.code == 2
 
-    def test_sync_requires_ticket(self) -> None:
-        """``sync`` without a root ticket should fail."""
+    def test_sync_without_ticket_is_valid(self) -> None:
+        """``sync`` without a ticket is valid (standalone full rebuild)."""
         parser = build_parser()
-        with pytest.raises(SystemExit) as exc_info:
-            parser.parse_args(["sync"])
-        assert exc_info.value.code == 2
+        args = parser.parse_args(["sync"])
+        assert args.command == "sync"
+        assert args.ticket is None
 
     def test_sync_parses_all_options(self) -> None:
         """``sync`` accepts root ticket plus all optional flags."""
@@ -127,33 +126,32 @@ class TestParserConstruction:
         args = parser.parse_args(["refresh", "--missing-root-policy", "remove"])
         assert args.missing_root_policy == "remove"
 
-    def test_add_requires_ticket(self) -> None:
-        """``add`` without a ticket ref should fail."""
+    def test_add_rejected_as_unknown_command(self) -> None:
+        """``add`` is no longer a valid command."""
         parser = build_parser()
         with pytest.raises(SystemExit) as exc_info:
-            parser.parse_args(["add"])
+            parser.parse_args(["add", "ACP-999"])
         assert exc_info.value.code == 2
 
-    def test_add_parses_correctly(self) -> None:
-        """``add`` accepts a ticket ref."""
-        parser = build_parser()
-        args = parser.parse_args(["add", "ACP-999", "--context-dir", "my-ctx"])
-        assert args.command == "add"
-        assert args.ticket == "ACP-999"
-        assert args.context_dir == "my-ctx"
-
-    def test_remove_root_requires_ticket(self) -> None:
-        """``remove-root`` without a ticket ref should fail."""
+    def test_remove_root_rejected_as_unknown_command(self) -> None:
+        """``remove-root`` is no longer a valid command."""
         parser = build_parser()
         with pytest.raises(SystemExit) as exc_info:
-            parser.parse_args(["remove-root"])
+            parser.parse_args(["remove-root", "ACP-100"])
         assert exc_info.value.code == 2
 
-    def test_remove_root_parses_correctly(self) -> None:
-        """``remove-root`` accepts a ticket ref."""
+    def test_remove_requires_ticket(self) -> None:
+        """``remove`` without a ticket ref should fail."""
         parser = build_parser()
-        args = parser.parse_args(["remove-root", "ACP-100"])
-        assert args.command == "remove-root"
+        with pytest.raises(SystemExit) as exc_info:
+            parser.parse_args(["remove"])
+        assert exc_info.value.code == 2
+
+    def test_remove_parses_correctly(self) -> None:
+        """``remove`` accepts a ticket ref."""
+        parser = build_parser()
+        args = parser.parse_args(["remove", "ACP-100"])
+        assert args.command == "remove"
         assert args.ticket == "ACP-100"
 
     def test_diff_defaults(self) -> None:
@@ -586,7 +584,7 @@ class TestHandlerIntegration:
         args = _make_args(
             context_dir=str(context_dir),
             ticket="TEST-1",
-            max_tickets_per_root=200,
+            max_tickets_per_root=None,
             # No depth overrides — all default to None.
             **{f"depth_{d.value.replace('-', '_')}": None for d in Dimension},
         )
@@ -612,23 +610,28 @@ class TestHandlerIntegration:
         code = await _run_refresh(args, _gateway_override=fake_gateway)
         assert code == EXIT_SUCCESS
 
-    async def test_add_handler_adds_root(
+    async def test_sync_handler_standalone_rebuilds(
         self, context_dir: Path, fake_gateway: FakeLinearGateway
     ) -> None:
-        """``_run_add`` adds a new root via the library layer."""
+        """``_run_sync`` without a ticket performs a standalone full rebuild."""
         fake_gateway.add_issue(make_issue(issue_id="uuid-1", issue_key="TEST-1"))
+        from context_sync._testing import make_context_sync
+
+        ctx = make_context_sync(gateway=fake_gateway, context_dir=context_dir)
+        await ctx.sync(key="TEST-1")
+
         args = _make_args(
             context_dir=str(context_dir),
-            ticket="TEST-1",
+            ticket=None,
+            max_tickets_per_root=None,
         )
-        code = await _run_add(args, _gateway_override=fake_gateway)
+        code = await _run_sync(args, _gateway_override=fake_gateway)
         assert code == EXIT_SUCCESS
-        assert (context_dir / "TEST-1.md").is_file()
 
-    async def test_remove_root_handler_removes_root(
+    async def test_remove_handler_removes_root(
         self, context_dir: Path, fake_gateway: FakeLinearGateway
     ) -> None:
-        """``_run_remove_root`` removes a root via the library layer."""
+        """``_run_remove`` removes a root via the library layer."""
         fake_gateway.add_issue(make_issue(issue_id="uuid-1", issue_key="TEST-1"))
         from context_sync._testing import make_context_sync
 
@@ -639,7 +642,7 @@ class TestHandlerIntegration:
             context_dir=str(context_dir),
             ticket="TEST-1",
         )
-        code = await _run_remove_root(args, _gateway_override=fake_gateway)
+        code = await _run_remove(args, _gateway_override=fake_gateway)
         assert code == EXIT_SUCCESS
 
     async def test_diff_handler_returns_entries(
@@ -667,7 +670,7 @@ class TestHandlerIntegration:
         args = _make_args(
             context_dir=str(context_dir),
             ticket="TEST-1",
-            max_tickets_per_root=200,
+            max_tickets_per_root=None,
             json=True,
             **{f"depth_{d.value.replace('-', '_')}": None for d in Dimension},
         )

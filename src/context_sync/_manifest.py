@@ -75,7 +75,7 @@ class ManifestSnapshot(BaseModel):
     ----------
     mode:
         The operation that produced this snapshot
-        (``"sync"``, ``"refresh"``, ``"add"``, or ``"remove-root"``).
+        (``"sync"``, ``"refresh"``, ``"add"``, or ``"remove"``).
     started_at:
         UTC RFC 3339 timestamp when the pass began.
     completed_at:
@@ -87,7 +87,7 @@ class ManifestSnapshot(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    mode: Literal["sync", "refresh", "add", "remove-root"]
+    mode: Literal["sync", "refresh", "add", "remove"]
     started_at: str
     completed_at: str | None = None
     completed_successfully: bool | None = None

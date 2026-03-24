@@ -5,9 +5,10 @@ This module exposes the ``ContextSync`` class whose constructor and method
 signatures match the public API defined in the top-level design (§1).  The
 ``sync`` method implements the full-snapshot rebuild flow (M2-3); the
 ``refresh`` method implements incremental whole-snapshot update with
-quarantine/recovery (M3-1); the ``add`` and ``remove_root`` methods implement
-root-set mutation flows (M3-2); the ``diff`` method implements the non-mutating
-drift inspection flow (M3-3).
+quarantine/recovery (M3-1); the ``remove`` method implements root removal
+(M3-2); the ``diff`` method implements the non-mutating drift inspection flow
+(M3-3).  The internal ``_add`` helper supports the root-addition path used by
+``sync`` when called with a ticket key.
 
 Design notes
 ------------
@@ -289,27 +290,32 @@ class ContextSync:
 
     async def sync(
         self,
-        key: str,
+        key: str | None = None,
         max_tickets_per_root: int | None = None,
         dimensions: dict[str, int] | None = None,
     ) -> SyncResult:
         """
-        Track a ticket and update the snapshot from all roots.
+        Fully rebuild the snapshot from all tracked roots.
 
-        Acquires the writer lock, fetches the requested root, validates its
-        workspace against the context directory, adds the root to the manifest,
-        recomputes the reachable graph from all active roots, rewrites every
-        reachable ticket file, prunes derived tickets that are no longer
-        reachable, and releases the lock.
+        With *key*, add or reaffirm that root first.  Without *key*, rebuild
+        all currently tracked roots without changing root membership.
+
+        When *max_tickets_per_root* or *dimensions* are not supplied, the
+        manifest's existing traversal configuration is preserved.  When
+        overrides are explicitly given, the new values are persisted.
 
         Parameters
         ----------
         key:
-            Issue key or Linear issue URL of the root to track.
+            Issue key or Linear issue URL of the root to track.  ``None``
+            performs a full rebuild of all currently tracked roots with no
+            root-membership change.
         max_tickets_per_root:
-            Override the instance-level per-root cap for this call.
+            Override the per-root cap for this call and persist the new value.
+            ``None`` preserves the manifest's existing value.
         dimensions:
-            Override the instance-level dimension depths for this call.
+            Override the dimension depths for this call and persist the new
+            values.  ``None`` preserves the manifest's existing configuration.
 
         Returns
         -------
@@ -323,6 +329,8 @@ class ContextSync:
         WorkspaceMismatchError
             If the root ticket belongs to a different workspace than the
             context directory.
+        ManifestError
+            If *key* is ``None`` and no manifest exists (nothing to rebuild).
         ActiveLockError
             If a non-stale writer lock is already held.
         StaleLockError
@@ -339,12 +347,6 @@ class ContextSync:
                 "instance."
             )
 
-        effective_dims = (
-            resolve_dimensions(dimensions) if dimensions is not None else dict(self._dimensions)
-        )
-        effective_cap = (
-            max_tickets_per_root if max_tickets_per_root is not None else self._max_tickets_per_root
-        )
         context_dir = self._context_dir
         gateway = self._gateway
         semaphore = self._semaphore
@@ -354,16 +356,27 @@ class ContextSync:
         lock = acquire_lock(context_dir, "sync", acquired_at=started_at)
 
         try:
-            return await self._sync_under_lock(
-                key=key,
-                effective_dims=effective_dims,
-                effective_cap=effective_cap,
-                context_dir=context_dir,
-                gateway=gateway,
-                semaphore=semaphore,
-                started_at=started_at,
-                mono_start=mono_start,
-            )
+            if key is not None:
+                return await self._sync_under_lock(
+                    key=key,
+                    dimensions_override=dimensions,
+                    cap_override=max_tickets_per_root,
+                    context_dir=context_dir,
+                    gateway=gateway,
+                    semaphore=semaphore,
+                    started_at=started_at,
+                    mono_start=mono_start,
+                )
+            else:
+                return await self._standalone_sync_under_lock(
+                    dimensions_override=dimensions,
+                    cap_override=max_tickets_per_root,
+                    context_dir=context_dir,
+                    gateway=gateway,
+                    semaphore=semaphore,
+                    started_at=started_at,
+                    mono_start=mono_start,
+                )
         except BaseException as exc:
             duration = time.monotonic() - mono_start
             logger.info("sync: aborted — %s, duration=%.1fs", exc, duration)
@@ -375,8 +388,8 @@ class ContextSync:
         self,
         *,
         key: str,
-        effective_dims: dict[str, int],
-        effective_cap: int,
+        dimensions_override: dict[str, int] | None,
+        cap_override: int | None,
         context_dir: Path,
         gateway: LinearGateway,
         semaphore: asyncio.Semaphore,
@@ -384,7 +397,7 @@ class ContextSync:
         mono_start: float,
     ) -> SyncResult:
         """
-        Core sync logic executed while the writer lock is held.
+        Core sync-with-key logic executed while the writer lock is held.
 
         Separated from :meth:`sync` so the ``try/finally`` release-lock
         wrapper remains concise.  All parameters are pre-resolved by the
@@ -413,11 +426,17 @@ class ContextSync:
         else:
             manifest = initialize_manifest(
                 root_bundle.workspace,
-                effective_dims,
-                effective_cap,
+                self._dimensions,
+                self._max_tickets_per_root,
             )
 
-        # -- Update manifest configuration -----------------------------------
+        # -- Update manifest configuration (preserve when no override) -------
+        effective_dims = (
+            resolve_dimensions(dimensions_override)
+            if dimensions_override is not None
+            else dict(manifest.dimensions)
+        )
+        effective_cap = cap_override if cap_override is not None else manifest.max_tickets_per_root
         manifest.dimensions = dict(effective_dims)
         manifest.max_tickets_per_root = effective_cap
 
@@ -618,6 +637,48 @@ class ContextSync:
             errors=errors,
         )
 
+    async def _standalone_sync_under_lock(
+        self,
+        *,
+        dimensions_override: dict[str, int] | None,
+        cap_override: int | None,
+        context_dir: Path,
+        gateway: LinearGateway,
+        semaphore: asyncio.Semaphore,
+        started_at: str,
+        mono_start: float,
+    ) -> SyncResult:
+        """
+        Full rebuild of all tracked roots without changing root membership.
+
+        Loads the existing manifest, optionally applies traversal-config
+        overrides, then delegates to :meth:`_refresh_under_lock` for a
+        whole-snapshot rebuild.  This is the ``sync`` code path when no
+        *key* is supplied.
+
+        Returns
+        -------
+        SyncResult
+        """
+        manifest = load_manifest(context_dir)
+
+        # -- Update manifest configuration (preserve when no override) -------
+        if dimensions_override is not None:
+            manifest.dimensions = dict(resolve_dimensions(dimensions_override))
+        if cap_override is not None:
+            manifest.max_tickets_per_root = cap_override
+
+        return await self._refresh_under_lock(
+            missing_root_policy="quarantine",
+            context_dir=context_dir,
+            gateway=gateway,
+            semaphore=semaphore,
+            started_at=started_at,
+            mono_start=mono_start,
+            snapshot_mode="sync",
+            manifest=manifest,
+        )
+
     async def refresh(
         self,
         missing_root_policy: Literal["quarantine", "remove"] = "quarantine",
@@ -705,7 +766,7 @@ class ContextSync:
         semaphore: asyncio.Semaphore,
         started_at: str,
         mono_start: float,
-        snapshot_mode: Literal["sync", "refresh", "add", "remove-root"] = "refresh",
+        snapshot_mode: Literal["sync", "refresh", "add", "remove"] = "refresh",
         manifest: Manifest | None = None,
     ) -> SyncResult:
         """
@@ -731,11 +792,11 @@ class ContextSync:
             Monotonic clock reading at operation start, for duration logging.
         snapshot_mode:
             Label for the ``ManifestSnapshot.mode`` field.  Defaults to
-            ``"refresh"``; callers such as ``add`` and ``remove_root`` pass
+            ``"refresh"``; callers such as ``_add`` and ``remove`` pass
             their own mode so the manifest records the triggering operation.
         manifest:
             Pre-loaded manifest to use instead of reading from disk.  When
-            callers such as ``add`` and ``remove_root`` have already mutated
+            callers such as ``_add`` and ``remove`` have already mutated
             the manifest in memory, they pass it here so the root-set change
             and the snapshot finalization are committed together — avoiding
             a partial-commit window where the manifest is saved but the
@@ -1167,9 +1228,12 @@ class ContextSync:
             errors=errors,
         )
 
-    async def add(self, key: str) -> SyncResult:
+    async def _add(self, key: str) -> SyncResult:
         """
         Add a root ticket and run a whole-snapshot refresh.
+
+        This is an internal helper used by :meth:`sync` when called with a
+        ticket key.  It is not part of the public API.
 
         Acquires the writer lock, resolves *key* (issue key or Linear issue
         URL) to a ticket UUID through alias-based local resolution and/or a
@@ -1230,7 +1294,7 @@ class ContextSync:
             )
         except BaseException as exc:
             duration = time.monotonic() - mono_start
-            logger.info("add: aborted — %s, duration=%.1fs", exc, duration)
+            logger.info("_add: aborted — %s, duration=%.1fs", exc, duration)
             raise
         finally:
             release_lock(context_dir, lock.writer_id)
@@ -1309,12 +1373,12 @@ class ContextSync:
         manifest.roots[root_uuid] = ManifestRootEntry(state="active")
         if previous_entry is not None and previous_entry.state == "quarantined":
             logger.info(
-                "add: recovered quarantined root %s (%s) → active",
+                "_add: recovered quarantined root %s (%s) → active",
                 bundle.issue.issue_key,
                 root_uuid,
             )
         else:
-            logger.info("add: added root %s (%s)", bundle.issue.issue_key, root_uuid)
+            logger.info("_add: added root %s (%s)", bundle.issue.issue_key, root_uuid)
 
         # -- Execute whole-snapshot refresh under the same writer lock -----------
         # Pass the in-memory manifest so the root-set mutation and snapshot
@@ -1330,7 +1394,7 @@ class ContextSync:
             manifest=manifest,
         )
 
-    async def remove_root(self, key: str) -> SyncResult:
+    async def remove(self, key: str) -> SyncResult:
         """
         Remove a root ticket and run a whole-snapshot refresh.
 
@@ -1384,10 +1448,10 @@ class ContextSync:
 
         started_at = _utc_now()
         mono_start = time.monotonic()
-        lock = acquire_lock(context_dir, "remove-root", acquired_at=started_at)
+        lock = acquire_lock(context_dir, "remove", acquired_at=started_at)
 
         try:
-            return await self._remove_root_under_lock(
+            return await self._remove_under_lock(
                 key=key,
                 context_dir=context_dir,
                 gateway=gateway,
@@ -1397,12 +1461,12 @@ class ContextSync:
             )
         except BaseException as exc:
             duration = time.monotonic() - mono_start
-            logger.info("remove_root: aborted — %s, duration=%.1fs", exc, duration)
+            logger.info("remove: aborted — %s, duration=%.1fs", exc, duration)
             raise
         finally:
             release_lock(context_dir, lock.writer_id)
 
-    async def _remove_root_under_lock(
+    async def _remove_under_lock(
         self,
         *,
         key: str,
@@ -1413,7 +1477,7 @@ class ContextSync:
         mono_start: float,
     ) -> SyncResult:
         """
-        Core remove-root logic executed while the writer lock is held.
+        Core remove logic executed while the writer lock is held.
 
         Resolves *key* to a UUID, removes it from the root set,
         persists the manifest, then delegates to :meth:`_refresh_under_lock`
@@ -1449,7 +1513,7 @@ class ContextSync:
 
         # -- Remove UUID from root set ------------------------------------------
         del manifest.roots[resolved_uuid]
-        logger.info("remove_root: removed root %s", resolved_uuid)
+        logger.info("remove: removed root %s", resolved_uuid)
 
         # -- Execute whole-snapshot refresh under the same writer lock ----------
         # Pass the in-memory manifest so the root-set mutation and snapshot
@@ -1461,7 +1525,7 @@ class ContextSync:
             semaphore=semaphore,
             started_at=started_at,
             mono_start=mono_start,
-            snapshot_mode="remove-root",
+            snapshot_mode="remove",
             manifest=manifest,
         )
 
