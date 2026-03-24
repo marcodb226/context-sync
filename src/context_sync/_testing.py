@@ -8,7 +8,7 @@ extend instead of inventing one-off mocks per ticket.  It provides:
   backed by pre-loaded :class:`TicketBundle` objects.
 * :func:`make_issue` — a builder that constructs a :class:`TicketBundle` with
   sensible defaults so tests only specify the fields they care about.
-* :func:`make_syncer` — a factory that wires a :class:`FakeLinearGateway`
+* :func:`make_context_sync` — a factory that wires a :class:`FakeLinearGateway`
   into a :class:`ContextSync` for use in integration tests.
 """
 
@@ -121,7 +121,7 @@ class FakeLinearGateway:
     In-memory :class:`LinearGateway` for testing without live Linear access.
 
     Pre-load issues with :meth:`add_issue`, then pass this gateway to
-    :func:`make_syncer` or directly to ``ContextSync(...,
+    :func:`make_context_sync` or directly to ``ContextSync(...,
     _gateway_override=...)``.
 
     The fake resolves issue lookups by both UUID and issue key.  All batch
@@ -275,11 +275,11 @@ def make_manifest(
 
 
 # ---------------------------------------------------------------------------
-# Syncer factory for tests
+# ContextSync factory for tests
 # ---------------------------------------------------------------------------
 
 
-def make_syncer(
+def make_context_sync(
     *,
     context_dir: Path | str | None = None,
     gateway: FakeLinearGateway | None = None,

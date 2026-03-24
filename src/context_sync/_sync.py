@@ -1439,15 +1439,12 @@ class ContextSync:
         # -- Resolve UUID through manifest --------------------------------------
         resolved_uuid = _resolve_ref_to_uuid(normalized_ref, manifest)
         if resolved_uuid is None:
-            raise RootNotInManifestError(
-                f"Cannot resolve {key!r} to a ticket in the manifest"
-            )
+            raise RootNotInManifestError(f"Cannot resolve {key!r} to a ticket in the manifest")
 
         # -- Verify UUID is in root set -----------------------------------------
         if resolved_uuid not in manifest.roots:
             raise RootNotInManifestError(
-                f"Ticket {key!r} (UUID {resolved_uuid}) is tracked "
-                f"but is not in the root set"
+                f"Ticket {key!r} (UUID {resolved_uuid}) is tracked but is not in the root set"
             )
 
         # -- Remove UUID from root set ------------------------------------------

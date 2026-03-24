@@ -204,18 +204,18 @@ async def _run_sync(
     from context_sync._sync import ContextSync
 
     if _gateway_override is not None:
-        syncer = ContextSync(
+        ctx = ContextSync(
             context_dir=Path(args.context_dir),
             _gateway_override=_gateway_override,
         )
     else:
         linear = _create_linear_client()
-        syncer = ContextSync(
+        ctx = ContextSync(
             linear=linear,
             context_dir=Path(args.context_dir),
         )
-    result = await syncer.sync(
-        key=args.root_ticket,
+    result = await ctx.sync(
+        key=args.ticket,
         max_tickets_per_root=args.max_tickets_per_root,
         dimensions=_build_dimensions(args),
     )
@@ -233,17 +233,17 @@ async def _run_refresh(
     from context_sync._sync import ContextSync
 
     if _gateway_override is not None:
-        syncer = ContextSync(
+        ctx = ContextSync(
             context_dir=Path(args.context_dir),
             _gateway_override=_gateway_override,
         )
     else:
         linear = _create_linear_client()
-        syncer = ContextSync(
+        ctx = ContextSync(
             linear=linear,
             context_dir=Path(args.context_dir),
         )
-    result = await syncer.refresh(missing_root_policy=args.missing_root_policy)
+    result = await ctx.refresh(missing_root_policy=args.missing_root_policy)
     text = _format_sync_result_text(result)
     _emit(text, asdict(result), use_json=args.json)
     return EXIT_SUCCESS
@@ -258,17 +258,17 @@ async def _run_add(
     from context_sync._sync import ContextSync
 
     if _gateway_override is not None:
-        syncer = ContextSync(
+        ctx = ContextSync(
             context_dir=Path(args.context_dir),
             _gateway_override=_gateway_override,
         )
     else:
         linear = _create_linear_client()
-        syncer = ContextSync(
+        ctx = ContextSync(
             linear=linear,
             context_dir=Path(args.context_dir),
         )
-    result = await syncer.add(key=args.ticket_ref)
+    result = await ctx.add(key=args.ticket)
     text = _format_sync_result_text(result)
     _emit(text, asdict(result), use_json=args.json)
     return EXIT_SUCCESS
@@ -283,17 +283,17 @@ async def _run_remove_root(
     from context_sync._sync import ContextSync
 
     if _gateway_override is not None:
-        syncer = ContextSync(
+        ctx = ContextSync(
             context_dir=Path(args.context_dir),
             _gateway_override=_gateway_override,
         )
     else:
         linear = _create_linear_client()
-        syncer = ContextSync(
+        ctx = ContextSync(
             linear=linear,
             context_dir=Path(args.context_dir),
         )
-    result = await syncer.remove_root(key=args.ticket_ref)
+    result = await ctx.remove_root(key=args.ticket)
     text = _format_sync_result_text(result)
     _emit(text, asdict(result), use_json=args.json)
     return EXIT_SUCCESS
@@ -308,17 +308,17 @@ async def _run_diff(
     from context_sync._sync import ContextSync
 
     if _gateway_override is not None:
-        syncer = ContextSync(
+        ctx = ContextSync(
             context_dir=Path(args.context_dir),
             _gateway_override=_gateway_override,
         )
     else:
         linear = _create_linear_client()
-        syncer = ContextSync(
+        ctx = ContextSync(
             linear=linear,
             context_dir=Path(args.context_dir),
         )
-    result = await syncer.diff()
+    result = await ctx.diff()
     text = _format_diff_result_text(result)
     _emit(text, asdict(result), use_json=args.json)
     return EXIT_SUCCESS
@@ -410,8 +410,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="Full-snapshot sync from a root ticket.",
     )
     sync_parser.add_argument(
-        "root_ticket",
-        help="Issue key or Linear URL of the root ticket.",
+        "ticket",
+        help="Issue key or Linear URL of the ticket to track.",
     )
     sync_parser.add_argument(
         "--max-tickets-per-root",
@@ -442,7 +442,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Add a new root ticket and refresh the snapshot.",
     )
     add_parser.add_argument(
-        "ticket_ref",
+        "ticket",
         help="Issue key or Linear URL of the ticket to add as root.",
     )
     _add_common_args(add_parser)
@@ -453,7 +453,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Remove a root ticket and refresh the snapshot.",
     )
     remove_root_parser.add_argument(
-        "ticket_ref",
+        "ticket",
         help="Issue key or Linear URL of the root to remove.",
     )
     _add_common_args(remove_root_parser)

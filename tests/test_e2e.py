@@ -2,7 +2,7 @@
 Library pipeline and component tests for all major modes (M4-2).
 
 These tests exercise the library pipeline through private CLI handler functions
-(``_run_sync``, ``_run_refresh``, etc.) and directly via ``make_syncer()`` with
+(``_run_sync``, ``_run_refresh``, etc.) and directly via ``make_context_sync()`` with
 a :class:`FakeLinearGateway`.  They do **not** exercise ``main()``,
 ``build_parser()``, or the installed console-script entry point — those are
 covered by :mod:`test_cli`.
@@ -34,7 +34,7 @@ from context_sync._cli import (
 from context_sync._config import DEFAULT_MAX_TICKETS_PER_ROOT, Dimension
 from context_sync._gateway import RelationData
 from context_sync._manifest import load_manifest
-from context_sync._testing import FakeLinearGateway, make_issue, make_syncer
+from context_sync._testing import FakeLinearGateway, make_context_sync, make_issue
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -47,8 +47,7 @@ def _make_args(**overrides: object) -> object:
 
     defaults = {
         "context_dir": ".",
-        "root_ticket": None,
-        "ticket_ref": None,
+        "ticket": None,
         "max_tickets_per_root": DEFAULT_MAX_TICKETS_PER_ROOT,
         "missing_root_policy": "quarantine",
         "json": False,
@@ -94,7 +93,7 @@ class TestFullCycleE2E:
         self, context_dir: Path, gateway: FakeLinearGateway
     ) -> None:
         """Sync materializes root and child ticket files."""
-        args = _make_args(context_dir=str(context_dir), root_ticket="PROJ-1")
+        args = _make_args(context_dir=str(context_dir), ticket="PROJ-1")
         code = await _run_sync(args, _gateway_override=gateway)
         assert code == EXIT_SUCCESS
         assert (context_dir / "PROJ-1.md").is_file()
@@ -110,7 +109,7 @@ class TestFullCycleE2E:
     ) -> None:
         """Refresh with unchanged upstream produces no rewrites."""
         # Bootstrap
-        args = _make_args(context_dir=str(context_dir), root_ticket="PROJ-1")
+        args = _make_args(context_dir=str(context_dir), ticket="PROJ-1")
         await _run_sync(args, _gateway_override=gateway)
 
         # Record mtimes
@@ -131,7 +130,7 @@ class TestFullCycleE2E:
     ) -> None:
         """Diff classifies a fresh snapshot as current."""
         # Bootstrap
-        args = _make_args(context_dir=str(context_dir), root_ticket="PROJ-1")
+        args = _make_args(context_dir=str(context_dir), ticket="PROJ-1")
         await _run_sync(args, _gateway_override=gateway)
 
         # Diff
@@ -144,11 +143,11 @@ class TestFullCycleE2E:
         gateway.add_issue(make_issue(issue_id="uuid-new", issue_key="PROJ-3", title="New Root"))
 
         # Bootstrap with first root
-        args = _make_args(context_dir=str(context_dir), root_ticket="PROJ-1")
+        args = _make_args(context_dir=str(context_dir), ticket="PROJ-1")
         await _run_sync(args, _gateway_override=gateway)
 
         # Add second root
-        args = _make_args(context_dir=str(context_dir), ticket_ref="PROJ-3")
+        args = _make_args(context_dir=str(context_dir), ticket="PROJ-3")
         code = await _run_add(args, _gateway_override=gateway)
         assert code == EXIT_SUCCESS
         assert (context_dir / "PROJ-3.md").is_file()
@@ -159,12 +158,12 @@ class TestFullCycleE2E:
     async def test_remove_root_prunes(self, context_dir: Path, gateway: FakeLinearGateway) -> None:
         """remove-root drops the root and prunes its unreachable children."""
         # Bootstrap
-        args = _make_args(context_dir=str(context_dir), root_ticket="PROJ-1")
+        args = _make_args(context_dir=str(context_dir), ticket="PROJ-1")
         await _run_sync(args, _gateway_override=gateway)
         assert (context_dir / "PROJ-2.md").is_file()
 
         # Remove the only root
-        args = _make_args(context_dir=str(context_dir), ticket_ref="PROJ-1")
+        args = _make_args(context_dir=str(context_dir), ticket="PROJ-1")
         code = await _run_remove_root(args, _gateway_override=gateway)
         assert code == EXIT_SUCCESS
 
@@ -195,9 +194,9 @@ class TestLoggingContract:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         """Sync emits INFO logs for started and completed with counts."""
-        syncer = make_syncer(gateway=gateway, context_dir=context_dir)
+        ctx = make_context_sync(gateway=gateway, context_dir=context_dir)
         with caplog.at_level(logging.INFO, logger="context_sync"):
-            await syncer.sync(key="LOG-1")
+            await ctx.sync(key="LOG-1")
 
         log_text = caplog.text
         assert "sync: started" in log_text
@@ -216,12 +215,12 @@ class TestLoggingContract:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         """Refresh emits INFO logs for started and completed with counts."""
-        syncer = make_syncer(gateway=gateway, context_dir=context_dir)
-        await syncer.sync(key="LOG-1")
+        ctx = make_context_sync(gateway=gateway, context_dir=context_dir)
+        await ctx.sync(key="LOG-1")
 
         caplog.clear()
         with caplog.at_level(logging.INFO, logger="context_sync"):
-            await syncer.refresh()
+            await ctx.refresh()
 
         log_text = caplog.text
         assert "started" in log_text
@@ -238,12 +237,12 @@ class TestLoggingContract:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         """Diff emits INFO logs for started and completed with counts."""
-        syncer = make_syncer(gateway=gateway, context_dir=context_dir)
-        await syncer.sync(key="LOG-1")
+        ctx = make_context_sync(gateway=gateway, context_dir=context_dir)
+        await ctx.sync(key="LOG-1")
 
         caplog.clear()
         with caplog.at_level(logging.INFO, logger="context_sync"):
-            await syncer.diff()
+            await ctx.diff()
 
         log_text = caplog.text
         assert "diff: started" in log_text
@@ -258,12 +257,12 @@ class TestLoggingContract:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         """Refresh emits DEBUG logs for per-ticket fresh/stale decisions."""
-        syncer = make_syncer(gateway=gateway, context_dir=context_dir)
-        await syncer.sync(key="LOG-1")
+        ctx = make_context_sync(gateway=gateway, context_dir=context_dir)
+        await ctx.sync(key="LOG-1")
 
         caplog.clear()
         with caplog.at_level(logging.DEBUG, logger="context_sync"):
-            await syncer.refresh()
+            await ctx.refresh()
 
         log_text = caplog.text
         # Ticket should be fresh (unchanged upstream).
@@ -276,10 +275,10 @@ class TestLoggingContract:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         """Lock acquisition emits a DEBUG log."""
-        syncer = make_syncer(gateway=gateway, context_dir=context_dir)
+        ctx = make_context_sync(gateway=gateway, context_dir=context_dir)
 
         with caplog.at_level(logging.DEBUG, logger="context_sync"):
-            await syncer.sync(key="LOG-1")
+            await ctx.sync(key="LOG-1")
 
         log_text = caplog.text
         assert "Lock acquired cleanly" in log_text
@@ -306,7 +305,7 @@ class TestJsonOutputE2E:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """Sync with --json produces valid JSON on stdout."""
-        args = _make_args(context_dir=str(context_dir), root_ticket="JSON-1", json=True)
+        args = _make_args(context_dir=str(context_dir), ticket="JSON-1", json=True)
         code = await _run_sync(args, _gateway_override=gateway)
         assert code == EXIT_SUCCESS
 
@@ -322,8 +321,8 @@ class TestJsonOutputE2E:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """Diff with --json produces valid JSON on stdout."""
-        syncer = make_syncer(gateway=gateway, context_dir=context_dir)
-        await syncer.sync(key="JSON-1")
+        ctx = make_context_sync(gateway=gateway, context_dir=context_dir)
+        await ctx.sync(key="JSON-1")
 
         args = _make_args(context_dir=str(context_dir), json=True)
         code = await _run_diff(args, _gateway_override=gateway)
@@ -360,11 +359,11 @@ class TestMultiRootE2E:
         gw.add_issue(make_issue(issue_id="uuid-c", issue_key="MR-C", title="Shared"))
 
         # Sync root A
-        args = _make_args(context_dir=str(context_dir), root_ticket="MR-A")
+        args = _make_args(context_dir=str(context_dir), ticket="MR-A")
         await _run_sync(args, _gateway_override=gw)
 
         # Add root B
-        args = _make_args(context_dir=str(context_dir), ticket_ref="MR-B")
+        args = _make_args(context_dir=str(context_dir), ticket="MR-B")
         code = await _run_add(args, _gateway_override=gw)
         assert code == EXIT_SUCCESS
 
@@ -381,14 +380,14 @@ class TestMultiRootE2E:
         gw.add_issue(make_issue(issue_id="uuid-q", issue_key="QR-1", title="Unstable"))
 
         # Sync
-        syncer = make_syncer(gateway=gw, context_dir=context_dir)
-        await syncer.sync(key="QR-1")
+        ctx = make_context_sync(gateway=gw, context_dir=context_dir)
+        await ctx.sync(key="QR-1")
 
         # Make root invisible
         gw.hide_issue("uuid-q")
 
         # Refresh — root should be quarantined
-        await syncer.refresh(missing_root_policy="quarantine")
+        await ctx.refresh(missing_root_policy="quarantine")
         manifest = load_manifest(context_dir)
         assert manifest.roots["uuid-q"].state == "quarantined"
 
@@ -396,7 +395,7 @@ class TestMultiRootE2E:
         gw.unhide_issue("uuid-q")
 
         # Refresh again — root should recover
-        await syncer.refresh(missing_root_policy="quarantine")
+        await ctx.refresh(missing_root_policy="quarantine")
         manifest = load_manifest(context_dir)
         assert manifest.roots["uuid-q"].state == "active"
 
@@ -414,11 +413,11 @@ class TestIdempotency:
         gw = FakeLinearGateway()
         gw.add_issue(make_issue(issue_id="uuid-idem", issue_key="IDEM-1"))
 
-        syncer = make_syncer(gateway=gw, context_dir=context_dir)
-        r1 = await syncer.sync(key="IDEM-1")
+        ctx = make_context_sync(gateway=gw, context_dir=context_dir)
+        r1 = await ctx.sync(key="IDEM-1")
         assert "IDEM-1" in r1.created
 
-        r2 = await syncer.sync(key="IDEM-1")
+        r2 = await ctx.sync(key="IDEM-1")
         assert "IDEM-1" in r2.unchanged
         assert len(r2.created) == 0
         assert len(r2.updated) == 0
@@ -428,10 +427,10 @@ class TestIdempotency:
         gw = FakeLinearGateway()
         gw.add_issue(make_issue(issue_id="uuid-ref", issue_key="REF-1"))
 
-        syncer = make_syncer(gateway=gw, context_dir=context_dir)
-        await syncer.sync(key="REF-1")
+        ctx = make_context_sync(gateway=gw, context_dir=context_dir)
+        await ctx.sync(key="REF-1")
 
-        result = await syncer.refresh()
+        result = await ctx.refresh()
         assert "REF-1" in result.unchanged
         assert len(result.created) == 0
         assert len(result.updated) == 0

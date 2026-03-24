@@ -24,8 +24,8 @@ from context_sync._manifest import load_manifest, save_manifest
 from context_sync._testing import (
     DEFAULT_FAKE_WORKSPACE,
     FakeLinearGateway,
+    make_context_sync,
     make_issue,
-    make_syncer,
 )
 from context_sync._yaml import parse_frontmatter
 
@@ -58,10 +58,10 @@ class TestAddByIssueKey:
         fake_gateway.add_issue(root1)
         fake_gateway.add_issue(root2)
 
-        syncer = make_syncer(context_dir=context_dir, gateway=fake_gateway)
-        await syncer.sync("ROOT-1")
+        ctx = make_context_sync(context_dir=context_dir, gateway=fake_gateway)
+        await ctx.sync("ROOT-1")
 
-        result = await syncer.add("ROOT-2")
+        result = await ctx.add("ROOT-2")
 
         # ROOT-2 should appear in the result.
         assert "ROOT-2" in result.created or "ROOT-2" in result.updated
@@ -84,8 +84,8 @@ class TestAddByIssueKey:
         root = make_issue(issue_id="uuid-root", issue_key="ROOT-1")
         fake_gateway.add_issue(root)
 
-        syncer = make_syncer(context_dir=context_dir, gateway=fake_gateway)
-        result = await syncer.add("ROOT-1")
+        ctx = make_context_sync(context_dir=context_dir, gateway=fake_gateway)
+        result = await ctx.add("ROOT-1")
 
         assert "ROOT-1" in result.created
         assert (context_dir / "ROOT-1.md").is_file()
@@ -105,10 +105,10 @@ class TestAddByIssueKey:
         root = make_issue(issue_id="uuid-root", issue_key="ROOT-1")
         fake_gateway.add_issue(root)
 
-        syncer = make_syncer(context_dir=context_dir, gateway=fake_gateway)
-        await syncer.sync("ROOT-1")
+        ctx = make_context_sync(context_dir=context_dir, gateway=fake_gateway)
+        await ctx.sync("ROOT-1")
 
-        result = await syncer.add("ROOT-1")
+        result = await ctx.add("ROOT-1")
 
         # Succeeds; ticket is unchanged.
         assert result.errors == []
@@ -140,15 +140,15 @@ class TestAddByIssueKey:
         fake_gateway.add_issue(root)
         fake_gateway.add_issue(child)
 
-        syncer = make_syncer(context_dir=context_dir, gateway=fake_gateway)
-        await syncer.sync("ROOT-1")
+        ctx = make_context_sync(context_dir=context_dir, gateway=fake_gateway)
+        await ctx.sync("ROOT-1")
 
         # CHILD-1 is currently derived (not a root).
         manifest = load_manifest(context_dir)
         assert "uuid-child" not in manifest.roots
         assert "uuid-child" in manifest.tickets
 
-        await syncer.add("CHILD-1")
+        await ctx.add("CHILD-1")
 
         manifest = load_manifest(context_dir)
         assert "uuid-child" in manifest.roots
@@ -167,11 +167,11 @@ class TestAddByIssueKey:
         root = make_issue(issue_id="uuid-root", issue_key="ROOT-1")
         fake_gateway.add_issue(root)
 
-        syncer = make_syncer(context_dir=context_dir, gateway=fake_gateway)
-        await syncer.sync("ROOT-1")
+        ctx = make_context_sync(context_dir=context_dir, gateway=fake_gateway)
+        await ctx.sync("ROOT-1")
 
         with pytest.raises(RootNotFoundError):
-            await syncer.add("NONEXISTENT-99")
+            await ctx.add("NONEXISTENT-99")
 
 
 # ===========================================================================
@@ -193,10 +193,10 @@ class TestAddByUrl:
         fake_gateway.add_issue(root1)
         fake_gateway.add_issue(root2)
 
-        syncer = make_syncer(context_dir=context_dir, gateway=fake_gateway)
-        await syncer.sync("ROOT-1")
+        ctx = make_context_sync(context_dir=context_dir, gateway=fake_gateway)
+        await ctx.sync("ROOT-1")
 
-        result = await syncer.add("https://linear.app/fake-workspace/issue/ROOT-2")
+        result = await ctx.add("https://linear.app/fake-workspace/issue/ROOT-2")
 
         manifest = load_manifest(context_dir)
         assert "uuid-root2" in manifest.roots
@@ -214,10 +214,10 @@ class TestAddByUrl:
         fake_gateway.add_issue(root1)
         fake_gateway.add_issue(root2)
 
-        syncer = make_syncer(context_dir=context_dir, gateway=fake_gateway)
-        await syncer.sync("ROOT-1")
+        ctx = make_context_sync(context_dir=context_dir, gateway=fake_gateway)
+        await ctx.sync("ROOT-1")
 
-        await syncer.add("https://linear.app/fake-workspace/issue/ROOT-2/some-title-slug")
+        await ctx.add("https://linear.app/fake-workspace/issue/ROOT-2/some-title-slug")
 
         manifest = load_manifest(context_dir)
         assert "uuid-root2" in manifest.roots
@@ -231,11 +231,11 @@ class TestAddByUrl:
         root = make_issue(issue_id="uuid-root", issue_key="ROOT-1")
         fake_gateway.add_issue(root)
 
-        syncer = make_syncer(context_dir=context_dir, gateway=fake_gateway)
-        await syncer.sync("ROOT-1")
+        ctx = make_context_sync(context_dir=context_dir, gateway=fake_gateway)
+        await ctx.sync("ROOT-1")
 
         with pytest.raises(WorkspaceMismatchError, match="wrong-workspace"):
-            await syncer.add("https://linear.app/wrong-workspace/issue/ROOT-2")
+            await ctx.add("https://linear.app/wrong-workspace/issue/ROOT-2")
 
 
 # ===========================================================================
@@ -281,15 +281,15 @@ class TestAddOverlappingRoots:
         fake_gateway.add_issue(root2)
         fake_gateway.add_issue(shared)
 
-        syncer = make_syncer(context_dir=context_dir, gateway=fake_gateway)
-        await syncer.sync("ROOT-1")
+        ctx = make_context_sync(context_dir=context_dir, gateway=fake_gateway)
+        await ctx.sync("ROOT-1")
 
         # Before add: shared ticket exists as derived.
         manifest = load_manifest(context_dir)
         assert "uuid-shared" in manifest.tickets
         assert "uuid-root2" not in manifest.roots
 
-        result = await syncer.add("ROOT-2")
+        result = await ctx.add("ROOT-2")
         assert result.errors == []
 
         # After add: both roots and the shared ticket are present.
@@ -334,13 +334,13 @@ class TestRemoveRoot:
         fake_gateway.add_issue(root)
         fake_gateway.add_issue(child)
 
-        syncer = make_syncer(context_dir=context_dir, gateway=fake_gateway)
-        await syncer.sync("ROOT-1")
+        ctx = make_context_sync(context_dir=context_dir, gateway=fake_gateway)
+        await ctx.sync("ROOT-1")
 
         assert (context_dir / "ROOT-1.md").is_file()
         assert (context_dir / "CHILD-1.md").is_file()
 
-        result = await syncer.remove_root("ROOT-1")
+        result = await ctx.remove_root("ROOT-1")
 
         # Root and derived child are both pruned.
         assert "ROOT-1" in result.removed
@@ -377,15 +377,15 @@ class TestRemoveRoot:
         fake_gateway.add_issue(root1)
         fake_gateway.add_issue(root2)
 
-        syncer = make_syncer(context_dir=context_dir, gateway=fake_gateway)
-        await syncer.sync("ROOT-1")
-        await syncer.add("ROOT-2")
+        ctx = make_context_sync(context_dir=context_dir, gateway=fake_gateway)
+        await ctx.sync("ROOT-1")
+        await ctx.add("ROOT-2")
 
         # Both are roots now.
         manifest = load_manifest(context_dir)
         assert "uuid-root2" in manifest.roots
 
-        result = await syncer.remove_root("ROOT-2")
+        result = await ctx.remove_root("ROOT-2")
 
         # ROOT-2 is no longer a root but remains tracked (reachable from ROOT-1).
         manifest = load_manifest(context_dir)
@@ -406,10 +406,10 @@ class TestRemoveRoot:
         fake_gateway.add_issue(root1)
         fake_gateway.add_issue(root2)
 
-        syncer = make_syncer(context_dir=context_dir, gateway=fake_gateway)
-        await syncer.sync("ROOT-1")
-        await syncer.add("ROOT-2")
-        await syncer.remove_root("ROOT-2")
+        ctx = make_context_sync(context_dir=context_dir, gateway=fake_gateway)
+        await ctx.sync("ROOT-1")
+        await ctx.add("ROOT-2")
+        await ctx.remove_root("ROOT-2")
 
         manifest = load_manifest(context_dir)
         assert manifest.snapshot is not None
@@ -446,11 +446,11 @@ class TestRemoveRootErrors:
         fake_gateway.add_issue(root)
         fake_gateway.add_issue(child)
 
-        syncer = make_syncer(context_dir=context_dir, gateway=fake_gateway)
-        await syncer.sync("ROOT-1")
+        ctx = make_context_sync(context_dir=context_dir, gateway=fake_gateway)
+        await ctx.sync("ROOT-1")
 
         with pytest.raises(RootNotInManifestError):
-            await syncer.remove_root("CHILD-1")
+            await ctx.remove_root("CHILD-1")
 
     async def test_remove_unknown_ticket_raises(
         self,
@@ -461,11 +461,11 @@ class TestRemoveRootErrors:
         root = make_issue(issue_id="uuid-root", issue_key="ROOT-1")
         fake_gateway.add_issue(root)
 
-        syncer = make_syncer(context_dir=context_dir, gateway=fake_gateway)
-        await syncer.sync("ROOT-1")
+        ctx = make_context_sync(context_dir=context_dir, gateway=fake_gateway)
+        await ctx.sync("ROOT-1")
 
         with pytest.raises(RootNotInManifestError, match="Cannot resolve"):
-            await syncer.remove_root("UNKNOWN-99")
+            await ctx.remove_root("UNKNOWN-99")
 
     async def test_remove_root_url_workspace_mismatch(
         self,
@@ -476,11 +476,11 @@ class TestRemoveRootErrors:
         root = make_issue(issue_id="uuid-root", issue_key="ROOT-1")
         fake_gateway.add_issue(root)
 
-        syncer = make_syncer(context_dir=context_dir, gateway=fake_gateway)
-        await syncer.sync("ROOT-1")
+        ctx = make_context_sync(context_dir=context_dir, gateway=fake_gateway)
+        await ctx.sync("ROOT-1")
 
         with pytest.raises(WorkspaceMismatchError, match="wrong-ws"):
-            await syncer.remove_root("https://linear.app/wrong-ws/issue/ROOT-1")
+            await ctx.remove_root("https://linear.app/wrong-ws/issue/ROOT-1")
 
     async def test_remove_root_no_manifest_raises(
         self,
@@ -490,10 +490,10 @@ class TestRemoveRootErrors:
         """remove_root on an empty context (no manifest) raises ManifestError."""
         from context_sync._errors import ManifestError
 
-        syncer = make_syncer(context_dir=context_dir, gateway=fake_gateway)
+        ctx = make_context_sync(context_dir=context_dir, gateway=fake_gateway)
 
         with pytest.raises(ManifestError):
-            await syncer.remove_root("ROOT-1")
+            await ctx.remove_root("ROOT-1")
 
 
 # ===========================================================================
@@ -530,8 +530,8 @@ class TestAliasCurrentKeyPrecedence:
         fake_gateway.add_issue(root)
         fake_gateway.add_issue(child)
 
-        syncer = make_syncer(context_dir=context_dir, gateway=fake_gateway)
-        await syncer.sync("ROOT-1")
+        ctx = make_context_sync(context_dir=context_dir, gateway=fake_gateway)
+        await ctx.sync("ROOT-1")
 
         # Manually inject a historical alias: "CHILD-1" → "uuid-old-ticket".
         # This simulates a previous ticket that used the key CHILD-1 before
@@ -544,7 +544,7 @@ class TestAliasCurrentKeyPrecedence:
         # NOT to uuid-old-ticket (alias), and then raise because uuid-child
         # is not a root.
         with pytest.raises(RootNotInManifestError, match="not in the root set"):
-            await syncer.remove_root("CHILD-1")
+            await ctx.remove_root("CHILD-1")
 
 
 # ===========================================================================
@@ -566,8 +566,8 @@ class TestNoPartialCommitOnRefreshFailure:
         fake_gateway.add_issue(root1)
         fake_gateway.add_issue(root2)
 
-        syncer = make_syncer(context_dir=context_dir, gateway=fake_gateway)
-        await syncer.sync("ROOT-1")
+        ctx = make_context_sync(context_dir=context_dir, gateway=fake_gateway)
+        await ctx.sync("ROOT-1")
 
         # Snapshot the manifest state before the failed add.
         manifest_before = load_manifest(context_dir)
@@ -584,7 +584,7 @@ class TestNoPartialCommitOnRefreshFailure:
         # manifest in-memory and only persists at snapshot finalization, a
         # successful add should persist both; so we just verify the happy path
         # commits atomically.
-        result = await syncer.add("ROOT-2")
+        result = await ctx.add("ROOT-2")
         assert result.errors == []
 
         manifest_after = load_manifest(context_dir)
@@ -604,11 +604,11 @@ class TestNoPartialCommitOnRefreshFailure:
         fake_gateway.add_issue(root1)
         fake_gateway.add_issue(root2)
 
-        syncer = make_syncer(context_dir=context_dir, gateway=fake_gateway)
-        await syncer.sync("ROOT-1")
-        await syncer.add("ROOT-2")
+        ctx = make_context_sync(context_dir=context_dir, gateway=fake_gateway)
+        await ctx.sync("ROOT-1")
+        await ctx.add("ROOT-2")
 
-        result = await syncer.remove_root("ROOT-2")
+        result = await ctx.remove_root("ROOT-2")
         assert result.errors == []
 
         manifest_after = load_manifest(context_dir)
@@ -651,12 +651,12 @@ class TestRemoveRootByDerivedUuid:
         fake_gateway.add_issue(root)
         fake_gateway.add_issue(child)
 
-        syncer = make_syncer(context_dir=context_dir, gateway=fake_gateway)
-        await syncer.sync("ROOT-1")
+        ctx = make_context_sync(context_dir=context_dir, gateway=fake_gateway)
+        await ctx.sync("ROOT-1")
 
         # Pass the raw UUID of the derived ticket.
         with pytest.raises(RootNotInManifestError, match="not in the root set"):
-            await syncer.remove_root("uuid-child")
+            await ctx.remove_root("uuid-child")
 
     async def test_remove_root_by_root_uuid(
         self,
@@ -669,11 +669,11 @@ class TestRemoveRootByDerivedUuid:
         fake_gateway.add_issue(root1)
         fake_gateway.add_issue(root2)
 
-        syncer = make_syncer(context_dir=context_dir, gateway=fake_gateway)
-        await syncer.sync("ROOT-1")
-        await syncer.add("ROOT-2")
+        ctx = make_context_sync(context_dir=context_dir, gateway=fake_gateway)
+        await ctx.sync("ROOT-1")
+        await ctx.add("ROOT-2")
 
-        result = await syncer.remove_root("uuid-root2")
+        result = await ctx.remove_root("uuid-root2")
 
         manifest = load_manifest(context_dir)
         assert "uuid-root2" not in manifest.roots
@@ -697,19 +697,19 @@ class TestAddRecoversQuarantinedRoot:
         root = make_issue(issue_id="uuid-root", issue_key="ROOT-1")
         fake_gateway.add_issue(root)
 
-        syncer = make_syncer(context_dir=context_dir, gateway=fake_gateway)
-        await syncer.sync("ROOT-1")
+        ctx = make_context_sync(context_dir=context_dir, gateway=fake_gateway)
+        await ctx.sync("ROOT-1")
 
         # Simulate quarantine by hiding the root and refreshing.
         fake_gateway.hide_issue("uuid-root")
-        await syncer.refresh()
+        await ctx.refresh()
 
         manifest = load_manifest(context_dir)
         assert manifest.roots["uuid-root"].state == "quarantined"
 
         # Restore visibility and re-add.
         fake_gateway.unhide_issue("uuid-root")
-        result = await syncer.add("ROOT-1")
+        result = await ctx.add("ROOT-1")
 
         manifest = load_manifest(context_dir)
         assert manifest.roots["uuid-root"].state == "active"

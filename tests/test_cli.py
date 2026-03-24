@@ -80,7 +80,7 @@ class TestParserConstruction:
             parser.parse_args([])
         assert exc_info.value.code == 2
 
-    def test_sync_requires_root_ticket(self) -> None:
+    def test_sync_requires_ticket(self) -> None:
         """``sync`` without a root ticket should fail."""
         parser = build_parser()
         with pytest.raises(SystemExit) as exc_info:
@@ -106,7 +106,7 @@ class TestParserConstruction:
             ]
         )
         assert args.command == "sync"
-        assert args.root_ticket == "ACP-123"
+        assert args.ticket == "ACP-123"
         assert args.context_dir == "/tmp/ctx"
         assert args.max_tickets_per_root == 50
         assert args.depth_blocks == 5
@@ -127,7 +127,7 @@ class TestParserConstruction:
         args = parser.parse_args(["refresh", "--missing-root-policy", "remove"])
         assert args.missing_root_policy == "remove"
 
-    def test_add_requires_ticket_ref(self) -> None:
+    def test_add_requires_ticket(self) -> None:
         """``add`` without a ticket ref should fail."""
         parser = build_parser()
         with pytest.raises(SystemExit) as exc_info:
@@ -139,10 +139,10 @@ class TestParserConstruction:
         parser = build_parser()
         args = parser.parse_args(["add", "ACP-999", "--context-dir", "my-ctx"])
         assert args.command == "add"
-        assert args.ticket_ref == "ACP-999"
+        assert args.ticket == "ACP-999"
         assert args.context_dir == "my-ctx"
 
-    def test_remove_root_requires_ticket_ref(self) -> None:
+    def test_remove_root_requires_ticket(self) -> None:
         """``remove-root`` without a ticket ref should fail."""
         parser = build_parser()
         with pytest.raises(SystemExit) as exc_info:
@@ -154,7 +154,7 @@ class TestParserConstruction:
         parser = build_parser()
         args = parser.parse_args(["remove-root", "ACP-100"])
         assert args.command == "remove-root"
-        assert args.ticket_ref == "ACP-100"
+        assert args.ticket == "ACP-100"
 
     def test_diff_defaults(self) -> None:
         """``diff`` with no extra flags uses defaults."""
@@ -585,7 +585,7 @@ class TestHandlerIntegration:
         fake_gateway.add_issue(make_issue(issue_id="uuid-1", issue_key="TEST-1"))
         args = _make_args(
             context_dir=str(context_dir),
-            root_ticket="TEST-1",
+            ticket="TEST-1",
             max_tickets_per_root=200,
             # No depth overrides — all default to None.
             **{f"depth_{d.value.replace('-', '_')}": None for d in Dimension},
@@ -600,10 +600,10 @@ class TestHandlerIntegration:
         """``_run_refresh`` completes against an existing snapshot."""
         fake_gateway.add_issue(make_issue(issue_id="uuid-1", issue_key="TEST-1"))
         # Bootstrap via sync first.
-        from context_sync._testing import make_syncer
+        from context_sync._testing import make_context_sync
 
-        syncer = make_syncer(gateway=fake_gateway, context_dir=context_dir)
-        await syncer.sync(key="TEST-1")
+        ctx = make_context_sync(gateway=fake_gateway, context_dir=context_dir)
+        await ctx.sync(key="TEST-1")
 
         args = _make_args(
             context_dir=str(context_dir),
@@ -619,7 +619,7 @@ class TestHandlerIntegration:
         fake_gateway.add_issue(make_issue(issue_id="uuid-1", issue_key="TEST-1"))
         args = _make_args(
             context_dir=str(context_dir),
-            ticket_ref="TEST-1",
+            ticket="TEST-1",
         )
         code = await _run_add(args, _gateway_override=fake_gateway)
         assert code == EXIT_SUCCESS
@@ -630,14 +630,14 @@ class TestHandlerIntegration:
     ) -> None:
         """``_run_remove_root`` removes a root via the library layer."""
         fake_gateway.add_issue(make_issue(issue_id="uuid-1", issue_key="TEST-1"))
-        from context_sync._testing import make_syncer
+        from context_sync._testing import make_context_sync
 
-        syncer = make_syncer(gateway=fake_gateway, context_dir=context_dir)
-        await syncer.sync(key="TEST-1")
+        ctx = make_context_sync(gateway=fake_gateway, context_dir=context_dir)
+        await ctx.sync(key="TEST-1")
 
         args = _make_args(
             context_dir=str(context_dir),
-            ticket_ref="TEST-1",
+            ticket="TEST-1",
         )
         code = await _run_remove_root(args, _gateway_override=fake_gateway)
         assert code == EXIT_SUCCESS
@@ -647,10 +647,10 @@ class TestHandlerIntegration:
     ) -> None:
         """``_run_diff`` returns entries via the library layer."""
         fake_gateway.add_issue(make_issue(issue_id="uuid-1", issue_key="TEST-1"))
-        from context_sync._testing import make_syncer
+        from context_sync._testing import make_context_sync
 
-        syncer = make_syncer(gateway=fake_gateway, context_dir=context_dir)
-        await syncer.sync(key="TEST-1")
+        ctx = make_context_sync(gateway=fake_gateway, context_dir=context_dir)
+        await ctx.sync(key="TEST-1")
 
         args = _make_args(context_dir=str(context_dir))
         code = await _run_diff(args, _gateway_override=fake_gateway)
@@ -666,7 +666,7 @@ class TestHandlerIntegration:
         fake_gateway.add_issue(make_issue(issue_id="uuid-1", issue_key="TEST-1"))
         args = _make_args(
             context_dir=str(context_dir),
-            root_ticket="TEST-1",
+            ticket="TEST-1",
             max_tickets_per_root=200,
             json=True,
             **{f"depth_{d.value.replace('-', '_')}": None for d in Dimension},

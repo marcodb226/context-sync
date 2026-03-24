@@ -26,8 +26,8 @@ from context_sync._manifest import load_manifest
 from context_sync._testing import (
     DEFAULT_FAKE_WORKSPACE,
     FakeLinearGateway,
+    make_context_sync,
     make_issue,
-    make_syncer,
 )
 
 # ---------------------------------------------------------------------------
@@ -46,49 +46,49 @@ class TestConstructorValidation:
 
     def test_negative_max_tickets(self) -> None:
         with pytest.raises(ValueError, match="max_tickets_per_root"):
-            make_syncer(max_tickets_per_root=0)
+            make_context_sync(max_tickets_per_root=0)
 
     def test_negative_concurrency(self) -> None:
         with pytest.raises(ValueError, match="concurrency_limit"):
-            make_syncer(concurrency_limit=0)
+            make_context_sync(concurrency_limit=0)
 
     def test_invalid_dimension(self) -> None:
         with pytest.raises(ValueError, match="Unknown dimension"):
-            make_syncer(dimensions={"not_real": 1})
+            make_context_sync(dimensions={"not_real": 1})
 
     def test_negative_dimension_depth(self) -> None:
         with pytest.raises(ValueError, match="non-negative"):
-            make_syncer(dimensions={"blocks": -1})
+            make_context_sync(dimensions={"blocks": -1})
 
 
 class TestProperties:
     """Public properties reflect constructor arguments."""
 
     def test_default_dimensions(self) -> None:
-        syncer = make_syncer()
-        assert syncer.dimensions == DEFAULT_DIMENSIONS
+        ctx = make_context_sync()
+        assert ctx.dimensions == DEFAULT_DIMENSIONS
 
     def test_custom_dimensions(self) -> None:
-        syncer = make_syncer(dimensions={"blocks": 5})
-        assert syncer.dimensions["blocks"] == 5
-        assert syncer.dimensions["relates_to"] == 1
+        ctx = make_context_sync(dimensions={"blocks": 5})
+        assert ctx.dimensions["blocks"] == 5
+        assert ctx.dimensions["relates_to"] == 1
 
     def test_context_dir(self, tmp_path: Path) -> None:
-        syncer = make_syncer(context_dir=tmp_path / "ctx")
-        assert syncer.context_dir == tmp_path / "ctx"
+        ctx = make_context_sync(context_dir=tmp_path / "ctx")
+        assert ctx.context_dir == tmp_path / "ctx"
 
     def test_max_tickets_per_root(self) -> None:
-        syncer = make_syncer(max_tickets_per_root=50)
-        assert syncer.max_tickets_per_root == 50
+        ctx = make_context_sync(max_tickets_per_root=50)
+        assert ctx.max_tickets_per_root == 50
 
     def test_concurrency_limit(self) -> None:
-        syncer = make_syncer(concurrency_limit=5)
-        assert syncer.concurrency_limit == 5
+        ctx = make_context_sync(concurrency_limit=5)
+        assert ctx.concurrency_limit == 5
 
     def test_dimensions_returns_copy(self) -> None:
-        syncer = make_syncer()
-        d1 = syncer.dimensions
-        d2 = syncer.dimensions
+        ctx = make_context_sync()
+        d1 = ctx.dimensions
+        d2 = ctx.dimensions
         assert d1 is not d2
 
 
@@ -97,14 +97,14 @@ class TestGatewayOverride:
 
     def test_fake_gateway_accepted(self) -> None:
         gw = FakeLinearGateway()
-        syncer = make_syncer(gateway=gw)
-        assert syncer is not None
+        ctx = make_context_sync(gateway=gw)
+        assert ctx is not None
 
     async def test_fake_gateway_reachable(self) -> None:
         gw = FakeLinearGateway()
         gw.add_issue(make_issue(issue_key="FAKE-1"))
-        syncer = make_syncer(gateway=gw)
-        bundle = await syncer._gateway.fetch_issue("FAKE-1")
+        ctx = make_context_sync(gateway=gw)
+        bundle = await ctx._gateway.fetch_issue("FAKE-1")
         assert bundle.issue.issue_key == "FAKE-1"
 
 
@@ -126,9 +126,9 @@ class TestSyncInitial:
                 title="Root ticket",
             )
         )
-        syncer = make_syncer(gateway=gw, context_dir=tmp_path / "ctx")
+        ctx = make_context_sync(gateway=gw, context_dir=tmp_path / "ctx")
 
-        result = await syncer.sync("PROJ-1")
+        result = await ctx.sync("PROJ-1")
 
         assert result.created == ["PROJ-1"]
         assert result.updated == []
@@ -175,9 +175,9 @@ class TestSyncInitial:
                 title="Child ticket",
             )
         )
-        syncer = make_syncer(gateway=gw, context_dir=tmp_path / "ctx")
+        ctx = make_context_sync(gateway=gw, context_dir=tmp_path / "ctx")
 
-        result = await syncer.sync("PROJ-1")
+        result = await ctx.sync("PROJ-1")
 
         assert sorted(result.created) == ["PROJ-1", "PROJ-2"]
         assert result.updated == []
@@ -197,26 +197,26 @@ class TestSyncInitial:
 
     async def test_creates_context_dir(self, tmp_path: Path) -> None:
         """Sync creates the context directory if it does not exist."""
-        ctx = tmp_path / "nonexistent" / "ctx"
-        assert not ctx.exists()
+        context_dir = tmp_path / "nonexistent" / "ctx"
+        assert not context_dir.exists()
 
         gw = FakeLinearGateway()
         gw.add_issue(make_issue(issue_id="uuid-r", issue_key="NEW-1"))
-        syncer = make_syncer(gateway=gw, context_dir=ctx)
+        ctx = make_context_sync(gateway=gw, context_dir=context_dir)
 
-        result = await syncer.sync("NEW-1")
+        result = await ctx.sync("NEW-1")
 
         assert result.created == ["NEW-1"]
-        assert ctx.is_dir()
-        assert (ctx / "NEW-1.md").is_file()
+        assert context_dir.is_dir()
+        assert (context_dir / "NEW-1.md").is_file()
 
     async def test_root_frontmatter_marks_root_state(self, tmp_path: Path) -> None:
         """Root ticket file includes ``root: true`` and ``root_state: active``."""
         gw = FakeLinearGateway()
         gw.add_issue(make_issue(issue_id="uuid-r", issue_key="R-1"))
-        syncer = make_syncer(gateway=gw, context_dir=tmp_path / "ctx")
+        ctx = make_context_sync(gateway=gw, context_dir=tmp_path / "ctx")
 
-        await syncer.sync("R-1")
+        await ctx.sync("R-1")
 
         content = (tmp_path / "ctx" / "R-1.md").read_text(encoding="utf-8")
         # Extract frontmatter between --- markers.
@@ -243,9 +243,9 @@ class TestSyncInitial:
             )
         )
         gw.add_issue(make_issue(issue_id="uuid-d", issue_key="D-1"))
-        syncer = make_syncer(gateway=gw, context_dir=tmp_path / "ctx")
+        ctx = make_context_sync(gateway=gw, context_dir=tmp_path / "ctx")
 
-        await syncer.sync("R-1")
+        await ctx.sync("R-1")
 
         content = (tmp_path / "ctx" / "D-1.md").read_text(encoding="utf-8")
         parts = content.split("---", maxsplit=2)
@@ -277,13 +277,13 @@ class TestSyncIdempotency:
             )
         )
         gw.add_issue(make_issue(issue_id="uuid-d", issue_key="D-1"))
-        syncer = make_syncer(gateway=gw, context_dir=tmp_path / "ctx")
+        ctx = make_context_sync(gateway=gw, context_dir=tmp_path / "ctx")
 
-        first = await syncer.sync("R-1")
+        first = await ctx.sync("R-1")
         assert sorted(first.created) == ["D-1", "R-1"]
         assert first.updated == []
 
-        second = await syncer.sync("R-1")
+        second = await ctx.sync("R-1")
         assert second.created == []
         assert second.updated == []
         assert sorted(second.unchanged) == ["D-1", "R-1"]
@@ -300,12 +300,12 @@ class TestSyncIdempotency:
                 description="Stable description.",
             )
         )
-        syncer = make_syncer(gateway=gw, context_dir=tmp_path / "ctx")
+        ctx = make_context_sync(gateway=gw, context_dir=tmp_path / "ctx")
 
-        await syncer.sync("STABLE-1")
+        await ctx.sync("STABLE-1")
         first_content = (tmp_path / "ctx" / "STABLE-1.md").read_text(encoding="utf-8")
 
-        await syncer.sync("STABLE-1")
+        await ctx.sync("STABLE-1")
         second_content = (tmp_path / "ctx" / "STABLE-1.md").read_text(encoding="utf-8")
 
         # Extract frontmatter and compare non-timestamp fields.
@@ -343,8 +343,8 @@ class TestSyncWorkspaceValidation:
                 workspace=DEFAULT_FAKE_WORKSPACE,
             )
         )
-        syncer_a = make_syncer(gateway=gw_a, context_dir=ctx)
-        await syncer_a.sync("A-1")
+        ctx_a = make_context_sync(gateway=gw_a, context_dir=ctx)
+        await ctx_a.sync("A-1")
 
         # Attempt sync with a ticket from workspace B.
         other_ws = WorkspaceIdentity(
@@ -359,18 +359,18 @@ class TestSyncWorkspaceValidation:
                 workspace=other_ws,
             )
         )
-        syncer_b = make_syncer(gateway=gw_b, context_dir=ctx)
+        ctx_b = make_context_sync(gateway=gw_b, context_dir=ctx)
 
         with pytest.raises(WorkspaceMismatchError, match="other-workspace"):
-            await syncer_b.sync("B-1")
+            await ctx_b.sync("B-1")
 
     async def test_root_not_found_raises(self, tmp_path: Path) -> None:
         """Sync with a non-existent root ticket raises RootNotFoundError."""
         gw = FakeLinearGateway()
-        syncer = make_syncer(gateway=gw, context_dir=tmp_path / "ctx")
+        ctx = make_context_sync(gateway=gw, context_dir=tmp_path / "ctx")
 
         with pytest.raises(RootNotFoundError):
-            await syncer.sync("MISSING-1")
+            await ctx.sync("MISSING-1")
 
 
 class TestSyncPruning:
@@ -397,9 +397,9 @@ class TestSyncPruning:
             )
         )
         gw.add_issue(make_issue(issue_id="uuid-derived", issue_key="DER-1"))
-        syncer = make_syncer(gateway=gw, context_dir=tmp_path / "ctx")
+        ctx = make_context_sync(gateway=gw, context_dir=tmp_path / "ctx")
 
-        first = await syncer.sync("ROOT-1")
+        first = await ctx.sync("ROOT-1")
         assert sorted(first.created) == ["DER-1", "ROOT-1"]
         assert (tmp_path / "ctx" / "DER-1.md").is_file()
 
@@ -412,7 +412,7 @@ class TestSyncPruning:
             )
         )
 
-        second = await syncer.sync("ROOT-1")
+        second = await ctx.sync("ROOT-1")
         assert second.removed == ["DER-1"]
         assert not (tmp_path / "ctx" / "DER-1.md").exists()
         assert (tmp_path / "ctx" / "ROOT-1.md").is_file()
@@ -426,13 +426,13 @@ class TestSyncPruning:
         """Root tickets are retained even if they have no outgoing relations."""
         gw = FakeLinearGateway()
         gw.add_issue(make_issue(issue_id="uuid-r1", issue_key="R-1"))
-        syncer = make_syncer(gateway=gw, context_dir=tmp_path / "ctx")
+        ctx = make_context_sync(gateway=gw, context_dir=tmp_path / "ctx")
 
-        result = await syncer.sync("R-1")
+        result = await ctx.sync("R-1")
         assert result.created == ["R-1"]
 
         # Re-sync — root should remain, not be pruned.
-        result2 = await syncer.sync("R-1")
+        result2 = await ctx.sync("R-1")
         assert result2.unchanged == ["R-1"]
         assert result2.removed == []
 
@@ -459,14 +459,14 @@ class TestSyncMultiRoot:
             )
         )
         gw.add_issue(make_issue(issue_id="uuid-c1", issue_key="C-1"))
-        syncer = make_syncer(gateway=gw, context_dir=tmp_path / "ctx")
+        ctx = make_context_sync(gateway=gw, context_dir=tmp_path / "ctx")
 
         # First sync with R-1 only.
-        first = await syncer.sync("R-1")
+        first = await ctx.sync("R-1")
         assert first.created == ["R-1"]
 
         # Second sync adds R-2 and its child; R-1 is unchanged.
-        second = await syncer.sync("R-2")
+        second = await ctx.sync("R-2")
         assert sorted(second.created) == ["C-1", "R-2"]
         assert second.updated == []
         assert second.unchanged == ["R-1"]
@@ -485,23 +485,23 @@ class TestSyncLockBehavior:
         """Lock file is removed after a successful sync."""
         gw = FakeLinearGateway()
         gw.add_issue(make_issue(issue_id="uuid-r", issue_key="L-1"))
-        ctx = tmp_path / "ctx"
-        syncer = make_syncer(gateway=gw, context_dir=ctx)
+        context_dir = tmp_path / "ctx"
+        ctx = make_context_sync(gateway=gw, context_dir=context_dir)
 
-        await syncer.sync("L-1")
+        await ctx.sync("L-1")
 
-        assert not (ctx / LOCK_FILENAME).exists()
+        assert not (context_dir / LOCK_FILENAME).exists()
 
     async def test_lock_released_after_failure(self, tmp_path: Path) -> None:
         """Lock file is removed even when sync fails."""
         gw = FakeLinearGateway()
-        ctx = tmp_path / "ctx"
-        syncer = make_syncer(gateway=gw, context_dir=ctx)
+        context_dir = tmp_path / "ctx"
+        ctx = make_context_sync(gateway=gw, context_dir=context_dir)
 
         with pytest.raises(RootNotFoundError):
-            await syncer.sync("MISSING-1")
+            await ctx.sync("MISSING-1")
 
-        assert not (ctx / LOCK_FILENAME).exists()
+        assert not (context_dir / LOCK_FILENAME).exists()
 
 
 class TestSyncManifestConfig:
@@ -511,9 +511,9 @@ class TestSyncManifestConfig:
         """Per-call dimension overrides are persisted in the manifest."""
         gw = FakeLinearGateway()
         gw.add_issue(make_issue(issue_id="uuid-r", issue_key="CFG-1"))
-        syncer = make_syncer(gateway=gw, context_dir=tmp_path / "ctx")
+        ctx = make_context_sync(gateway=gw, context_dir=tmp_path / "ctx")
 
-        await syncer.sync("CFG-1", dimensions={"blocks": 5})
+        await ctx.sync("CFG-1", dimensions={"blocks": 5})
 
         manifest = load_manifest(tmp_path / "ctx")
         assert manifest.dimensions["blocks"] == 5
@@ -524,9 +524,9 @@ class TestSyncManifestConfig:
         """Per-call max_tickets_per_root override is persisted in the manifest."""
         gw = FakeLinearGateway()
         gw.add_issue(make_issue(issue_id="uuid-r", issue_key="CAP-1"))
-        syncer = make_syncer(gateway=gw, context_dir=tmp_path / "ctx")
+        ctx = make_context_sync(gateway=gw, context_dir=tmp_path / "ctx")
 
-        await syncer.sync("CAP-1", max_tickets_per_root=42)
+        await ctx.sync("CAP-1", max_tickets_per_root=42)
 
         manifest = load_manifest(tmp_path / "ctx")
         assert manifest.max_tickets_per_root == 42
@@ -535,9 +535,9 @@ class TestSyncManifestConfig:
         """Manifest snapshot metadata is populated after sync."""
         gw = FakeLinearGateway()
         gw.add_issue(make_issue(issue_id="uuid-r", issue_key="SNP-1"))
-        syncer = make_syncer(gateway=gw, context_dir=tmp_path / "ctx")
+        ctx = make_context_sync(gateway=gw, context_dir=tmp_path / "ctx")
 
-        await syncer.sync("SNP-1")
+        await ctx.sync("SNP-1")
 
         manifest = load_manifest(tmp_path / "ctx")
         assert manifest.snapshot is not None
@@ -566,11 +566,11 @@ class TestSyncIssueKeyRename:
                 title="Rename me",
             )
         )
-        ctx = tmp_path / "ctx"
-        syncer = make_syncer(gateway=gw, context_dir=ctx)
+        context_dir = tmp_path / "ctx"
+        ctx = make_context_sync(gateway=gw, context_dir=context_dir)
 
-        await syncer.sync("OLD-1")
-        assert (ctx / "OLD-1.md").is_file()
+        await ctx.sync("OLD-1")
+        assert (context_dir / "OLD-1.md").is_file()
 
         # Simulate an issue-key rename upstream.
         gw.add_issue(
@@ -583,12 +583,12 @@ class TestSyncIssueKeyRename:
         # Also update the key index so the gateway can resolve the old key.
         gw._key_index["OLD-1"] = "uuid-r"
 
-        result = await syncer.sync("uuid-r")
+        result = await ctx.sync("uuid-r")
         assert result.updated == ["NEW-1"]
-        assert not (ctx / "OLD-1.md").exists()
-        assert (ctx / "NEW-1.md").is_file()
+        assert not (context_dir / "OLD-1.md").exists()
+        assert (context_dir / "NEW-1.md").is_file()
 
-        manifest = load_manifest(ctx)
+        manifest = load_manifest(context_dir)
         assert manifest.aliases.get("OLD-1") == "uuid-r"
         assert manifest.tickets["uuid-r"].current_key == "NEW-1"
 
@@ -616,9 +616,9 @@ class TestSyncTicketRefTier3:
                 title="Referenced ticket",
             )
         )
-        syncer = make_syncer(gateway=gw, context_dir=tmp_path / "ctx")
+        ctx = make_context_sync(gateway=gw, context_dir=tmp_path / "ctx")
 
-        result = await syncer.sync("REF-1")
+        result = await ctx.sync("REF-1")
 
         assert sorted(result.created) == ["REF-1", "REF-2"]
         assert (tmp_path / "ctx" / "REF-2.md").is_file()
@@ -658,8 +658,8 @@ class TestSyncLinkedTicketFetchFailure:
         gw.add_issue(make_issue(issue_id="uuid-linked", issue_key="LINKED-1"))
         gw.hide_issue("uuid-linked")
 
-        syncer = make_syncer(gateway=gw, context_dir=tmp_path / "ctx")
-        result = await syncer.sync("ROOT-1")
+        ctx = make_context_sync(gateway=gw, context_dir=tmp_path / "ctx")
+        result = await ctx.sync("ROOT-1")
 
         # Root was written successfully.
         assert result.created == ["ROOT-1"]
@@ -682,9 +682,9 @@ class TestSyncGatewayReadiness:
         """Calling sync() through the linear= constructor path raises immediately."""
         from context_sync._sync import ContextSync
 
-        syncer = ContextSync(linear=object(), context_dir="/tmp/ctx-r2-test")
+        ctx = ContextSync(linear=object(), context_dir="/tmp/ctx-r2-test")
         with pytest.raises(ContextSyncError, match="No gateway available"):
-            await syncer.sync("ANY-1")
+            await ctx.sync("ANY-1")
 
 
 class TestSyncExistingRootPrefetchFailure:
@@ -698,23 +698,23 @@ class TestSyncExistingRootPrefetchFailure:
         gw = FakeLinearGateway()
         gw.add_issue(make_issue(issue_id="uuid-r1", issue_key="R-1"))
         gw.add_issue(make_issue(issue_id="uuid-r2", issue_key="R-2"))
-        ctx = tmp_path / "ctx"
-        syncer = make_syncer(gateway=gw, context_dir=ctx)
+        context_dir = tmp_path / "ctx"
+        ctx = make_context_sync(gateway=gw, context_dir=context_dir)
 
         # First sync: both roots healthy.
-        await syncer.sync("R-1")
-        await syncer.sync("R-2")
-        manifest = load_manifest(ctx)
+        await ctx.sync("R-1")
+        await ctx.sync("R-2")
+        manifest = load_manifest(context_dir)
         assert "uuid-r1" in manifest.roots
         assert "uuid-r2" in manifest.roots
 
         # Hide R-1 and re-sync via R-2.
         gw.hide_issue("uuid-r1")
-        result = await syncer.sync("R-2")
+        result = await ctx.sync("R-2")
 
         # R-2 was processed successfully (unchanged since no upstream change).
         assert result.errors == []
-        assert (ctx / "R-2.md").is_file()
+        assert (context_dir / "R-2.md").is_file()
 
 
 class TestSyncWriteAvoidance:
@@ -730,14 +730,14 @@ class TestSyncWriteAvoidance:
                 title="Idle ticket",
             )
         )
-        ctx = tmp_path / "ctx"
-        syncer = make_syncer(gateway=gw, context_dir=ctx)
+        context_dir = tmp_path / "ctx"
+        ctx = make_context_sync(gateway=gw, context_dir=context_dir)
 
-        await syncer.sync("IDLE-1")
-        first_mtime = (ctx / "IDLE-1.md").stat().st_mtime
+        await ctx.sync("IDLE-1")
+        first_mtime = (context_dir / "IDLE-1.md").stat().st_mtime
 
-        result = await syncer.sync("IDLE-1")
-        second_mtime = (ctx / "IDLE-1.md").stat().st_mtime
+        result = await ctx.sync("IDLE-1")
+        second_mtime = (context_dir / "IDLE-1.md").stat().st_mtime
 
         assert result.unchanged == ["IDLE-1"]
         assert result.updated == []
@@ -754,10 +754,10 @@ class TestSyncWriteAvoidance:
                 updated_at="2026-01-01T00:00:00Z",
             )
         )
-        ctx = tmp_path / "ctx"
-        syncer = make_syncer(gateway=gw, context_dir=ctx)
+        context_dir = tmp_path / "ctx"
+        ctx = make_context_sync(gateway=gw, context_dir=context_dir)
 
-        first = await syncer.sync("UPD-1")
+        first = await ctx.sync("UPD-1")
         assert first.created == ["UPD-1"]
 
         # Simulate upstream update.
@@ -770,9 +770,9 @@ class TestSyncWriteAvoidance:
             )
         )
 
-        second = await syncer.sync("UPD-1")
+        second = await ctx.sync("UPD-1")
         assert second.updated == ["UPD-1"]
         assert second.unchanged == []
 
-        content = (ctx / "UPD-1.md").read_text(encoding="utf-8")
+        content = (context_dir / "UPD-1.md").read_text(encoding="utf-8")
         assert "Updated title" in content

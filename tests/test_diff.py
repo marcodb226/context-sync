@@ -20,8 +20,8 @@ from context_sync._lock import LOCK_FILENAME, LockRecord
 from context_sync._models import DiffEntry
 from context_sync._testing import (
     FakeLinearGateway,
+    make_context_sync,
     make_issue,
-    make_syncer,
 )
 from context_sync._yaml import dump_yaml
 
@@ -58,8 +58,8 @@ class TestDiffLockRefusal:
         """An active (same-host, live-PID) lock causes DiffLockError."""
         gw = FakeLinearGateway()
         gw.add_issue(make_issue(issue_id="uuid-1", issue_key="TEST-1"))
-        syncer = make_syncer(context_dir=context_dir, gateway=gw)
-        await syncer.sync("uuid-1")
+        ctx = make_context_sync(context_dir=context_dir, gateway=gw)
+        await ctx.sync("uuid-1")
 
         # Plant an active lock (current PID is alive).
         _write_lock_file(
@@ -74,14 +74,14 @@ class TestDiffLockRefusal:
         )
 
         with pytest.raises(DiffLockError, match="mutating operation"):
-            await syncer.diff()
+            await ctx.diff()
 
     async def test_indeterminate_lock_raises_diff_lock_error(self, context_dir: Path) -> None:
         """A lock from a different host (staleness unknown) causes DiffLockError."""
         gw = FakeLinearGateway()
         gw.add_issue(make_issue(issue_id="uuid-1", issue_key="TEST-1"))
-        syncer = make_syncer(context_dir=context_dir, gateway=gw)
-        await syncer.sync("uuid-1")
+        ctx = make_context_sync(context_dir=context_dir, gateway=gw)
+        await ctx.sync("uuid-1")
 
         _write_lock_file(
             context_dir,
@@ -95,27 +95,27 @@ class TestDiffLockRefusal:
         )
 
         with pytest.raises(DiffLockError, match="mutating operation"):
-            await syncer.diff()
+            await ctx.diff()
 
     async def test_corrupt_lock_file_raises_diff_lock_error(self, context_dir: Path) -> None:
         """A corrupt lock file causes DiffLockError (not StaleLockError)."""
         gw = FakeLinearGateway()
         gw.add_issue(make_issue(issue_id="uuid-1", issue_key="TEST-1"))
-        syncer = make_syncer(context_dir=context_dir, gateway=gw)
-        await syncer.sync("uuid-1")
+        ctx = make_context_sync(context_dir=context_dir, gateway=gw)
+        await ctx.sync("uuid-1")
 
         lock_path = context_dir / LOCK_FILENAME
         lock_path.write_text(":::not yaml:::", encoding="utf-8")
 
         with pytest.raises(DiffLockError, match="could not be read"):
-            await syncer.diff()
+            await ctx.diff()
 
     async def test_lock_error_message_explains_rationale(self, context_dir: Path) -> None:
         """The DiffLockError message explains why lock refusal is intentional."""
         gw = FakeLinearGateway()
         gw.add_issue(make_issue(issue_id="uuid-1", issue_key="TEST-1"))
-        syncer = make_syncer(context_dir=context_dir, gateway=gw)
-        await syncer.sync("uuid-1")
+        ctx = make_context_sync(context_dir=context_dir, gateway=gw)
+        await ctx.sync("uuid-1")
 
         _write_lock_file(
             context_dir,
@@ -129,7 +129,7 @@ class TestDiffLockRefusal:
         )
 
         with pytest.raises(DiffLockError, match="rate-limited"):
-            await syncer.diff()
+            await ctx.diff()
 
 
 # ---------------------------------------------------------------------------
@@ -144,8 +144,8 @@ class TestDiffStaleLock:
         """A demonstrably stale lock (dead PID, same host) does not block diff."""
         gw = FakeLinearGateway()
         gw.add_issue(make_issue(issue_id="uuid-1", issue_key="TEST-1"))
-        syncer = make_syncer(context_dir=context_dir, gateway=gw)
-        await syncer.sync("uuid-1")
+        ctx = make_context_sync(context_dir=context_dir, gateway=gw)
+        await ctx.sync("uuid-1")
 
         # Use PID 2**22 which is almost certainly not alive.
         _write_lock_file(
@@ -159,7 +159,7 @@ class TestDiffStaleLock:
             ),
         )
 
-        result = await syncer.diff()
+        result = await ctx.diff()
         assert len(result.entries) == 1
         assert result.entries[0].status == "current"
 
@@ -167,8 +167,8 @@ class TestDiffStaleLock:
         """Diff must never clear, preempt, or create the writer lock record."""
         gw = FakeLinearGateway()
         gw.add_issue(make_issue(issue_id="uuid-1", issue_key="TEST-1"))
-        syncer = make_syncer(context_dir=context_dir, gateway=gw)
-        await syncer.sync("uuid-1")
+        ctx = make_context_sync(context_dir=context_dir, gateway=gw)
+        await ctx.sync("uuid-1")
 
         lock_path = context_dir / LOCK_FILENAME
         _write_lock_file(
@@ -183,7 +183,7 @@ class TestDiffStaleLock:
         )
         content_before = lock_path.read_text(encoding="utf-8")
 
-        await syncer.diff()
+        await ctx.diff()
 
         # Lock file must still exist and be unchanged.
         assert lock_path.is_file()
@@ -201,13 +201,13 @@ class TestDiffNoLock:
     async def test_no_lock_file_allows_diff(self, context_dir: Path) -> None:
         gw = FakeLinearGateway()
         gw.add_issue(make_issue(issue_id="uuid-1", issue_key="TEST-1"))
-        syncer = make_syncer(context_dir=context_dir, gateway=gw)
-        await syncer.sync("uuid-1")
+        ctx = make_context_sync(context_dir=context_dir, gateway=gw)
+        await ctx.sync("uuid-1")
 
         # Confirm no lock remains after sync.
         assert not (context_dir / LOCK_FILENAME).exists()
 
-        result = await syncer.diff()
+        result = await ctx.diff()
         assert len(result.entries) == 1
 
 
@@ -223,10 +223,10 @@ class TestDiffChangedFields:
         """When nothing changed upstream, all tickets are current."""
         gw = FakeLinearGateway()
         gw.add_issue(make_issue(issue_id="uuid-1", issue_key="TEST-1"))
-        syncer = make_syncer(context_dir=context_dir, gateway=gw)
-        await syncer.sync("uuid-1")
+        ctx = make_context_sync(context_dir=context_dir, gateway=gw)
+        await ctx.sync("uuid-1")
 
-        result = await syncer.diff()
+        result = await ctx.diff()
         assert len(result.entries) == 1
         entry = result.entries[0]
         assert entry.ticket_key == "TEST-1"
@@ -243,8 +243,8 @@ class TestDiffChangedFields:
                 updated_at="2026-01-01T00:00:00Z",
             )
         )
-        syncer = make_syncer(context_dir=context_dir, gateway=gw)
-        await syncer.sync("uuid-1")
+        ctx = make_context_sync(context_dir=context_dir, gateway=gw)
+        await ctx.sync("uuid-1")
 
         # Update the issue's updated_at to simulate upstream change.
         gw.add_issue(
@@ -255,7 +255,7 @@ class TestDiffChangedFields:
             )
         )
 
-        result = await syncer.diff()
+        result = await ctx.diff()
         entry = result.entries[0]
         assert entry.status == "stale"
         assert "issue_updated_at" in entry.changed_fields
@@ -266,8 +266,8 @@ class TestDiffChangedFields:
 
         gw = FakeLinearGateway()
         gw.add_issue(make_issue(issue_id="uuid-1", issue_key="TEST-1"))
-        syncer = make_syncer(context_dir=context_dir, gateway=gw)
-        await syncer.sync("uuid-1")
+        ctx = make_context_sync(context_dir=context_dir, gateway=gw)
+        await ctx.sync("uuid-1")
 
         # Add a comment to the issue.
         gw.add_issue(
@@ -287,7 +287,7 @@ class TestDiffChangedFields:
             )
         )
 
-        result = await syncer.diff()
+        result = await ctx.diff()
         entry = result.entries[0]
         assert entry.status == "stale"
         assert "comments_signature" in entry.changed_fields
@@ -298,8 +298,8 @@ class TestDiffChangedFields:
 
         gw = FakeLinearGateway()
         gw.add_issue(make_issue(issue_id="uuid-1", issue_key="TEST-1"))
-        syncer = make_syncer(context_dir=context_dir, gateway=gw)
-        await syncer.sync("uuid-1")
+        ctx = make_context_sync(context_dir=context_dir, gateway=gw)
+        await ctx.sync("uuid-1")
 
         # Add a relation to the issue.
         gw.add_issue(
@@ -317,7 +317,7 @@ class TestDiffChangedFields:
             )
         )
 
-        result = await syncer.diff()
+        result = await ctx.diff()
         entry = result.entries[0]
         assert entry.status == "stale"
         assert "relations_signature" in entry.changed_fields
@@ -326,13 +326,13 @@ class TestDiffChangedFields:
         """An issue key rename is detected and reported."""
         gw = FakeLinearGateway()
         gw.add_issue(make_issue(issue_id="uuid-1", issue_key="OLD-1"))
-        syncer = make_syncer(context_dir=context_dir, gateway=gw)
-        await syncer.sync("uuid-1")
+        ctx = make_context_sync(context_dir=context_dir, gateway=gw)
+        await ctx.sync("uuid-1")
 
         # Change the issue key (simulates a team prefix rename in Linear).
         gw.add_issue(make_issue(issue_id="uuid-1", issue_key="NEW-1"))
 
-        result = await syncer.diff()
+        result = await ctx.diff()
         entry = result.entries[0]
         assert entry.status == "stale"
         assert "issue_key" in entry.changed_fields
@@ -351,8 +351,8 @@ class TestDiffChangedFields:
                 updated_at="2026-01-01T00:00:00Z",
             )
         )
-        syncer = make_syncer(context_dir=context_dir, gateway=gw)
-        await syncer.sync("uuid-1")
+        ctx = make_context_sync(context_dir=context_dir, gateway=gw)
+        await ctx.sync("uuid-1")
 
         # Change both updated_at and add a comment.
         gw.add_issue(
@@ -373,7 +373,7 @@ class TestDiffChangedFields:
             )
         )
 
-        result = await syncer.diff()
+        result = await ctx.diff()
         entry = result.entries[0]
         assert entry.status == "stale"
         assert "comments_signature" in entry.changed_fields
@@ -393,8 +393,8 @@ class TestDiffChangedFields:
                 updated_at="2026-01-01T00:00:00Z",
             )
         )
-        syncer = make_syncer(context_dir=context_dir, gateway=gw)
-        await syncer.sync("uuid-1")
+        ctx = make_context_sync(context_dir=context_dir, gateway=gw)
+        await ctx.sync("uuid-1")
 
         # Change everything: updated_at, comments, relations, and key.
         gw.add_issue(
@@ -423,7 +423,7 @@ class TestDiffChangedFields:
             )
         )
 
-        result = await syncer.diff()
+        result = await ctx.diff()
         entry = result.entries[0]
         assert entry.changed_fields == sorted(entry.changed_fields)
         assert len(entry.changed_fields) == 4
@@ -441,12 +441,12 @@ class TestDiffMissingRemotely:
         """An issue that becomes invisible is classified as missing_remotely."""
         gw = FakeLinearGateway()
         gw.add_issue(make_issue(issue_id="uuid-1", issue_key="TEST-1"))
-        syncer = make_syncer(context_dir=context_dir, gateway=gw)
-        await syncer.sync("uuid-1")
+        ctx = make_context_sync(context_dir=context_dir, gateway=gw)
+        await ctx.sync("uuid-1")
 
         gw.hide_issue("uuid-1")
 
-        result = await syncer.diff()
+        result = await ctx.diff()
         assert len(result.entries) == 1
         entry = result.entries[0]
         assert entry.ticket_key == "TEST-1"
@@ -474,13 +474,13 @@ class TestDiffMissingRemotely:
         gw.add_issue(root)
         gw.add_issue(child)
 
-        syncer = make_syncer(context_dir=context_dir, gateway=gw)
-        await syncer.sync("uuid-root")
+        ctx = make_context_sync(context_dir=context_dir, gateway=gw)
+        await ctx.sync("uuid-root")
 
         # Hide the child but keep the root visible.
         gw.hide_issue("uuid-child")
 
-        result = await syncer.diff()
+        result = await ctx.diff()
         root_entry = _find_entry(result.entries, "ROOT-1")
         child_entry = _find_entry(result.entries, "CHILD-1")
 
@@ -500,15 +500,15 @@ class TestDiffMissingLocally:
         """A file deleted after sync is classified as missing_locally."""
         gw = FakeLinearGateway()
         gw.add_issue(make_issue(issue_id="uuid-1", issue_key="TEST-1"))
-        syncer = make_syncer(context_dir=context_dir, gateway=gw)
-        await syncer.sync("uuid-1")
+        ctx = make_context_sync(context_dir=context_dir, gateway=gw)
+        await ctx.sync("uuid-1")
 
         # Verify the file was created, then delete it.
         ticket_file = context_dir / "TEST-1.md"
         assert ticket_file.is_file()
         ticket_file.unlink()
 
-        result = await syncer.diff()
+        result = await ctx.diff()
         assert len(result.entries) == 1
         entry = result.entries[0]
         assert entry.ticket_key == "TEST-1"
@@ -527,10 +527,10 @@ class TestDiffManifestErrors:
     async def test_no_manifest_raises_manifest_error(self, context_dir: Path) -> None:
         """Running diff without a prior sync raises ManifestError."""
         gw = FakeLinearGateway()
-        syncer = make_syncer(context_dir=context_dir, gateway=gw)
+        ctx = make_context_sync(context_dir=context_dir, gateway=gw)
 
         with pytest.raises(ManifestError):
-            await syncer.diff()
+            await ctx.diff()
 
 
 # ---------------------------------------------------------------------------
@@ -554,9 +554,9 @@ class TestDiffEmptyManifest:
         save_manifest(manifest, context_dir)
 
         gw = FakeLinearGateway()
-        syncer = make_syncer(context_dir=context_dir, gateway=gw)
+        ctx = make_context_sync(context_dir=context_dir, gateway=gw)
 
-        result = await syncer.diff()
+        result = await ctx.diff()
         assert result.entries == []
         assert result.errors == []
 
@@ -579,8 +579,8 @@ class TestDiffNeverModifiesFiles:
                 updated_at="2026-01-01T00:00:00Z",
             )
         )
-        syncer = make_syncer(context_dir=context_dir, gateway=gw)
-        await syncer.sync("uuid-1")
+        ctx = make_context_sync(context_dir=context_dir, gateway=gw)
+        await ctx.sync("uuid-1")
 
         # Record file mtimes.
         ticket_file = context_dir / "TEST-1.md"
@@ -598,7 +598,7 @@ class TestDiffNeverModifiesFiles:
             )
         )
 
-        result = await syncer.diff()
+        result = await ctx.diff()
         assert result.entries[0].status == "stale"
 
         # No files should be modified.
@@ -612,12 +612,12 @@ class TestDiffNeverModifiesFiles:
         """Diff must not create a lock file."""
         gw = FakeLinearGateway()
         gw.add_issue(make_issue(issue_id="uuid-1", issue_key="TEST-1"))
-        syncer = make_syncer(context_dir=context_dir, gateway=gw)
-        await syncer.sync("uuid-1")
+        ctx = make_context_sync(context_dir=context_dir, gateway=gw)
+        await ctx.sync("uuid-1")
 
         assert not (context_dir / LOCK_FILENAME).exists()
 
-        await syncer.diff()
+        await ctx.diff()
 
         assert not (context_dir / LOCK_FILENAME).exists()
 
@@ -634,8 +634,8 @@ class TestDiffFormatVersion:
         """A file with format_version below current is stale even if cursor matches."""
         gw = FakeLinearGateway()
         gw.add_issue(make_issue(issue_id="uuid-1", issue_key="TEST-1"))
-        syncer = make_syncer(context_dir=context_dir, gateway=gw)
-        await syncer.sync("uuid-1")
+        ctx = make_context_sync(context_dir=context_dir, gateway=gw)
+        await ctx.sync("uuid-1")
 
         # Downgrade format_version without changing the cursor.
         ticket_file = context_dir / "TEST-1.md"
@@ -643,7 +643,7 @@ class TestDiffFormatVersion:
         text = text.replace("format_version: 1", "format_version: 0")
         ticket_file.write_text(text, encoding="utf-8")
 
-        result = await syncer.diff()
+        result = await ctx.diff()
         assert len(result.entries) == 1
         entry = result.entries[0]
         assert entry.status == "stale"
@@ -652,8 +652,8 @@ class TestDiffFormatVersion:
         """A file without format_version is stale."""
         gw = FakeLinearGateway()
         gw.add_issue(make_issue(issue_id="uuid-1", issue_key="TEST-1"))
-        syncer = make_syncer(context_dir=context_dir, gateway=gw)
-        await syncer.sync("uuid-1")
+        ctx = make_context_sync(context_dir=context_dir, gateway=gw)
+        await ctx.sync("uuid-1")
 
         # Remove format_version line from frontmatter.
         ticket_file = context_dir / "TEST-1.md"
@@ -661,7 +661,7 @@ class TestDiffFormatVersion:
         lines = [ln for ln in lines if not ln.startswith("format_version:")]
         ticket_file.write_text("".join(lines), encoding="utf-8")
 
-        result = await syncer.diff()
+        result = await ctx.diff()
         assert len(result.entries) == 1
         assert result.entries[0].status == "stale"
 
@@ -678,8 +678,8 @@ class TestDiffIdentityValidation:
         """Mismatched ticket_uuid produces an identity-mismatch error."""
         gw = FakeLinearGateway()
         gw.add_issue(make_issue(issue_id="uuid-1", issue_key="TEST-1"))
-        syncer = make_syncer(context_dir=context_dir, gateway=gw)
-        await syncer.sync("uuid-1")
+        ctx = make_context_sync(context_dir=context_dir, gateway=gw)
+        await ctx.sync("uuid-1")
 
         # Change ticket_uuid to a different value.
         ticket_file = context_dir / "TEST-1.md"
@@ -687,7 +687,7 @@ class TestDiffIdentityValidation:
         text = text.replace("ticket_uuid: uuid-1", "ticket_uuid: uuid-other")
         ticket_file.write_text(text, encoding="utf-8")
 
-        result = await syncer.diff()
+        result = await ctx.diff()
         assert result.entries == []  # no normal entries
         assert len(result.errors) == 1
         assert result.errors[0].error_type == "identity_mismatch"
@@ -697,8 +697,8 @@ class TestDiffIdentityValidation:
         """A file without ticket_uuid produces an identity-mismatch error."""
         gw = FakeLinearGateway()
         gw.add_issue(make_issue(issue_id="uuid-1", issue_key="TEST-1"))
-        syncer = make_syncer(context_dir=context_dir, gateway=gw)
-        await syncer.sync("uuid-1")
+        ctx = make_context_sync(context_dir=context_dir, gateway=gw)
+        await ctx.sync("uuid-1")
 
         # Remove ticket_uuid line.
         ticket_file = context_dir / "TEST-1.md"
@@ -706,7 +706,7 @@ class TestDiffIdentityValidation:
         lines = [ln for ln in lines if not ln.startswith("ticket_uuid:")]
         ticket_file.write_text("".join(lines), encoding="utf-8")
 
-        result = await syncer.diff()
+        result = await ctx.diff()
         assert result.entries == []
         assert len(result.errors) == 1
         assert result.errors[0].error_type == "identity_mismatch"
@@ -715,14 +715,14 @@ class TestDiffIdentityValidation:
         """Corrupt YAML frontmatter produces a corrupt_frontmatter error."""
         gw = FakeLinearGateway()
         gw.add_issue(make_issue(issue_id="uuid-1", issue_key="TEST-1"))
-        syncer = make_syncer(context_dir=context_dir, gateway=gw)
-        await syncer.sync("uuid-1")
+        ctx = make_context_sync(context_dir=context_dir, gateway=gw)
+        await ctx.sync("uuid-1")
 
         # Replace file content with genuinely unparseable YAML.
         ticket_file = context_dir / "TEST-1.md"
         ticket_file.write_text("---\nkey: [unclosed\n---\nbody\n", encoding="utf-8")
 
-        result = await syncer.diff()
+        result = await ctx.diff()
         assert result.entries == []
         assert len(result.errors) == 1
         assert result.errors[0].error_type == "corrupt_frontmatter"
@@ -757,15 +757,15 @@ class TestDiffErrorSurface:
         child = make_issue(issue_id="uuid-child", issue_key="CHILD-1")
         gw.add_issue(root)
         gw.add_issue(child)
-        syncer = make_syncer(context_dir=context_dir, gateway=gw)
-        await syncer.sync("uuid-root")
+        ctx = make_context_sync(context_dir=context_dir, gateway=gw)
+        await ctx.sync("uuid-root")
 
         # Make the child file unreadable.
         child_file = context_dir / "CHILD-1.md"
         child_file.chmod(0o000)
 
         try:
-            result = await syncer.diff()
+            result = await ctx.diff()
             # The root should still be classified normally.
             assert len(result.entries) == 1
             assert result.entries[0].ticket_key == "ROOT-1"
