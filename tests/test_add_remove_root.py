@@ -41,7 +41,7 @@ def _read_ticket_fm(context_dir: Path, issue_key: str) -> dict:
 
 
 # ===========================================================================
-# add — by issue key
+# sync — add root by issue key
 # ===========================================================================
 
 
@@ -176,7 +176,7 @@ class TestSyncAddRootByIssueKey:
 
 
 # ===========================================================================
-# add — by Linear URL
+# sync — add root by Linear URL
 # ===========================================================================
 
 
@@ -240,7 +240,7 @@ class TestSyncAddRootByUrl:
 
 
 # ===========================================================================
-# add — overlapping root graphs
+# sync — overlapping root graphs
 # ===========================================================================
 
 
@@ -682,7 +682,7 @@ class TestRemoveRootByDerivedUuid:
 
 
 # ===========================================================================
-# R6 regression — add recovers a quarantined root
+# R6 regression — sync recovers a quarantined root
 # ===========================================================================
 
 

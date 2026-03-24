@@ -587,6 +587,50 @@ class TestSyncConfigPreservation:
         assert manifest.max_tickets_per_root == 42
 
 
+class TestStandaloneSyncFullRebuild:
+    """Standalone sync (no key) performs a full rebuild, not incremental."""
+
+    async def test_standalone_sync_refetches_all_tickets(self, tmp_path: Path) -> None:
+        """Standalone sync calls fetch_issue for every reachable ticket."""
+        gw = FakeLinearGateway()
+        child_rel = RelationData(
+            relation_type="blocks",
+            dimension="blocks",
+            target_issue_id="uuid-child",
+            target_issue_key="FULL-2",
+        )
+        gw.add_issue(
+            make_issue(
+                issue_id="uuid-root",
+                issue_key="FULL-1",
+                relations=[child_rel],
+            )
+        )
+        gw.add_issue(make_issue(issue_id="uuid-child", issue_key="FULL-2"))
+        ctx = make_context_sync(gateway=gw, context_dir=tmp_path / "ctx")
+
+        # Initial sync with key.
+        await ctx.sync("FULL-1")
+
+        # Track fetch calls by wrapping the gateway.
+        fetch_calls: list[str] = []
+        original_fetch = gw.fetch_issue
+
+        async def _tracking_fetch(issue_id_or_key: str) -> object:
+            fetch_calls.append(issue_id_or_key)
+            return await original_fetch(issue_id_or_key)
+
+        gw.fetch_issue = _tracking_fetch  # type: ignore[assignment]
+
+        # Standalone sync — should re-fetch all tickets.
+        result = await ctx.sync()
+        assert "FULL-1" in result.unchanged
+        assert "FULL-2" in result.unchanged
+        # Both root and child must have been fetched (full rebuild).
+        assert "uuid-root" in fetch_calls
+        assert "uuid-child" in fetch_calls
+
+
 class TestSyncIssueKeyRename:
     """Sync handles issue-key renames detected during the write pass."""
 

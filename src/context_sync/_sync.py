@@ -787,6 +787,8 @@ class ContextSync:
                 del manifest.tickets[uid]
 
         # -- Finalize snapshot metadata and persist manifest ------------------
+        # mode is hardcoded to "sync" because both callers
+        # (_sync_under_lock, _standalone_sync_under_lock) are sync paths.
         completed_at = _utc_now()
         manifest.snapshot = ManifestSnapshot(
             mode="sync",
