@@ -316,6 +316,38 @@ to `Next release` yet.
 - [docs/execution/M4-R1-review.md](execution/M4-R1-review.md)
 - [docs/execution/M4-R2.md](execution/M4-R2.md)
 
+<a id="fw-11-partition-aware-sync-rebuild"></a>
+### FW-11 - Partition-Aware Sync Rebuild
+
+**Why deferred**
+- The current `sync TICKET` implementation loads the full root set and
+  rebuilds the reachable graph from all roots unconditionally, regardless of
+  whether TICKET's graph intersects with other roots' graphs.
+- For snapshots with multiple roots whose graphs are disjoint or only
+  partially connected, this means unrelated partitions are rebuilt on every
+  `sync TICKET` call even though their upstream state has not changed.
+- The full-rebuild behavior is correct and safe. The optimization requires
+  tracking graph intersection at manifest time, which adds implementation
+  complexity that is not justified until the partition structure of real
+  snapshots is better understood from usage.
+
+**Scope**
+- At `sync TICKET` time, determine which currently tracked roots have graphs
+  that intersect (directly or transitively) with TICKET's graph.
+- Limit the rebuild to the connected partition(s) that include TICKET, leaving
+  clean disjoint partitions untouched.
+- Standalone `sync` (no TICKET argument) remains a full rebuild of all roots
+  by design and is not subject to this optimization.
+- Define how partition membership is recorded in the manifest so the boundary
+  decision is reproducible across runs without a full traversal.
+- Ensure correctness when a previously disjoint partition later becomes
+  connected (for example via a new cross-root relation).
+
+**Completion signal**
+- `sync TICKET` rebuilds only the connected partition containing TICKET's
+  graph when other partitions are cleanly disjoint, with documented semantics
+  for the partition-detection and cross-partition merge cases.
+
 ## Historical
 
 No historical items are tracked yet.
