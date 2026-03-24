@@ -547,6 +547,46 @@ class TestSyncManifestConfig:
         assert manifest.snapshot.completed_successfully is True
 
 
+class TestSyncConfigPreservation:
+    """Traversal config is preserved when sync is called without overrides."""
+
+    async def test_dimensions_preserved_on_second_sync(self, tmp_path: Path) -> None:
+        """Dimensions set by an earlier sync persist when no override is given."""
+        gw = FakeLinearGateway()
+        gw.add_issue(make_issue(issue_id="uuid-r", issue_key="PRES-1"))
+        ctx = make_context_sync(gateway=gw, context_dir=tmp_path / "ctx")
+
+        await ctx.sync("PRES-1", dimensions={"blocks": 5, "relates_to": 3})
+
+        manifest = load_manifest(tmp_path / "ctx")
+        assert manifest.dimensions["blocks"] == 5
+        assert manifest.dimensions["relates_to"] == 3
+
+        # Second sync without overrides — config must be preserved.
+        await ctx.sync("PRES-1")
+
+        manifest = load_manifest(tmp_path / "ctx")
+        assert manifest.dimensions["blocks"] == 5
+        assert manifest.dimensions["relates_to"] == 3
+
+    async def test_cap_preserved_on_second_sync(self, tmp_path: Path) -> None:
+        """Max-tickets-per-root set by an earlier sync persists without override."""
+        gw = FakeLinearGateway()
+        gw.add_issue(make_issue(issue_id="uuid-r", issue_key="PRES-2"))
+        ctx = make_context_sync(gateway=gw, context_dir=tmp_path / "ctx")
+
+        await ctx.sync("PRES-2", max_tickets_per_root=42)
+
+        manifest = load_manifest(tmp_path / "ctx")
+        assert manifest.max_tickets_per_root == 42
+
+        # Second sync without override — cap must be preserved.
+        await ctx.sync("PRES-2")
+
+        manifest = load_manifest(tmp_path / "ctx")
+        assert manifest.max_tickets_per_root == 42
+
+
 class TestSyncIssueKeyRename:
     """Sync handles issue-key renames detected during the write pass."""
 

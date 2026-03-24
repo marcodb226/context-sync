@@ -658,7 +658,8 @@ library method boundaries to match, as prescribed by the accepted
 
 | # | Status | Ticket | Description | Dependencies | Tests | Source |
 | --- | --- | --- | --- | --- | --- | --- |
-| <a id="m4.1-1---cli-and-library-simplification"></a>M4.1-1 | In progress | CLI and library simplification | Remove the public `add` CLI action and fold its user intent into `sync`; make `sync`'s TICKET argument optional (standalone `sync` = full rebuild of all tracked roots, no root-membership change); rename the public CLI token `remove-root` to `remove`; use `TICKET` as the required positional for `remove` and the optional positional for `sync`; make `ContextSync.add()` internal (rename to `_add()` and remove from `__all__`); rename `ContextSync.remove_root()` to `ContextSync.remove()`; make `sync()`'s `key` parameter optional (`key: str | None = None`) with standalone semantics matching the CLI; adopt `add()`'s traversal-config preservation as the no-override default for `sync()` at both CLI and library levels; update help text for `sync` and `refresh` to use clearly distinct intent-oriented language; update README, user-facing docs, and all tests to reflect the four-command surface | [M4-3](#m4-3---rename-root-ticket-id-to-key), [M4-R1](#m4-r1---cli-interface-review), [M4-R2](#m4-r2---api-interface-review) | Parser tests confirming `add` and `remove-root` are rejected by the standard unknown-subcommand path; `sync` tests verifying traversal-config preservation when no overrides are supplied and override persistence when overrides are explicitly given; standalone `sync` test confirming full rebuild of all tracked roots with no root-membership change; `remove` tests confirming the rename works end-to-end; `__all__` test confirming `add` is not exported and `_add` is present; updated integration tests routing through the four-command surface; README/docs consistency check | [docs/future-work.md §FW-10](future-work.md#fw-10-cli-simplification-amendment), [docs/execution/M4-R1.md](execution/M4-R1.md), [docs/execution/M4-R2.md](execution/M4-R2.md) |
+| <a id="m4.1-1---cli-and-library-simplification"></a>M4.1-1 | Done | CLI and library simplification | Remove the public `add` CLI action and fold its user intent into `sync`; make `sync`'s TICKET argument optional (standalone `sync` = full rebuild of all tracked roots, no root-membership change); rename the public CLI token `remove-root` to `remove`; use `TICKET` as the required positional for `remove` and the optional positional for `sync`; make `ContextSync.add()` internal (rename to `_add()` and remove from `__all__`); rename `ContextSync.remove_root()` to `ContextSync.remove()`; make `sync()`'s `key` parameter optional (`key: str | None = None`) with standalone semantics matching the CLI; adopt `add()`'s traversal-config preservation as the no-override default for `sync()` at both CLI and library levels; update help text for `sync` and `refresh` to use clearly distinct intent-oriented language; update README, user-facing docs, and all tests to reflect the four-command surface | [M4-3](#m4-3---rename-root-ticket-id-to-key), [M4-R1](#m4-r1---cli-interface-review), [M4-R2](#m4-r2---api-interface-review) | Parser tests confirming `add` and `remove-root` are rejected by the standard unknown-subcommand path; `sync` tests verifying traversal-config preservation when no overrides are supplied and override persistence when overrides are explicitly given; standalone `sync` test confirming full rebuild of all tracked roots with no root-membership change; `remove` tests confirming the rename works end-to-end; `__all__` test confirming `add` is not exported and `_add` is present; updated integration tests routing through the four-command surface; README/docs consistency check | [docs/future-work.md §FW-10](future-work.md#fw-10-cli-simplification-amendment), [docs/execution/M4-R1.md](execution/M4-R1.md), [docs/execution/M4-R2.md](execution/M4-R2.md) |
+| <a id="m4.1-2---sync-path-consolidation-and-full-rebuild-standalone"></a>M4.1-2 | Todo | Sync path consolidation and full-rebuild standalone | Consolidate `_add_under_lock`'s alias resolution, early URL slug validation, and quarantine-recovery logging into `_sync_under_lock`; delete `_add()` and `_add_under_lock()` entirely; remove the `"add"` lock/snapshot mode; rewrite ~30 test callsites to use `sync(key=...)`; implement full-rebuild semantics for standalone `sync` (no key) so it unconditionally re-fetches and rewrites all tracked tickets rather than delegating to the incremental `_refresh_under_lock` path | [M4.1-1](#m4.1-1---cli-and-library-simplification) | Tests confirming alias-based local resolution, early URL slug validation, and quarantine-recovery logging work through `sync(key=...)`; standalone `sync` test confirming unconditional full rebuild (not incremental); `"add"` lock/snapshot mode no longer appears in any runtime code path | [docs/execution/M4.1-1-review.md](execution/M4.1-1-review.md) ([M4.1-1-R1](execution/M4.1-1-review.md), [M4.1-1-R2](execution/M4.1-1-review.md)) |
 
 ### 7.2 Detailed Ticket Notes
 
@@ -725,6 +726,26 @@ deferred to [FW-11](future-work.md#fw-11-partition-aware-sync-rebuild).
 - Update all user-facing command tables, exit-code tables, and examples to
   reflect the six use cases and the four-command surface.
 - Ensure the docs surface is consistent before M5-2 or M6-1 proceeds.
+
+#### M4.1-2 - Sync path consolidation and full-rebuild standalone
+
+This ticket addresses two review findings from
+[M4.1-1-review.md](execution/M4.1-1-review.md):
+
+- [M4.1-1-R1](execution/M4.1-1-review.md): `_add()` / `_add_under_lock()` are
+  dead code — never called from any public API path. Three behaviors in
+  `_add_under_lock` (alias-based local resolution, early URL slug validation,
+  quarantine-recovery logging) are tested but unreachable from `sync(key=...)`.
+  Consolidate those behaviors into `_sync_under_lock`, delete the dead code,
+  rewrite the ~30 test callsites to use `sync(key=...)`, and remove the `"add"`
+  lock/snapshot mode from `LOCK_MODES` and `ManifestSnapshot.mode`.
+
+- [M4.1-1-R2](execution/M4.1-1-review.md): Standalone `sync` (no key)
+  delegates to `_refresh_under_lock`, which is the incremental pipeline. The
+  plan and README describe standalone `sync` as a full unconditional rebuild.
+  Implement `_standalone_sync_under_lock` using the same full-fetch strategy as
+  `_sync_under_lock` so standalone `sync` is a genuine full rebuild, not
+  functionally equivalent to `refresh`.
 
 ### 7.3 Exit Criteria
 

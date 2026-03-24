@@ -7,8 +7,9 @@ signatures match the public API defined in the top-level design (§1).  The
 ``refresh`` method implements incremental whole-snapshot update with
 quarantine/recovery (M3-1); the ``remove`` method implements root removal
 (M3-2); the ``diff`` method implements the non-mutating drift inspection flow
-(M3-3).  The internal ``_add`` helper supports the root-addition path used by
-``sync`` when called with a ticket key.
+(M3-3).  The internal ``_add`` helper retains the former ``add`` code path for
+use by existing tests; it is not called by ``sync`` or any other public
+method.
 
 Design notes
 ------------
@@ -1232,8 +1233,9 @@ class ContextSync:
         """
         Add a root ticket and run a whole-snapshot refresh.
 
-        This is an internal helper used by :meth:`sync` when called with a
-        ticket key.  It is not part of the public API.
+        This is an internal helper retained from the former public ``add``
+        method.  It is not called by :meth:`sync` or any other public method
+        and is not part of the public API.
 
         Acquires the writer lock, resolves *key* (issue key or Linear issue
         URL) to a ticket UUID through alias-based local resolution and/or a

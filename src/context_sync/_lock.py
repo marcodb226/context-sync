@@ -2,7 +2,8 @@
 Writer-lock lifecycle for the context directory.
 
 The ``.context-sync.lock`` file enforces single-writer semantics for
-mutating operations (``sync``, ``refresh``, ``add``, ``remove``).
+mutating operations (``sync``, ``refresh``, ``remove``, and the
+internal ``_add`` path).
 The lock is acquired with an atomic create-or-fail step
 (``O_CREAT | O_EXCL``) and carries enough metadata for safe contention
 handling and operator diagnosis.
@@ -54,8 +55,8 @@ class LockRecord(BaseModel):
     acquired_at:
         UTC RFC 3339 timestamp when the lock was taken.
     mode:
-        The mutating operation (``"sync"``, ``"refresh"``, ``"add"``,
-        or ``"remove"``).
+        The mutating operation (``"sync"``, ``"refresh"``, ``"remove"``,
+        or ``"add"`` for the internal ``_add`` path).
     """
 
     model_config = ConfigDict(extra="forbid")

@@ -75,7 +75,8 @@ class ManifestSnapshot(BaseModel):
     ----------
     mode:
         The operation that produced this snapshot
-        (``"sync"``, ``"refresh"``, ``"add"``, or ``"remove"``).
+        (``"sync"``, ``"refresh"``, ``"remove"``, or ``"add"`` for the
+        internal ``_add`` path).
     started_at:
         UTC RFC 3339 timestamp when the pass began.
     completed_at:

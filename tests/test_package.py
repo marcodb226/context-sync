@@ -218,3 +218,11 @@ class TestAllExports:
             if name.startswith("_"):
                 continue
             assert name in exported, f"{name} is a public name not listed in __all__"
+
+    def test_add_not_exported_and_internal_add_exists(self) -> None:
+        """``add`` is not in ``__all__`` and ``_add`` exists on ContextSync."""
+        import context_sync
+
+        assert "add" not in context_sync.__all__
+        assert not hasattr(context_sync, "add")
+        assert hasattr(context_sync.ContextSync, "_add")
