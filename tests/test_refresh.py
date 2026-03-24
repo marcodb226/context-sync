@@ -239,7 +239,7 @@ class TestRefreshQuarantine:
         # Error should be recorded.
         assert len(result.errors) == 1
         assert result.errors[0].error_type == "root_quarantined"
-        assert result.errors[0].ticket_id == "ROOT-1"
+        assert result.errors[0].ticket_key == "ROOT-1"
 
         # Ticket file should still exist with quarantine markers.
         fm = _read_ticket_fm(context_dir, "ROOT-1")

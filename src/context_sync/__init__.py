@@ -12,11 +12,11 @@ All mutating and read-only operations are async methods that return
 
     from context_sync import ContextSync
 
-    syncer = ContextSync(
+    ctx = ContextSync(
         linear=linear_client_instance,
         context_dir=Path("linear-context"),
     )
-    result = await syncer.sync(root_ticket_id="ACP-123")
+    result = await ctx.sync(key="ACP-123")
 
 Configuration constants, traversal dimensions, and the testing harness are
 also importable from the package root.

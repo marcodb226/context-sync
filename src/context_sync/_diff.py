@@ -238,7 +238,7 @@ async def _run_diff_inner(
                 )
                 read_errors.append(
                     SyncError(
-                        ticket_id=entry.current_key,
+                        ticket_key=entry.current_key,
                         error_type="read_error",
                         message=f"Cannot read ticket file: {exc}",
                         retriable=True,
@@ -253,7 +253,7 @@ async def _run_diff_inner(
                 )
                 read_errors.append(
                     SyncError(
-                        ticket_id=entry.current_key,
+                        ticket_key=entry.current_key,
                         error_type="corrupt_frontmatter",
                         message=f"Cannot parse ticket frontmatter: {exc}",
                         retriable=False,
@@ -273,7 +273,7 @@ async def _run_diff_inner(
     errors: list[SyncError] = list(read_errors)
 
     # UUIDs that had read errors are already in errors; skip them below.
-    errored_keys = {e.ticket_id for e in read_errors}
+    errored_keys = {e.ticket_key for e in read_errors}
 
     for uid in tracked_uids:
         manifest_entry = manifest.tickets[uid]
@@ -288,7 +288,7 @@ async def _run_diff_inner(
         if fm is None:
             entries.append(
                 DiffEntry(
-                    ticket_id=manifest_entry.current_key,
+                    ticket_key=manifest_entry.current_key,
                     status="missing_locally",
                 )
             )
@@ -299,7 +299,7 @@ async def _run_diff_inner(
         if local_uuid != uid:
             errors.append(
                 SyncError(
-                    ticket_id=manifest_entry.current_key,
+                    ticket_key=manifest_entry.current_key,
                     error_type="identity_mismatch",
                     message=(
                         f"Local ticket_uuid {local_uuid!r} does not match manifest UUID {uid!r}"
@@ -314,7 +314,7 @@ async def _run_diff_inner(
         if remote_issue is None or not remote_issue.visible:
             entries.append(
                 DiffEntry(
-                    ticket_id=manifest_entry.current_key,
+                    ticket_key=manifest_entry.current_key,
                     status="missing_remotely",
                 )
             )
@@ -337,7 +337,7 @@ async def _run_diff_inner(
 
         entries.append(
             DiffEntry(
-                ticket_id=remote_issue.issue_key,
+                ticket_key=remote_issue.issue_key,
                 status="stale" if stale else "current",
                 changed_fields=changed,
             )

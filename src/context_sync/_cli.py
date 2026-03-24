@@ -87,7 +87,7 @@ def _format_sync_result_text(result: SyncResult) -> str:
         lines.append(f"Removed ({len(result.removed)}): {', '.join(sorted(result.removed))}")
     if result.errors:
         for err in result.errors:
-            lines.append(f"Error [{err.error_type}] {err.ticket_id}: {err.message}")
+            lines.append(f"Error [{err.error_type}] {err.ticket_key}: {err.message}")
 
     if not lines:
         lines.append("No changes.")
@@ -110,20 +110,20 @@ def _format_diff_result_text(result: DiffResult) -> str:
     missing_remote = [e for e in result.entries if e.status == "missing_remotely"]
 
     if current:
-        lines.append(f"Current ({len(current)}): {', '.join(e.ticket_id for e in current)}")
+        lines.append(f"Current ({len(current)}): {', '.join(e.ticket_key for e in current)}")
     if stale:
         for entry in stale:
             fields = ", ".join(entry.changed_fields) if entry.changed_fields else "unknown"
-            lines.append(f"Stale: {entry.ticket_id} [{fields}]")
+            lines.append(f"Stale: {entry.ticket_key} [{fields}]")
     if missing_local:
-        keys = ", ".join(e.ticket_id for e in missing_local)
+        keys = ", ".join(e.ticket_key for e in missing_local)
         lines.append(f"Missing locally ({len(missing_local)}): {keys}")
     if missing_remote:
-        keys = ", ".join(e.ticket_id for e in missing_remote)
+        keys = ", ".join(e.ticket_key for e in missing_remote)
         lines.append(f"Missing remotely ({len(missing_remote)}): {keys}")
     if result.errors:
         for err in result.errors:
-            lines.append(f"Error [{err.error_type}] {err.ticket_id}: {err.message}")
+            lines.append(f"Error [{err.error_type}] {err.ticket_key}: {err.message}")
 
     if not lines:
         lines.append("No tracked tickets.")
@@ -215,7 +215,7 @@ async def _run_sync(
             context_dir=Path(args.context_dir),
         )
     result = await syncer.sync(
-        root_ticket_id=args.root_ticket,
+        key=args.root_ticket,
         max_tickets_per_root=args.max_tickets_per_root,
         dimensions=_build_dimensions(args),
     )
@@ -268,7 +268,7 @@ async def _run_add(
             linear=linear,
             context_dir=Path(args.context_dir),
         )
-    result = await syncer.add(ticket_ref=args.ticket_ref)
+    result = await syncer.add(key=args.ticket_ref)
     text = _format_sync_result_text(result)
     _emit(text, asdict(result), use_json=args.json)
     return EXIT_SUCCESS
@@ -293,7 +293,7 @@ async def _run_remove_root(
             linear=linear,
             context_dir=Path(args.context_dir),
         )
-    result = await syncer.remove_root(ticket_ref=args.ticket_ref)
+    result = await syncer.remove_root(key=args.ticket_ref)
     text = _format_sync_result_text(result)
     _emit(text, asdict(result), use_json=args.json)
     return EXIT_SUCCESS

@@ -364,7 +364,7 @@ class TestJsonOutput:
         payload = asdict(result)
         dumped = json.dumps(payload, indent=2, sort_keys=True)
         loaded = json.loads(dumped)
-        assert loaded["entries"][0]["ticket_id"] == "ACP-1"
+        assert loaded["entries"][0]["ticket_key"] == "ACP-1"
         assert loaded["entries"][0]["status"] == "stale"
 
 
@@ -603,7 +603,7 @@ class TestHandlerIntegration:
         from context_sync._testing import make_syncer
 
         syncer = make_syncer(gateway=fake_gateway, context_dir=context_dir)
-        await syncer.sync(root_ticket_id="TEST-1")
+        await syncer.sync(key="TEST-1")
 
         args = _make_args(
             context_dir=str(context_dir),
@@ -633,7 +633,7 @@ class TestHandlerIntegration:
         from context_sync._testing import make_syncer
 
         syncer = make_syncer(gateway=fake_gateway, context_dir=context_dir)
-        await syncer.sync(root_ticket_id="TEST-1")
+        await syncer.sync(key="TEST-1")
 
         args = _make_args(
             context_dir=str(context_dir),
@@ -650,7 +650,7 @@ class TestHandlerIntegration:
         from context_sync._testing import make_syncer
 
         syncer = make_syncer(gateway=fake_gateway, context_dir=context_dir)
-        await syncer.sync(root_ticket_id="TEST-1")
+        await syncer.sync(key="TEST-1")
 
         args = _make_args(context_dir=str(context_dir))
         code = await _run_diff(args, _gateway_override=fake_gateway)

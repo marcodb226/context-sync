@@ -13,7 +13,7 @@ The primary interface is an async Python class that receives an authenticated `L
 ```python
 from context_sync import ContextSync
 
-syncer = ContextSync(
+ctx = ContextSync(
     linear=linear_client_instance,  # reuse the caller's authenticated client
     context_dir=Path("/work/repo/linear-context"),
     dimensions={
@@ -30,19 +30,19 @@ syncer = ContextSync(
 class ContextSync:
     async def sync(
         self,
-        root_ticket_id: str,
+        key: str,
         max_tickets_per_root: int | None = None,
         dimensions: dict[str, int] | None = None,
     ) -> SyncResult: ...
 
     async def add(
         self,
-        ticket_ref: str,
+        key: str,
     ) -> SyncResult: ...
 
     async def remove_root(
         self,
-        ticket_ref: str,
+        key: str,
     ) -> SyncResult: ...
 
     async def refresh(
@@ -52,24 +52,23 @@ class ContextSync:
 
     async def diff(self) -> DiffResult: ...
 
-# Initial sync: dump the root ticket plus its reachable neighborhood
-result = await syncer.sync(root_ticket_id="ACP-123", max_tickets_per_root=200)
+# Track a ticket and update the snapshot
+result = await ctx.sync(key="ACP-123", max_tickets_per_root=200)
 
-# Delta refresh: update stale files in place, quarantining unavailable roots
-result = await syncer.refresh()
+# Update the snapshot from all tracked roots
+result = await ctx.refresh()
 
-# Delta refresh with explicit forced removal of unavailable tracked roots
-result = await syncer.refresh(missing_root_policy="remove")
+# Update with explicit forced removal of unavailable tracked roots
+result = await ctx.refresh(missing_root_policy="remove")
 
-# Expand with a newly discovered ticket by issue key or Linear URL,
-# then run whole-snapshot refresh semantics across all roots
-result = await syncer.add(ticket_ref="ACP-999")
+# Add a root by issue key or Linear URL, then refresh all roots
+result = await ctx.add(key="ACP-999")
 
-# Remove a root, then run whole-snapshot refresh semantics across all roots
-result = await syncer.remove_root(ticket_ref="ACP-999")
+# Remove a root, then refresh all roots
+result = await ctx.remove_root(key="ACP-999")
 
 # Compare local files to Linear without modifying anything
-result = await syncer.diff()
+result = await ctx.diff()
 ```
 
 Caller-facing inputs continue to use familiar issue keys or Linear issue URLs for ergonomics. Internally, once a ticket is resolved, the stable Linear UUID becomes the authoritative identity used for deduplication, root membership, and issue-key-change handling.
@@ -306,7 +305,7 @@ The tool does **not** manage its own Linear authentication.
 ### 6.1 Sync Flow
 
 ```
-sync(root_ticket_id, max_tickets_per_root, dimensions)
+sync(key, max_tickets_per_root, dimensions)
   │
   ├─ Attempt atomic writer-lock acquisition for context_dir
   ├─ If a lock record already exists: inspect lock metadata

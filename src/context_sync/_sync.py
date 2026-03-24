@@ -267,7 +267,7 @@ class ContextSync:
 
     @property
     def context_dir(self) -> Path:
-        """The context directory this syncer operates on."""
+        """The context directory this instance operates on."""
         return self._context_dir
 
     @property
@@ -289,12 +289,12 @@ class ContextSync:
 
     async def sync(
         self,
-        root_ticket_id: str,
+        key: str,
         max_tickets_per_root: int | None = None,
         dimensions: dict[str, int] | None = None,
     ) -> SyncResult:
         """
-        Full-snapshot rebuild from *root_ticket_id* and all existing roots.
+        Track a ticket and update the snapshot from all roots.
 
         Acquires the writer lock, fetches the requested root, validates its
         workspace against the context directory, adds the root to the manifest,
@@ -304,8 +304,8 @@ class ContextSync:
 
         Parameters
         ----------
-        root_ticket_id:
-            Issue key or Linear issue URL of the root to add/refresh.
+        key:
+            Issue key or Linear issue URL of the root to track.
         max_tickets_per_root:
             Override the instance-level per-root cap for this call.
         dimensions:
@@ -355,7 +355,7 @@ class ContextSync:
 
         try:
             return await self._sync_under_lock(
-                root_ticket_id=root_ticket_id,
+                key=key,
                 effective_dims=effective_dims,
                 effective_cap=effective_cap,
                 context_dir=context_dir,
@@ -374,7 +374,7 @@ class ContextSync:
     async def _sync_under_lock(
         self,
         *,
-        root_ticket_id: str,
+        key: str,
         effective_dims: dict[str, int],
         effective_cap: int,
         context_dir: Path,
@@ -395,7 +395,7 @@ class ContextSync:
         SyncResult
         """
         # -- Fetch the requested root ticket ----------------------------------
-        root_bundle = await gateway.fetch_issue(root_ticket_id)
+        root_bundle = await gateway.fetch_issue(key)
         root_uuid = root_bundle.issue.issue_id
 
         # -- Load or initialize manifest --------------------------------------
@@ -525,7 +525,7 @@ class ContextSync:
             for issue_key, _uid in fetch_errors:
                 errors.append(
                     SyncError(
-                        ticket_id=issue_key,
+                        ticket_key=issue_key,
                         error_type="fetch_failed",
                         message=f"Could not fetch linked ticket {issue_key}",
                         retriable=True,
@@ -623,7 +623,7 @@ class ContextSync:
         missing_root_policy: Literal["quarantine", "remove"] = "quarantine",
     ) -> SyncResult:
         """
-        Incremental whole-snapshot update from all existing roots.
+        Update the snapshot from all tracked roots.
 
         Acquires the writer lock, loads the existing manifest, checks root
         visibility, applies the missing-root policy (quarantine or remove),
@@ -825,7 +825,7 @@ class ContextSync:
                         )
                     errors.append(
                         SyncError(
-                            ticket_id=(
+                            ticket_key=(
                                 meta.issue_key
                                 if meta is not None
                                 else manifest.tickets[uid].current_key
@@ -905,7 +905,7 @@ class ContextSync:
                     )
                 errors.append(
                     SyncError(
-                        ticket_id=failed_key,
+                        ticket_key=failed_key,
                         error_type="root_quarantined",
                         message=(
                             "Root ticket passed visibility check but was "
@@ -1065,7 +1065,7 @@ class ContextSync:
             for issue_key, _uid in fetch_errors:
                 errors.append(
                     SyncError(
-                        ticket_id=issue_key,
+                        ticket_key=issue_key,
                         error_type="fetch_failed",
                         message=f"Could not fetch linked ticket {issue_key}",
                         retriable=True,
@@ -1167,19 +1167,19 @@ class ContextSync:
             errors=errors,
         )
 
-    async def add(self, ticket_ref: str) -> SyncResult:
+    async def add(self, key: str) -> SyncResult:
         """
         Add a root ticket and run a whole-snapshot refresh.
 
-        Acquires the writer lock, resolves *ticket_ref* (issue key or Linear
-        issue URL) to a ticket UUID through alias-based local resolution
-        and/or a remote fetch, validates workspace membership, adds the UUID
-        to the manifest root set, then delegates to the whole-snapshot
-        refresh pipeline under the same writer lock.
+        Acquires the writer lock, resolves *key* (issue key or Linear issue
+        URL) to a ticket UUID through alias-based local resolution and/or a
+        remote fetch, validates workspace membership, adds the UUID to the
+        manifest root set, then delegates to the whole-snapshot refresh
+        pipeline under the same writer lock.
 
         Parameters
         ----------
-        ticket_ref:
+        key:
             Issue key (e.g. ``"ACP-123"``) or Linear issue URL
             (e.g. ``"https://linear.app/myteam/issue/ACP-123"``).
 
@@ -1221,7 +1221,7 @@ class ContextSync:
 
         try:
             return await self._add_under_lock(
-                ticket_ref=ticket_ref,
+                key=key,
                 context_dir=context_dir,
                 gateway=gateway,
                 semaphore=semaphore,
@@ -1238,7 +1238,7 @@ class ContextSync:
     async def _add_under_lock(
         self,
         *,
-        ticket_ref: str,
+        key: str,
         context_dir: Path,
         gateway: LinearGateway,
         semaphore: asyncio.Semaphore,
@@ -1248,7 +1248,7 @@ class ContextSync:
         """
         Core add logic executed while the writer lock is held.
 
-        Resolves *ticket_ref* to a UUID, adds the root to the manifest,
+        Resolves *key* to a UUID, adds the root to the manifest,
         persists the manifest, then delegates to :meth:`_refresh_under_lock`
         for the whole-snapshot refresh phase.
 
@@ -1258,8 +1258,8 @@ class ContextSync:
         """
         manifest_path = context_dir / MANIFEST_FILENAME
 
-        # -- Normalize ticket_ref -----------------------------------------------
-        url_slug, normalized_ref = _normalize_ticket_ref(ticket_ref)
+        # -- Normalize key -------------------------------------------------------
+        url_slug, normalized_ref = _normalize_ticket_ref(key)
 
         # -- Load or initialize manifest ----------------------------------------
         manifest: Manifest | None
@@ -1330,14 +1330,14 @@ class ContextSync:
             manifest=manifest,
         )
 
-    async def remove_root(self, ticket_ref: str) -> SyncResult:
+    async def remove_root(self, key: str) -> SyncResult:
         """
         Remove a root ticket and run a whole-snapshot refresh.
 
-        Acquires the writer lock, loads the manifest, resolves *ticket_ref*
-        to a UUID through the alias table or ticket entries, verifies the
-        UUID is in the root set, removes it, then delegates to the
-        whole-snapshot refresh pipeline under the same writer lock.
+        Acquires the writer lock, loads the manifest, resolves *key* to a
+        UUID through the alias table or ticket entries, verifies the UUID
+        is in the root set, removes it, then delegates to the whole-snapshot
+        refresh pipeline under the same writer lock.
 
         If the removed ticket is still reachable from another root, it
         remains in the snapshot as a derived ticket.  If it is no longer
@@ -1345,7 +1345,7 @@ class ContextSync:
 
         Parameters
         ----------
-        ticket_ref:
+        key:
             Issue key (e.g. ``"ACP-123"``), Linear issue URL, or ticket
             UUID identifying the root to remove.
 
@@ -1359,9 +1359,9 @@ class ContextSync:
         ManifestError
             If the manifest does not exist or is invalid.
         RootNotInManifestError
-            If *ticket_ref* cannot be resolved to a current root.
+            If *key* cannot be resolved to a current root.
         WorkspaceMismatchError
-            If *ticket_ref* is a URL whose workspace slug does not match.
+            If *key* is a URL whose workspace slug does not match.
         ActiveLockError
             If a non-stale writer lock is already held.
         StaleLockError
@@ -1388,7 +1388,7 @@ class ContextSync:
 
         try:
             return await self._remove_root_under_lock(
-                ticket_ref=ticket_ref,
+                key=key,
                 context_dir=context_dir,
                 gateway=gateway,
                 semaphore=semaphore,
@@ -1405,7 +1405,7 @@ class ContextSync:
     async def _remove_root_under_lock(
         self,
         *,
-        ticket_ref: str,
+        key: str,
         context_dir: Path,
         gateway: LinearGateway,
         semaphore: asyncio.Semaphore,
@@ -1415,7 +1415,7 @@ class ContextSync:
         """
         Core remove-root logic executed while the writer lock is held.
 
-        Resolves *ticket_ref* to a UUID, removes it from the root set,
+        Resolves *key* to a UUID, removes it from the root set,
         persists the manifest, then delegates to :meth:`_refresh_under_lock`
         for the whole-snapshot refresh phase.
 
@@ -1426,8 +1426,8 @@ class ContextSync:
         # -- Load manifest (must exist for remove-root) -------------------------
         manifest = load_manifest(context_dir)
 
-        # -- Normalize ticket_ref -----------------------------------------------
-        url_slug, normalized_ref = _normalize_ticket_ref(ticket_ref)
+        # -- Normalize key -------------------------------------------------------
+        url_slug, normalized_ref = _normalize_ticket_ref(key)
 
         # URL workspace-slug validation.
         if url_slug is not None and url_slug != manifest.workspace_slug:
@@ -1440,13 +1440,13 @@ class ContextSync:
         resolved_uuid = _resolve_ref_to_uuid(normalized_ref, manifest)
         if resolved_uuid is None:
             raise RootNotInManifestError(
-                f"Cannot resolve {ticket_ref!r} to a ticket in the manifest"
+                f"Cannot resolve {key!r} to a ticket in the manifest"
             )
 
         # -- Verify UUID is in root set -----------------------------------------
         if resolved_uuid not in manifest.roots:
             raise RootNotInManifestError(
-                f"Ticket {ticket_ref!r} (UUID {resolved_uuid}) is tracked "
+                f"Ticket {key!r} (UUID {resolved_uuid}) is tracked "
                 f"but is not in the root set"
             )
 

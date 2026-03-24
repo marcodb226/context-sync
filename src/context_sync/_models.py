@@ -19,7 +19,7 @@ class SyncError:
 
     Attributes
     ----------
-    ticket_id:
+    ticket_key:
         Current issue key for human-readable reporting.
     error_type:
         Machine-readable category, e.g. ``"not_found"``,
@@ -30,7 +30,7 @@ class SyncError:
         Whether the caller should consider retrying this ticket.
     """
 
-    ticket_id: str
+    ticket_key: str
     error_type: str
     message: str
     retriable: bool
@@ -39,7 +39,7 @@ class SyncError:
 @dataclass(frozen=True)
 class SyncResult:
     """
-    Outcome of a ``sync``, ``refresh``, ``add``, or ``remove_root`` call.
+    Outcome of a ``sync``, ``refresh``, ``add``, or ``remove_root`` operation.
 
     Each list contains current issue keys.  The sets are disjoint: a ticket
     appears in exactly one of *created*, *updated*, *unchanged*, or *removed*.
@@ -74,7 +74,7 @@ class DiffEntry:
 
     Attributes
     ----------
-    ticket_id:
+    ticket_key:
         Current issue key for reporting.
     status:
         One of ``"current"``, ``"stale"``, ``"missing_locally"``, or
@@ -89,7 +89,7 @@ class DiffEntry:
         - ``"issue_key"`` — issue key renamed
     """
 
-    ticket_id: str
+    ticket_key: str
     status: str
     changed_fields: list[str] = field(default_factory=list)
 

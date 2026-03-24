@@ -667,7 +667,7 @@ class TestSyncLinkedTicketFetchFailure:
 
         # Linked ticket failure recorded as an error, not an exception.
         assert len(result.errors) == 1
-        assert result.errors[0].ticket_id == "LINKED-1"
+        assert result.errors[0].ticket_key == "LINKED-1"
         assert result.errors[0].error_type == "fetch_failed"
         assert result.errors[0].retriable is True
 

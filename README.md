@@ -248,7 +248,7 @@ For programmatic use, import the async `ContextSync` class directly:
 from context_sync import ContextSync
 
 ctx = ContextSync(linear=linear_client, context_dir="./context")
-result = await ctx.sync(root_ticket_id="TEAM-42")
+result = await ctx.sync(key="TEAM-42")
 ```
 
 All five CLI operations (`sync`, `refresh`, `add`, `remove_root`, `diff`) are

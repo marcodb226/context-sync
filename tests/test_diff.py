@@ -39,11 +39,11 @@ def _write_lock_file(context_dir: Path, lock: LockRecord) -> Path:
 
 
 def _find_entry(entries: list[DiffEntry], ticket_id: str) -> DiffEntry:
-    """Find a DiffEntry by ticket_id, or fail the test."""
+    """Find a DiffEntry by ticket_key, or fail the test."""
     for e in entries:
-        if e.ticket_id == ticket_id:
+        if e.ticket_key == ticket_id:
             return e
-    raise AssertionError(f"No DiffEntry with ticket_id={ticket_id!r}")
+    raise AssertionError(f"No DiffEntry with ticket_key={ticket_id!r}")
 
 
 # ---------------------------------------------------------------------------
@@ -229,7 +229,7 @@ class TestDiffChangedFields:
         result = await syncer.diff()
         assert len(result.entries) == 1
         entry = result.entries[0]
-        assert entry.ticket_id == "TEST-1"
+        assert entry.ticket_key == "TEST-1"
         assert entry.status == "current"
         assert entry.changed_fields == []
 
@@ -337,7 +337,7 @@ class TestDiffChangedFields:
         assert entry.status == "stale"
         assert "issue_key" in entry.changed_fields
         # The ticket_id should reflect the new remote key.
-        assert entry.ticket_id == "NEW-1"
+        assert entry.ticket_key == "NEW-1"
 
     async def test_multiple_changed_fields(self, context_dir: Path) -> None:
         """Multiple cursor components can change simultaneously."""
@@ -449,7 +449,7 @@ class TestDiffMissingRemotely:
         result = await syncer.diff()
         assert len(result.entries) == 1
         entry = result.entries[0]
-        assert entry.ticket_id == "TEST-1"
+        assert entry.ticket_key == "TEST-1"
         assert entry.status == "missing_remotely"
         assert entry.changed_fields == []
 
@@ -511,7 +511,7 @@ class TestDiffMissingLocally:
         result = await syncer.diff()
         assert len(result.entries) == 1
         entry = result.entries[0]
-        assert entry.ticket_id == "TEST-1"
+        assert entry.ticket_key == "TEST-1"
         assert entry.status == "missing_locally"
         assert entry.changed_fields == []
 
@@ -691,7 +691,7 @@ class TestDiffIdentityValidation:
         assert result.entries == []  # no normal entries
         assert len(result.errors) == 1
         assert result.errors[0].error_type == "identity_mismatch"
-        assert result.errors[0].ticket_id == "TEST-1"
+        assert result.errors[0].ticket_key == "TEST-1"
 
     async def test_missing_ticket_uuid_is_error(self, context_dir: Path) -> None:
         """A file without ticket_uuid produces an identity-mismatch error."""
@@ -726,7 +726,7 @@ class TestDiffIdentityValidation:
         assert result.entries == []
         assert len(result.errors) == 1
         assert result.errors[0].error_type == "corrupt_frontmatter"
-        assert result.errors[0].ticket_id == "TEST-1"
+        assert result.errors[0].ticket_key == "TEST-1"
 
 
 # ---------------------------------------------------------------------------
@@ -768,11 +768,11 @@ class TestDiffErrorSurface:
             result = await syncer.diff()
             # The root should still be classified normally.
             assert len(result.entries) == 1
-            assert result.entries[0].ticket_id == "ROOT-1"
+            assert result.entries[0].ticket_key == "ROOT-1"
             # The child should appear in errors.
             assert len(result.errors) == 1
             assert result.errors[0].error_type == "read_error"
-            assert result.errors[0].ticket_id == "CHILD-1"
+            assert result.errors[0].ticket_key == "CHILD-1"
         finally:
             # Restore permissions for cleanup.
             child_file.chmod(0o644)

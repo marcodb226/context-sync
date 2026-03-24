@@ -197,7 +197,7 @@ class TestLoggingContract:
         """Sync emits INFO logs for started and completed with counts."""
         syncer = make_syncer(gateway=gateway, context_dir=context_dir)
         with caplog.at_level(logging.INFO, logger="context_sync"):
-            await syncer.sync(root_ticket_id="LOG-1")
+            await syncer.sync(key="LOG-1")
 
         log_text = caplog.text
         assert "sync: started" in log_text
@@ -217,7 +217,7 @@ class TestLoggingContract:
     ) -> None:
         """Refresh emits INFO logs for started and completed with counts."""
         syncer = make_syncer(gateway=gateway, context_dir=context_dir)
-        await syncer.sync(root_ticket_id="LOG-1")
+        await syncer.sync(key="LOG-1")
 
         caplog.clear()
         with caplog.at_level(logging.INFO, logger="context_sync"):
@@ -239,7 +239,7 @@ class TestLoggingContract:
     ) -> None:
         """Diff emits INFO logs for started and completed with counts."""
         syncer = make_syncer(gateway=gateway, context_dir=context_dir)
-        await syncer.sync(root_ticket_id="LOG-1")
+        await syncer.sync(key="LOG-1")
 
         caplog.clear()
         with caplog.at_level(logging.INFO, logger="context_sync"):
@@ -259,7 +259,7 @@ class TestLoggingContract:
     ) -> None:
         """Refresh emits DEBUG logs for per-ticket fresh/stale decisions."""
         syncer = make_syncer(gateway=gateway, context_dir=context_dir)
-        await syncer.sync(root_ticket_id="LOG-1")
+        await syncer.sync(key="LOG-1")
 
         caplog.clear()
         with caplog.at_level(logging.DEBUG, logger="context_sync"):
@@ -279,7 +279,7 @@ class TestLoggingContract:
         syncer = make_syncer(gateway=gateway, context_dir=context_dir)
 
         with caplog.at_level(logging.DEBUG, logger="context_sync"):
-            await syncer.sync(root_ticket_id="LOG-1")
+            await syncer.sync(key="LOG-1")
 
         log_text = caplog.text
         assert "Lock acquired cleanly" in log_text
@@ -323,7 +323,7 @@ class TestJsonOutputE2E:
     ) -> None:
         """Diff with --json produces valid JSON on stdout."""
         syncer = make_syncer(gateway=gateway, context_dir=context_dir)
-        await syncer.sync(root_ticket_id="JSON-1")
+        await syncer.sync(key="JSON-1")
 
         args = _make_args(context_dir=str(context_dir), json=True)
         code = await _run_diff(args, _gateway_override=gateway)
@@ -382,7 +382,7 @@ class TestMultiRootE2E:
 
         # Sync
         syncer = make_syncer(gateway=gw, context_dir=context_dir)
-        await syncer.sync(root_ticket_id="QR-1")
+        await syncer.sync(key="QR-1")
 
         # Make root invisible
         gw.hide_issue("uuid-q")
@@ -415,10 +415,10 @@ class TestIdempotency:
         gw.add_issue(make_issue(issue_id="uuid-idem", issue_key="IDEM-1"))
 
         syncer = make_syncer(gateway=gw, context_dir=context_dir)
-        r1 = await syncer.sync(root_ticket_id="IDEM-1")
+        r1 = await syncer.sync(key="IDEM-1")
         assert "IDEM-1" in r1.created
 
-        r2 = await syncer.sync(root_ticket_id="IDEM-1")
+        r2 = await syncer.sync(key="IDEM-1")
         assert "IDEM-1" in r2.unchanged
         assert len(r2.created) == 0
         assert len(r2.updated) == 0
@@ -429,7 +429,7 @@ class TestIdempotency:
         gw.add_issue(make_issue(issue_id="uuid-ref", issue_key="REF-1"))
 
         syncer = make_syncer(gateway=gw, context_dir=context_dir)
-        await syncer.sync(root_ticket_id="REF-1")
+        await syncer.sync(key="REF-1")
 
         result = await syncer.refresh()
         assert "REF-1" in result.unchanged
