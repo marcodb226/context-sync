@@ -312,6 +312,11 @@ to `Next release` yet.
 - The plan amendment is activated and the implementation tickets for the CLI
   and library simplification are tracked in the active plan.
 
+**Promoted to active plan**
+- Scope promoted to [M4.1-1](implementation-plan.md#m4.1-1---cli-and-library-simplification)
+  via [CR-26.03.24](planning/change-requests/CR-26.03.24.md), activated
+  2026-03-24.
+
 **References**
 - [docs/execution/M4-R1.md](execution/M4-R1.md)
 - [docs/execution/M4-R1-review.md](execution/M4-R1-review.md)
