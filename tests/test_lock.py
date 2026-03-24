@@ -115,7 +115,7 @@ class TestAcquireLock:
 
     def test_creates_parent_directory(self, tmp_path: Path) -> None:
         nested = tmp_path / "sub" / "deep"
-        record = acquire_lock(nested, "add", writer_id="w3")
+        record = acquire_lock(nested, "sync", writer_id="w3")
         assert (nested / LOCK_FILENAME).is_file()
         assert record.writer_id == "w3"
 

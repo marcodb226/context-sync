@@ -219,10 +219,11 @@ class TestAllExports:
                 continue
             assert name in exported, f"{name} is a public name not listed in __all__"
 
-    def test_add_not_exported_and_internal_add_exists(self) -> None:
-        """``add`` is not in ``__all__`` and ``_add`` exists on ContextSync."""
+    def test_add_not_exported(self) -> None:
+        """``add`` is not in ``__all__`` and not a public attribute."""
         import context_sync
 
         assert "add" not in context_sync.__all__
         assert not hasattr(context_sync, "add")
-        assert hasattr(context_sync.ContextSync, "_add")
+        assert not hasattr(context_sync.ContextSync, "add")
+        assert not hasattr(context_sync.ContextSync, "_add")

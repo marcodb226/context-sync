@@ -267,7 +267,7 @@ class TestManifestWithData:
         assert loaded.snapshot.completed_successfully is True
 
     def test_snapshot_without_completion(self, tmp_path: Path) -> None:
-        snap = ManifestSnapshot(mode="add", started_at="2026-03-01T12:00:00Z")
+        snap = ManifestSnapshot(mode="sync", started_at="2026-03-01T12:00:00Z")
         m = make_manifest(snapshot=snap)
         save_manifest(m, tmp_path)
         loaded = load_manifest(tmp_path)

@@ -7,9 +7,8 @@ signatures match the public API defined in the top-level design (§1).  The
 ``refresh`` method implements incremental whole-snapshot update with
 quarantine/recovery (M3-1); the ``remove`` method implements root removal
 (M3-2); the ``diff`` method implements the non-mutating drift inspection flow
-(M3-3).  The internal ``_add`` helper retains the former ``add`` code path for
-use by existing tests; it is not called by ``sync`` or any other public
-method.
+(M3-3).  All root-addition behavior (alias-based local resolution, early URL slug
+validation, quarantine recovery) is consolidated in ``_sync_under_lock``.
 
 Design notes
 ------------
@@ -73,7 +72,7 @@ from context_sync._pipeline import (
 )
 from context_sync._signatures import compute_comments_signature, compute_relations_signature
 from context_sync._ticket_ref import _normalize_ticket_ref, _resolve_ref_to_uuid
-from context_sync._traversal import build_reachable_graph
+from context_sync._traversal import TraversalResult, build_reachable_graph
 from context_sync._yaml import extract_body, parse_frontmatter, serialize_frontmatter
 
 if TYPE_CHECKING:
@@ -408,27 +407,45 @@ class ContextSync:
         -------
         SyncResult
         """
-        # -- Fetch the requested root ticket ----------------------------------
-        root_bundle = await gateway.fetch_issue(key)
-        root_uuid = root_bundle.issue.issue_id
-
-        # -- Load or initialize manifest --------------------------------------
+        # -- Normalize key and attempt local resolution -----------------------
+        url_slug, normalized_ref = _normalize_ticket_ref(key)
         manifest_path = context_dir / MANIFEST_FILENAME
+        manifest: Manifest | None = None
+        resolved_uuid: str | None = None
+
         if manifest_path.is_file():
             manifest = load_manifest(context_dir)
-            if manifest.workspace_id != root_bundle.workspace.workspace_id:
+
+            # URL workspace-slug validation (fail fast before any remote call).
+            if url_slug is not None and url_slug != manifest.workspace_slug:
                 raise WorkspaceMismatchError(
-                    f"Root ticket {root_bundle.issue.issue_key} belongs to "
-                    f"workspace {root_bundle.workspace.workspace_slug!r} "
-                    f"({root_bundle.workspace.workspace_id}), but the context "
-                    f"directory is bound to workspace "
-                    f"{manifest.workspace_slug!r} ({manifest.workspace_id})"
+                    f"URL workspace slug {url_slug!r} does not match the "
+                    f"context directory workspace {manifest.workspace_slug!r}"
                 )
-        else:
+
+            # Alias-based local resolution avoids a redundant key→UUID
+            # round-trip when the ticket is already tracked locally.
+            resolved_uuid = _resolve_ref_to_uuid(normalized_ref, manifest)
+
+        # -- Fetch the requested root ticket ----------------------------------
+        fetch_ref = resolved_uuid if resolved_uuid is not None else normalized_ref
+        root_bundle = await gateway.fetch_issue(fetch_ref)
+        root_uuid = root_bundle.issue.issue_id
+
+        # -- Initialize manifest if needed, or validate workspace -------------
+        if manifest is None:
             manifest = initialize_manifest(
                 root_bundle.workspace,
                 self._dimensions,
                 self._max_tickets_per_root,
+            )
+        elif manifest.workspace_id != root_bundle.workspace.workspace_id:
+            raise WorkspaceMismatchError(
+                f"Root ticket {root_bundle.issue.issue_key} belongs to "
+                f"workspace {root_bundle.workspace.workspace_slug!r} "
+                f"({root_bundle.workspace.workspace_id}), but the context "
+                f"directory is bound to workspace "
+                f"{manifest.workspace_slug!r} ({manifest.workspace_id})"
             )
 
         # -- Update manifest configuration (preserve when no override) -------
@@ -449,7 +466,20 @@ class ContextSync:
         )
 
         # -- Add the requested root to the manifest root set ------------------
+        previous_entry = manifest.roots.get(root_uuid)
         manifest.roots[root_uuid] = ManifestRootEntry(state="active")
+        if previous_entry is not None and previous_entry.state == "quarantined":
+            logger.info(
+                "sync: recovered quarantined root %s (%s) → active",
+                root_bundle.issue.issue_key,
+                root_uuid,
+            )
+        elif previous_entry is None:
+            logger.info(
+                "sync: added root %s (%s)",
+                root_bundle.issue.issue_key,
+                root_uuid,
+            )
 
         # -- Pre-fetch all active root bundles --------------------------------
         # The requested root is already fetched.  Other active roots are
@@ -517,9 +547,161 @@ class ContextSync:
             ticket_ref_fn=provider,
         )
 
+        return await self._sync_write_pass(
+            graph=graph,
+            fetched=fetched,
+            manifest=manifest,
+            context_dir=context_dir,
+            gateway=gateway,
+            semaphore=semaphore,
+            started_at=started_at,
+            mono_start=mono_start,
+            log_label="sync",
+        )
+
+    async def _standalone_sync_under_lock(
+        self,
+        *,
+        dimensions_override: dict[str, int] | None,
+        cap_override: int | None,
+        context_dir: Path,
+        gateway: LinearGateway,
+        semaphore: asyncio.Semaphore,
+        started_at: str,
+        mono_start: float,
+    ) -> SyncResult:
+        """
+        Full unconditional rebuild of all tracked roots without changing
+        root membership.
+
+        Unlike :meth:`_refresh_under_lock` (incremental — fetches only stale
+        tickets), this method re-fetches and re-writes every reachable ticket
+        unconditionally.  This is the ``sync`` code path when no *key* is
+        supplied.
+
+        Returns
+        -------
+        SyncResult
+
+        Raises
+        ------
+        ManifestError
+            If no manifest exists (standalone sync requires tracked roots).
+        """
+        manifest = load_manifest(context_dir)
+
+        # -- Update manifest configuration (preserve when no override) -------
+        if dimensions_override is not None:
+            manifest.dimensions = dict(resolve_dimensions(dimensions_override))
+        if cap_override is not None:
+            manifest.max_tickets_per_root = cap_override
+
+        effective_dims = dict(manifest.dimensions)
+        effective_cap = manifest.max_tickets_per_root
+
+        # -- Record in-progress snapshot metadata -----------------------------
+        manifest.snapshot = ManifestSnapshot(
+            mode="sync",
+            started_at=started_at,
+            completed_successfully=False,
+        )
+
+        # -- Pre-fetch all active root bundles --------------------------------
+        active_roots = [uid for uid, entry in manifest.roots.items() if entry.state == "active"]
+
+        fetched: dict[str, TicketBundle] = {}
+        prefetch_failed: set[str] = set()
+
+        if active_roots:
+
+            async def _fetch_root(issue_id: str) -> None:
+                async with semaphore:
+                    try:
+                        bundle = await gateway.fetch_issue(issue_id)
+                        fetched[bundle.issue.issue_id] = bundle
+                    except RootNotFoundError:
+                        prefetch_failed.add(issue_id)
+                        logger.warning(
+                            "Root %s unavailable during standalone sync; excluding from traversal",
+                            issue_id,
+                        )
+
+            async with asyncio.TaskGroup() as tg:
+                for uid in active_roots:
+                    tg.create_task(_fetch_root(uid))
+
+        # -- Build traversal roots dict {uuid: current_key} -------------------
+        roots_for_traversal: dict[str, str] = {}
+        for uid, entry in manifest.roots.items():
+            if entry.state != "active":
+                continue
+            if uid in prefetch_failed:
+                continue
+            if uid in fetched:
+                roots_for_traversal[uid] = fetched[uid].issue.issue_key
+            elif uid in manifest.tickets:
+                roots_for_traversal[uid] = manifest.tickets[uid].current_key
+
+        logger.info(
+            "sync: started (standalone) — active_roots=%d, max_tickets_per_root=%d",
+            len(roots_for_traversal),
+            effective_cap,
+        )
+
+        # -- Build Tier 3 ticket_ref provider ---------------------------------
+        provider = make_ticket_ref_provider(
+            fetched,
+            gateway=gateway,
+            semaphore=semaphore,
+            aliases=dict(manifest.aliases) if manifest.aliases else None,
+        )
+
+        # -- Build reachable graph from all active roots ----------------------
+        graph = await build_reachable_graph(
+            roots=roots_for_traversal,
+            dimensions=effective_dims,
+            max_tickets_per_root=effective_cap,
+            gateway=gateway,
+            ticket_ref_fn=provider,
+        )
+
+        return await self._sync_write_pass(
+            graph=graph,
+            fetched=fetched,
+            manifest=manifest,
+            context_dir=context_dir,
+            gateway=gateway,
+            semaphore=semaphore,
+            started_at=started_at,
+            mono_start=mono_start,
+            log_label="sync (standalone)",
+        )
+
+    async def _sync_write_pass(
+        self,
+        *,
+        graph: TraversalResult,
+        fetched: dict[str, TicketBundle],
+        manifest: Manifest,
+        context_dir: Path,
+        gateway: LinearGateway,
+        semaphore: asyncio.Semaphore,
+        started_at: str,
+        mono_start: float,
+        log_label: str,
+    ) -> SyncResult:
+        """
+        Shared post-traversal pipeline for sync write passes.
+
+        Fetches any reachable tickets not yet in *fetched*, writes all
+        reachable tickets (skipping byte-identical rewrites per ADR §8),
+        prunes unreachable derived tickets, finalizes snapshot metadata,
+        and persists the manifest.
+
+        Used by both :meth:`_sync_under_lock` and
+        :meth:`_standalone_sync_under_lock`.
+        """
         # -- Fetch remaining reachable tickets --------------------------------
-        # Per-ticket error handling so a single unreachable linked ticket
-        # does not abort the entire run (R1).
         created: list[str] = []
         updated: list[str] = []
         unchanged: list[str] = []
@@ -572,8 +754,7 @@ class ContextSync:
                 ):
                     new_cursor = compute_refresh_cursor(bundle)
                     existing_cursor, existing_root_state, _ = _read_existing_ticket_state(
-                        context_dir,
-                        existing_entry,
+                        context_dir, existing_entry
                     )
                     if existing_cursor == new_cursor and existing_root_state == root_state:
                         unchanged.append(bundle.issue.issue_key)
@@ -617,9 +798,10 @@ class ContextSync:
 
         duration = time.monotonic() - mono_start
         logger.info(
-            "sync: completed — reachable=%d, created=%d, updated=%d, "
+            "%s: completed — reachable=%d, created=%d, updated=%d, "
             "unchanged=%d, removed=%d, errors=%d, roots_at_cap=%d, "
             "duration=%.1fs",
+            log_label,
             len(graph.tickets),
             len(created),
             len(updated),
@@ -636,48 +818,6 @@ class ContextSync:
             unchanged=unchanged,
             removed=removed,
             errors=errors,
-        )
-
-    async def _standalone_sync_under_lock(
-        self,
-        *,
-        dimensions_override: dict[str, int] | None,
-        cap_override: int | None,
-        context_dir: Path,
-        gateway: LinearGateway,
-        semaphore: asyncio.Semaphore,
-        started_at: str,
-        mono_start: float,
-    ) -> SyncResult:
-        """
-        Full rebuild of all tracked roots without changing root membership.
-
-        Loads the existing manifest, optionally applies traversal-config
-        overrides, then delegates to :meth:`_refresh_under_lock` for a
-        whole-snapshot rebuild.  This is the ``sync`` code path when no
-        *key* is supplied.
-
-        Returns
-        -------
-        SyncResult
-        """
-        manifest = load_manifest(context_dir)
-
-        # -- Update manifest configuration (preserve when no override) -------
-        if dimensions_override is not None:
-            manifest.dimensions = dict(resolve_dimensions(dimensions_override))
-        if cap_override is not None:
-            manifest.max_tickets_per_root = cap_override
-
-        return await self._refresh_under_lock(
-            missing_root_policy="quarantine",
-            context_dir=context_dir,
-            gateway=gateway,
-            semaphore=semaphore,
-            started_at=started_at,
-            mono_start=mono_start,
-            snapshot_mode="sync",
-            manifest=manifest,
         )
 
     async def refresh(
@@ -767,7 +907,7 @@ class ContextSync:
         semaphore: asyncio.Semaphore,
         started_at: str,
         mono_start: float,
-        snapshot_mode: Literal["sync", "refresh", "add", "remove"] = "refresh",
+        snapshot_mode: Literal["refresh", "remove"] = "refresh",
         manifest: Manifest | None = None,
     ) -> SyncResult:
         """
@@ -793,15 +933,15 @@ class ContextSync:
             Monotonic clock reading at operation start, for duration logging.
         snapshot_mode:
             Label for the ``ManifestSnapshot.mode`` field.  Defaults to
-            ``"refresh"``; callers such as ``_add`` and ``remove`` pass
-            their own mode so the manifest records the triggering operation.
+            ``"refresh"``; the ``remove`` caller passes its own mode so
+            the manifest records the triggering operation.
         manifest:
             Pre-loaded manifest to use instead of reading from disk.  When
-            callers such as ``_add`` and ``remove`` have already mutated
-            the manifest in memory, they pass it here so the root-set change
-            and the snapshot finalization are committed together — avoiding
-            a partial-commit window where the manifest is saved but the
-            refresh has not yet completed.
+            ``remove`` has already mutated the manifest in memory, it passes
+            the manifest here so the root-set change and the snapshot
+            finalization are committed together — avoiding a partial-commit
+            window where the manifest is saved but the refresh has not yet
+            completed.
 
         Returns
         -------
@@ -1227,173 +1367,6 @@ class ContextSync:
             unchanged=unchanged,
             removed=removed,
             errors=errors,
-        )
-
-    async def _add(self, key: str) -> SyncResult:
-        """
-        Add a root ticket and run a whole-snapshot refresh.
-
-        This is an internal helper retained from the former public ``add``
-        method.  It is not called by :meth:`sync` or any other public method
-        and is not part of the public API.
-
-        Acquires the writer lock, resolves *key* (issue key or Linear issue
-        URL) to a ticket UUID through alias-based local resolution and/or a
-        remote fetch, validates workspace membership, adds the UUID to the
-        manifest root set, then delegates to the whole-snapshot refresh
-        pipeline under the same writer lock.
-
-        Parameters
-        ----------
-        key:
-            Issue key (e.g. ``"ACP-123"``) or Linear issue URL
-            (e.g. ``"https://linear.app/myteam/issue/ACP-123"``).
-
-        Returns
-        -------
-        SyncResult
-            Created, updated, unchanged, removed, and errored ticket sets.
-
-        Raises
-        ------
-        RootNotFoundError
-            If the requested ticket is not available.
-        WorkspaceMismatchError
-            If the ticket belongs to a different workspace than the context
-            directory.
-        ActiveLockError
-            If a non-stale writer lock is already held.
-        StaleLockError
-            If lock staleness cannot be determined safely.
-        SystemicRemoteError
-            If a systemic remote failure aborts the run.
-        WriteError
-            If a local file write or post-write verification fails.
-        """
-        if self._gateway is None:
-            raise ContextSyncError(
-                "No gateway available. The real Linear gateway wrapper is not "
-                "yet implemented. Use _gateway_override with a LinearGateway "
-                "instance."
-            )
-
-        context_dir = self._context_dir
-        gateway = self._gateway
-        semaphore = self._semaphore
-
-        started_at = _utc_now()
-        mono_start = time.monotonic()
-        lock = acquire_lock(context_dir, "add", acquired_at=started_at)
-
-        try:
-            return await self._add_under_lock(
-                key=key,
-                context_dir=context_dir,
-                gateway=gateway,
-                semaphore=semaphore,
-                started_at=started_at,
-                mono_start=mono_start,
-            )
-        except BaseException as exc:
-            duration = time.monotonic() - mono_start
-            logger.info("_add: aborted — %s, duration=%.1fs", exc, duration)
-            raise
-        finally:
-            release_lock(context_dir, lock.writer_id)
-
-    async def _add_under_lock(
-        self,
-        *,
-        key: str,
-        context_dir: Path,
-        gateway: LinearGateway,
-        semaphore: asyncio.Semaphore,
-        started_at: str,
-        mono_start: float,
-    ) -> SyncResult:
-        """
-        Core add logic executed while the writer lock is held.
-
-        Resolves *key* to a UUID, adds the root to the manifest,
-        persists the manifest, then delegates to :meth:`_refresh_under_lock`
-        for the whole-snapshot refresh phase.
-
-        Returns
-        -------
-        SyncResult
-        """
-        manifest_path = context_dir / MANIFEST_FILENAME
-
-        # -- Normalize key -------------------------------------------------------
-        url_slug, normalized_ref = _normalize_ticket_ref(key)
-
-        # -- Load or initialize manifest ----------------------------------------
-        manifest: Manifest | None
-        resolved_uuid: str | None = None
-
-        if manifest_path.is_file():
-            manifest = load_manifest(context_dir)
-
-            # URL workspace-slug validation (fail fast before any remote call).
-            if url_slug is not None and url_slug != manifest.workspace_slug:
-                raise WorkspaceMismatchError(
-                    f"URL workspace slug {url_slug!r} does not match the "
-                    f"context directory workspace {manifest.workspace_slug!r}"
-                )
-
-            # Attempt alias-based local resolution.
-            resolved_uuid = _resolve_ref_to_uuid(normalized_ref, manifest)
-        else:
-            manifest = None
-
-        # -- Fetch from Linear --------------------------------------------------
-        # Use the locally-resolved UUID for the fetch when available (avoids a
-        # redundant key→UUID resolution round-trip); otherwise use the
-        # normalized ref directly.
-        fetch_ref = resolved_uuid if resolved_uuid is not None else normalized_ref
-        bundle = await gateway.fetch_issue(fetch_ref)
-        root_uuid = bundle.issue.issue_id
-
-        # -- Initialize manifest if needed, or validate workspace ---------------
-        if manifest is None:
-            manifest = initialize_manifest(
-                bundle.workspace,
-                self._dimensions,
-                self._max_tickets_per_root,
-            )
-        elif manifest.workspace_id != bundle.workspace.workspace_id:
-            raise WorkspaceMismatchError(
-                f"Ticket {bundle.issue.issue_key} belongs to workspace "
-                f"{bundle.workspace.workspace_slug!r} "
-                f"({bundle.workspace.workspace_id}), but the context "
-                f"directory is bound to workspace "
-                f"{manifest.workspace_slug!r} ({manifest.workspace_id})"
-            )
-
-        # -- Add ticket UUID to manifest root set --------------------------------
-        previous_entry = manifest.roots.get(root_uuid)
-        manifest.roots[root_uuid] = ManifestRootEntry(state="active")
-        if previous_entry is not None and previous_entry.state == "quarantined":
-            logger.info(
-                "_add: recovered quarantined root %s (%s) → active",
-                bundle.issue.issue_key,
-                root_uuid,
-            )
-        else:
-            logger.info("_add: added root %s (%s)", bundle.issue.issue_key, root_uuid)
-
-        # -- Execute whole-snapshot refresh under the same writer lock -----------
-        # Pass the in-memory manifest so the root-set mutation and snapshot
-        # finalization are committed together (no partial-commit window).
-        return await self._refresh_under_lock(
-            missing_root_policy="quarantine",
-            context_dir=context_dir,
-            gateway=gateway,
-            semaphore=semaphore,
-            started_at=started_at,
-            mono_start=mono_start,
-            snapshot_mode="add",
-            manifest=manifest,
         )
 
     async def remove(self, key: str) -> SyncResult:
