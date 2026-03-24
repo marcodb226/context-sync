@@ -241,5 +241,12 @@ Phase C) for a named plan item:
 <!-- end common instructions: docs/policies/common/agent-instructions.md -->
 
 <!-- begin local instructions: docs/policies/agent-instructions.md -->
-<!-- local instructions absent: docs/policies/agent-instructions.md -->
+This is the repo-local layer for agent instructions that should not be shared
+across the whole client-repo group.
+
+## Terminology
+
+Follow [docs/policies/terminology.md](terminology.md). In particular, never use
+the word "syncer" in any output — code, docs, comments, labels, commit
+messages, or generated artifacts.
 <!-- end local instructions: docs/policies/agent-instructions.md -->

@@ -103,7 +103,7 @@ from context_sync.version import __version__ as __version__
 del version  # type: ignore[name-defined]  # noqa: F821
 
 __all__ = [
-    # Syncer
+    # Core
     "ContextSync",
     # Result models
     "DiffEntry",
