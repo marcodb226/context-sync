@@ -83,8 +83,8 @@ to `Next release` yet.
 **Why deferred**
 - The first release guarantees atomic file writes but not atomic whole-
   directory snapshot commit, so an interrupted `sync`, `refresh`, `add`, or
-  `remove-root` run may leave a mix of files from the previous snapshot and the
-  in-progress pass.
+  `remove-root` run (using the pre-M4.1 five-command surface) may leave a mix
+  of files from the previous snapshot and the in-progress pass.
 - Many expected callers will run the tool over git-managed files, which
   provides a practical recovery path by reverting to the previous committed
   state, but that is not a substitute for stronger tool-level correctness
@@ -156,8 +156,9 @@ to `Next release` yet.
 
 **Why deferred**
 - The first release keeps the persisted interface intentionally small: `sync`,
-  `refresh`, `diff`, `add`, and `remove-root` all operate in terms of the
-  current context directory and its coherent whole-snapshot semantics.
+  `refresh`, `diff`, `add`, and `remove-root` (the pre-M4.1 five-command
+  surface) all operate in terms of the current context directory and its
+  coherent whole-snapshot semantics.
 - There is no separate v1 mode for peeking at a ticket without touching local
   files, even though future human and agent workflows may want a cheap way to
   inspect a ticket, and possibly a small reachable neighborhood, before
@@ -198,9 +199,9 @@ to `Next release` yet.
 - Store the active label-filter configuration in `.context-sync.yml` alongside
   the existing traversal configuration so future `refresh` runs continue to
   respect it.
-- Apply the filter consistently across `sync`, `refresh`, `add`,
-  `remove-root`, and `diff`, including pruning tickets that no longer satisfy
-  the configured filter.
+- Apply the filter consistently across `sync`, `refresh`, `remove`, and
+  `diff`, including pruning tickets that no longer satisfy the configured
+  filter.
 - Define how label filters interact with roots and traversal semantics, such as
   whether a filtered-out root is rejected, quarantined, or retained only as a
   traversal anchor.

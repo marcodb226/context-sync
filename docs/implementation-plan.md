@@ -46,11 +46,12 @@ Milestone 5 and Milestone 6 before the product can be treated as a credible
 - Keep first-release scope aligned with the explicit deferrals in
   [docs/future-work.md](future-work.md).
 - Build shared deterministic rendering, manifest, and lock helpers once and
-  reuse them across `sync`, `refresh`, `add`, `remove-root`, and `diff`.
+  reuse them across `sync`, `refresh`, `remove`, and `diff`.
 
 **What this plan covers:** the initial Python package and project scaffold, the
 async library surface, deterministic context-directory persistence, whole-
-snapshot `sync`, incremental `refresh`, `add`, `remove-root`, `diff`, a thin
+snapshot `sync` (with optional root argument), incremental `refresh`,
+`remove`, `diff`, a thin
 CLI wrapper, post-implementation CLI and API review passes, the real
 `linear-client`-backed gateway, supported public-runtime validation, supported
 user-facing docs, the canonical release workflow, a dedicated `1.0.0`
