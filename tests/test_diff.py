@@ -38,12 +38,12 @@ def _write_lock_file(context_dir: Path, lock: LockRecord) -> Path:
     return lock_path
 
 
-def _find_entry(entries: list[DiffEntry], ticket_id: str) -> DiffEntry:
+def _find_entry(entries: list[DiffEntry], ticket_key: str) -> DiffEntry:
     """Find a DiffEntry by ticket_key, or fail the test."""
     for e in entries:
-        if e.ticket_key == ticket_id:
+        if e.ticket_key == ticket_key:
             return e
-    raise AssertionError(f"No DiffEntry with ticket_key={ticket_id!r}")
+    raise AssertionError(f"No DiffEntry with ticket_key={ticket_key!r}")
 
 
 # ---------------------------------------------------------------------------

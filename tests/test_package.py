@@ -12,7 +12,7 @@ from __future__ import annotations
 class TestPublicImports:
     """All advertised public names are importable from ``context_sync``."""
 
-    def test_syncer(self) -> None:
+    def test_context_sync(self) -> None:
         from context_sync import ContextSync
 
         assert ContextSync is not None

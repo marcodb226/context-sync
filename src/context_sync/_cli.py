@@ -411,7 +411,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sync_parser.add_argument(
         "ticket",
-        help="Issue key or Linear URL of the ticket to track.",
+        help="Issue key or Linear URL of the root ticket to track.",
     )
     sync_parser.add_argument(
         "--max-tickets-per-root",

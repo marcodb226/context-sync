@@ -332,7 +332,7 @@ class TestSyncWorkspaceValidation:
 
     async def test_workspace_mismatch_raises(self, tmp_path: Path) -> None:
         """Adding a root from workspace B to a directory bound to workspace A."""
-        ctx = tmp_path / "ctx"
+        context_dir = tmp_path / "ctx"
 
         # First sync binds the directory to workspace A.
         gw_a = FakeLinearGateway()
@@ -343,7 +343,7 @@ class TestSyncWorkspaceValidation:
                 workspace=DEFAULT_FAKE_WORKSPACE,
             )
         )
-        ctx_a = make_context_sync(gateway=gw_a, context_dir=ctx)
+        ctx_a = make_context_sync(gateway=gw_a, context_dir=context_dir)
         await ctx_a.sync("A-1")
 
         # Attempt sync with a ticket from workspace B.
@@ -359,7 +359,7 @@ class TestSyncWorkspaceValidation:
                 workspace=other_ws,
             )
         )
-        ctx_b = make_context_sync(gateway=gw_b, context_dir=ctx)
+        ctx_b = make_context_sync(gateway=gw_b, context_dir=context_dir)
 
         with pytest.raises(WorkspaceMismatchError, match="other-workspace"):
             await ctx_b.sync("B-1")
