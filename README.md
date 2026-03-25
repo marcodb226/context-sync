@@ -347,7 +347,8 @@ needs to be explicitly granted for paths outside the project.
 ### Developer commands
 
 The repository uses [Ruff](https://docs.astral.sh/ruff/) for linting and
-formatting, [pytest](https://docs.pytest.org/) with
+formatting, [Pyright](https://github.com/microsoft/pyright) for static type
+checking, [pytest](https://docs.pytest.org/) with
 [pytest-asyncio](https://github.com/pytest-dev/pytest-asyncio) for testing, and
 [cloc](https://github.com/AlDanial/cloc) for measuring source file size against
 the coding-guidelines limit (1,000 code lines per file). Install dev
@@ -362,7 +363,15 @@ sudo apt install cloc
 brew install cloc
 ```
 
-Make sure the project virtualenv is active before running these commands:
+The canonical "validate everything" command is `scripts/validate.sh`. It runs
+all quality gates in sequence and exits non-zero on any failure:
+
+```bash
+scripts/validate.sh
+```
+
+Individual commands are available when working on a specific gate. Make sure the
+project virtualenv is active before running these commands:
 
 ```bash
 # Lint (check only)
@@ -374,6 +383,9 @@ ruff format --check src/ tests/
 # Format (apply)
 ruff format src/ tests/
 
+# Static type check
+pyright
+
 # Run all tests
 pytest
 
@@ -381,8 +393,8 @@ pytest
 pytest -v
 ```
 
-All three commands (lint, format check, test) must pass before a ticket can be
-marked complete.
+All quality gates (lint, format check, type check, test) must pass before a
+ticket can be marked complete.
 
 ### Project layout
 
