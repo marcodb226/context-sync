@@ -33,6 +33,7 @@ Before writing or modifying any code, read and follow:
 - `docs/policies/common/release-workflow.md` — apply when the repository publishes versioned releases or maintains explicit release/bootstrap workflow artifacts.
 - `docs/policies/common/python/release-workflow.md` — apply only if the repository publishes Python package artifacts.
 - `docs/policies/common/python/agent-awareness.md` — apply if the repository builds a Python package with a public API surface.
+- `docs/policies/common/terminology-policy.md` — apply when the repository maintains a `docs/policies/terminology.md` file with project-specific terminology constraints.
 
 When the task materially edits planning, design, PRDs, ADRs, or other
 human-facing repository artifacts, also read and follow the applicable
