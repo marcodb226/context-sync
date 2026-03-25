@@ -260,6 +260,21 @@ async methods on `ContextSync`. See the class docstring for parameter details.
 ### Prerequisites
 
 - Python 3.13+
+- [ripgrep](https://github.com/BurntSushi/ripgrep) (`rg`) — used by agent
+  tooling for fast codebase search
+- [cloc](https://github.com/AlDanial/cloc) — used to verify source files stay
+  within the coding-guidelines 1,000-code-line limit
+
+  Install both via your system package manager:
+
+  ```bash
+  # Debian / Ubuntu / WSL
+  sudo apt install ripgrep cloc
+
+  # macOS
+  brew install ripgrep cloc
+  ```
+
 - SSH access to the private
   [`linear-client`](https://github.com/marcodb226/linear-client),
   [`context-sync`](https://github.com/marcodb226/context-sync), and
@@ -279,14 +294,17 @@ git clone git@github.com:marcodb226/agent-policies.git ../agent-policies-context
 # 3. Create the common-policies symlink
 ln -s ../../../agent-policies-context-sync/docs/policies/common docs/policies/common
 
-# 4. Create and activate a virtualenv
+# 4. Verify the symlink resolves correctly
+ls docs/policies/common/coding-guidelines.md
+
+# 5. Create and activate a virtualenv
 python3 -m venv .venv
 source .venv/bin/activate
 
-# 5. Install the private linear-client dependency
+# 6. Install the private linear-client dependency
 pip install "linear-client @ git+ssh://git@github.com/marcodb226/linear-client.git@v1.0.0"
 
-# 6. Install this project with dev dependencies
+# 7. Install this project with dev dependencies
 pip install -e ".[dev]"
 ```
 
@@ -348,20 +366,9 @@ needs to be explicitly granted for paths outside the project.
 
 The repository uses [Ruff](https://docs.astral.sh/ruff/) for linting and
 formatting, [Pyright](https://github.com/microsoft/pyright) for static type
-checking, [pytest](https://docs.pytest.org/) with
-[pytest-asyncio](https://github.com/pytest-dev/pytest-asyncio) for testing, and
-[cloc](https://github.com/AlDanial/cloc) for measuring source file size against
-the coding-guidelines limit (1,000 code lines per file). Install dev
-dependencies with `pip install -e ".[dev]"`, and install `cloc` via your system
-package manager:
-
-```bash
-# Debian / Ubuntu / WSL
-sudo apt install cloc
-
-# macOS
-brew install cloc
-```
+checking, and [pytest](https://docs.pytest.org/) with
+[pytest-asyncio](https://github.com/pytest-dev/pytest-asyncio) for testing.
+Install dev dependencies with `pip install -e ".[dev]"`.
 
 The canonical "validate everything" command is `scripts/validate.sh`. It runs
 all quality gates in sequence and exits non-zero on any failure:

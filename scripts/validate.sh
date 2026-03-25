@@ -22,7 +22,7 @@ echo "==> Ruff format check"
 echo "==> Pyright"
 .venv/bin/pyright
 
-echo "==> Pytest"
-.venv/bin/pytest
+echo "==> Pytest (with coverage)"
+.venv/bin/pytest --cov --cov-report=term-missing
 
 echo "==> All gates passed."

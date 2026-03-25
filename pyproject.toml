@@ -17,9 +17,11 @@ context-sync = "context_sync._cli:main"
 
 [project.optional-dependencies]
 dev = [
+    "coverage[toml]>=7,<8",
     "pyright>=1.1",
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
+    "pytest-cov>=5,<6",
     "ruff>=0.8",
 ]
 
@@ -88,6 +90,12 @@ ignore = [
   "D401",
 ]
 
+[tool.ruff.lint.pydocstyle]
+# The project uses numpy-style docstrings throughout.  Declaring the convention
+# explicitly prevents ruff from falling back to Google-style detection for
+# methods that have no Parameters section (e.g. diff()).
+convention = "numpy"
+
 [tool.ruff.lint.isort]
 # Import sorting should recognize the package under src/ as first-party.
 known-first-party = ["context_sync"]
@@ -105,3 +113,15 @@ known-first-party = ["context_sync"]
 pythonVersion = "3.13"
 typeCheckingMode = "standard"
 include = ["src"]
+
+# Coverage configuration per docs/policies/common/python/agent-awareness.md.
+# Branch coverage is enabled; version.py is omitted because it contains only
+# static metadata with no behavioral logic to exercise.
+[tool.coverage.run]
+branch = true
+source = ["src"]
+omit = ["src/*/version.py"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false

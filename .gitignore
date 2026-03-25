@@ -3,6 +3,8 @@
 .claude/
 .codex/
 .pytest_cache/
+.coverage
+htmlcov/
 __pycache__/
 /site/
 /dist/

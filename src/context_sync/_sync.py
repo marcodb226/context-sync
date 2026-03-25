@@ -340,6 +340,59 @@ class ContextSync:
             If a systemic remote failure aborts the run.
         WriteError
             If a local file write or post-write verification fails.
+
+        Side Effects
+        ------------
+        Acquires and releases the writer lock on the context directory.
+        Creates or overwrites ticket Markdown files and the
+        ``.context-sync.yml`` manifest.  Prunes files for tickets no longer
+        reachable from any root.  Persists any *dimensions* or
+        *max_tickets_per_root* overrides into the manifest for future runs.
+
+        Mutability
+        ----------
+        Mutates the context directory on disk (manifest, ticket files, lock
+        file).  Does not mutate the ``ContextSync`` instance itself or any
+        argument.
+
+        Idempotency
+        -----------
+        Calling ``sync(key=K)`` twice in succession with the same remote
+        state produces the same on-disk result; the second call classifies
+        all tickets as ``unchanged``.  Calling ``sync()`` (no key) is also
+        idempotent in that sense.  However, traversal configuration overrides
+        are persisted, so passing different *dimensions* or
+        *max_tickets_per_root* values changes the manifest even if ticket
+        content is unchanged.
+
+        Thread Safety
+        -------------
+        Not thread-safe.  The writer lock prevents concurrent *processes*
+        from mutating the same directory, but two coroutines sharing one
+        ``ContextSync`` instance must not call mutating methods concurrently.
+
+        Example
+        -------
+        .. code-block:: python
+
+            from context_sync import ContextSync
+
+            ctx = ContextSync(linear=client, context_dir="./context")
+
+            # Add a root and rebuild
+            result = await ctx.sync(key="TEAM-42")
+            print(result.created)  # e.g. ['TEAM-42', 'TEAM-43']
+
+            # Full rebuild of all tracked roots
+            result = await ctx.sync()
+
+        Behavioral Constraints
+        ----------------------
+        Requires an authenticated ``LinearGateway`` (either via ``linear=``
+        or ``_gateway_override``).  ``sync()`` without a key requires a
+        pre-existing manifest; it does not create an empty snapshot.
+        ``sync(key=K)`` for an already-tracked root triggers a full rebuild
+        of the entire reachable graph, not just the named root.
         """
         if self._gateway is None:
             raise ContextSyncError(
@@ -862,6 +915,50 @@ class ContextSync:
             If a systemic remote failure aborts the run.
         WriteError
             If a local file write or post-write verification fails.
+
+        Side Effects
+        ------------
+        Acquires and releases the writer lock.  Rewrites ticket files that
+        are stale or newly discovered.  Quarantines or removes roots that are
+        no longer visible (depending on *missing_root_policy*).  Prunes
+        derived tickets no longer reachable.  Updates the manifest.
+
+        Mutability
+        ----------
+        Mutates the context directory on disk (manifest, ticket files, lock
+        file).  Quarantined ticket files are rewritten in place with a
+        warning preamble.  Does not mutate the ``ContextSync`` instance or
+        any argument.
+
+        Idempotency
+        -----------
+        Calling ``refresh()`` twice with no upstream changes produces the
+        same on-disk state; the second call classifies all tickets as
+        ``unchanged``.
+
+        Thread Safety
+        -------------
+        Not thread-safe.  The writer lock prevents concurrent processes from
+        mutating the same directory, but two coroutines sharing one
+        ``ContextSync`` instance must not call mutating methods concurrently.
+
+        Example
+        -------
+        .. code-block:: python
+
+            from context_sync import ContextSync
+
+            ctx = ContextSync(linear=client, context_dir="./context")
+            result = await ctx.refresh()
+            print(f"Updated {len(result.updated)} tickets")
+
+        Behavioral Constraints
+        ----------------------
+        Requires an existing manifest; cannot be called on an empty context
+        directory.  Does not add or remove roots — use ``sync`` to add and
+        ``remove`` to delete.  A quarantined root is excluded from traversal
+        but its file is preserved; it auto-recovers on the next refresh if
+        it becomes visible again.
         """
         valid_policies = ("quarantine", "remove")
         if missing_root_policy not in valid_policies:
@@ -1427,6 +1524,46 @@ class ContextSync:
             If a systemic remote failure aborts the run.
         WriteError
             If a local file write or post-write verification fails.
+
+        Side Effects
+        ------------
+        Acquires and releases the writer lock.  Removes the root entry from
+        the manifest and triggers a whole-snapshot refresh that may prune
+        ticket files no longer reachable from any remaining root.  Updates
+        the manifest.
+
+        Mutability
+        ----------
+        Mutates the context directory on disk (manifest, ticket files, lock
+        file).  Does not mutate the ``ContextSync`` instance or any argument.
+
+        Idempotency
+        -----------
+        Not idempotent.  Calling ``remove(key=K)`` a second time raises
+        ``RootNotInManifestError`` because the root was already removed.
+
+        Thread Safety
+        -------------
+        Not thread-safe.  The writer lock prevents concurrent processes from
+        mutating the same directory, but two coroutines sharing one
+        ``ContextSync`` instance must not call mutating methods concurrently.
+
+        Example
+        -------
+        .. code-block:: python
+
+            from context_sync import ContextSync
+
+            ctx = ContextSync(linear=client, context_dir="./context")
+            result = await ctx.remove(key="TEAM-42")
+            print(result.removed)  # e.g. ['TEAM-42', 'TEAM-43']
+
+        Behavioral Constraints
+        ----------------------
+        Requires an existing manifest.  Removing a root does not guarantee
+        its ticket file is deleted — if the ticket is still reachable as a
+        derived node from another root, it is kept.  The refresh that follows
+        removal re-fetches metadata for all remaining tracked tickets.
         """
         if self._gateway is None:
             raise ContextSyncError(
@@ -1549,6 +1686,48 @@ class ContextSync:
             If the manifest does not exist or is invalid.
         ContextSyncError
             If no gateway is available.
+
+        Side Effects
+        ------------
+        None.  This method is read-only — it does not acquire the writer
+        lock, create files, or modify the manifest.  It does make network
+        calls to the Linear API to fetch current metadata.
+
+        Mutability
+        ----------
+        Does not mutate any on-disk state, the ``ContextSync`` instance, or
+        any argument.
+
+        Idempotency
+        -----------
+        Idempotent.  Calling ``diff()`` multiple times with the same local
+        and remote state returns the same ``DiffResult``.
+
+        Thread Safety
+        -------------
+        Safe to call concurrently with other ``diff()`` calls on the same
+        instance.  Not safe to call concurrently with mutating methods
+        (``sync``, ``refresh``, ``remove``) — the writer lock prevents
+        concurrent process-level mutation, but ``diff`` deliberately avoids
+        acquiring the lock and will raise ``DiffLockError`` if one exists.
+
+        Example
+        -------
+        .. code-block:: python
+
+            from context_sync import ContextSync
+
+            ctx = ContextSync(linear=client, context_dir="./context")
+            result = await ctx.diff()
+            for entry in result.entries:
+                print(f"{entry.ticket_key}: {entry.status}")
+
+        Behavioral Constraints
+        ----------------------
+        Requires an existing manifest.  Refuses to run while a non-stale
+        writer lock exists to avoid competing for rate-limited Linear API
+        capacity with an active writer.  This is intentional — wait for the
+        active writer to finish or verify the lock is stale before retrying.
         """
         if self._gateway is None:
             raise ContextSyncError(

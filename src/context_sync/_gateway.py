@@ -356,6 +356,22 @@ class LinearGateway(Protocol):
 
         Used by ``sync`` and ``add`` to verify that a root ticket belongs to
         the same workspace as the context directory.
+
+        Parameters
+        ----------
+        issue_id:
+            Stable UUID of the issue whose workspace to look up.
+
+        Returns
+        -------
+        WorkspaceIdentity
+            The workspace UUID and human-readable slug for the issue's
+            workspace.
+
+        Raises
+        ------
+        RootNotFoundError
+            If the issue is not available in the current visible view.
         """
         ...
 
@@ -368,6 +384,24 @@ class LinearGateway(Protocol):
         Returns a mapping from issue UUID to that issue's outgoing relation
         edges.  Issues that are not visible or have no relations may be
         absent from the returned dict or present with an empty list.
+
+        Parameters
+        ----------
+        issue_ids:
+            Sequence of stable issue UUIDs to query.  Duplicates are
+            tolerated; the implementation deduplicates internally.
+
+        Returns
+        -------
+        dict[IssueId, list[RelationData]]
+            Mapping from issue UUID to outgoing relation edges.  Missing
+            keys indicate no visible relations; an empty list indicates
+            the issue was found but has no outgoing edges.
+
+        Raises
+        ------
+        SystemicRemoteError
+            If a systemic upstream failure prevents the batch read.
         """
         ...
 
@@ -380,6 +414,24 @@ class LinearGateway(Protocol):
         Returns a mapping from issue UUID to issue-level metadata.  Issues
         not visible in the current view should still appear with
         ``visible=False`` when possible.
+
+        Parameters
+        ----------
+        issue_ids:
+            Sequence of stable issue UUIDs to query.  Duplicates are
+            tolerated.
+
+        Returns
+        -------
+        dict[IssueId, RefreshIssueMeta]
+            Mapping from issue UUID to issue-level metadata including
+            ``updated_at`` and ``visible``.  Issues entirely absent from
+            the upstream response may be missing from the returned dict.
+
+        Raises
+        ------
+        SystemicRemoteError
+            If a systemic upstream failure prevents the batch read.
         """
         ...
 
@@ -393,6 +445,24 @@ class LinearGateway(Protocol):
         containing the per-comment and per-thread metadata needed to compute
         the canonical ``comments_signature`` digest without downloading full
         comment bodies.
+
+        Parameters
+        ----------
+        issue_ids:
+            Sequence of stable issue UUIDs to query.  Duplicates are
+            tolerated.
+
+        Returns
+        -------
+        dict[IssueId, tuple[list[RefreshCommentMeta], list[RefreshThreadMeta]]]
+            Mapping from issue UUID to a ``(comments, threads)`` pair.
+            Issues with no comments return ``([], [])``.  Issues absent
+            from the upstream response may be missing from the dict.
+
+        Raises
+        ------
+        SystemicRemoteError
+            If a systemic upstream failure prevents the batch read.
         """
         ...
 
@@ -406,5 +476,22 @@ class LinearGateway(Protocol):
         shape as :meth:`get_ticket_relations`.  The implementation may
         share the underlying query with :meth:`get_ticket_relations` or
         use a separate batched path.
+
+        Parameters
+        ----------
+        issue_ids:
+            Sequence of stable issue UUIDs to query.  Duplicates are
+            tolerated.
+
+        Returns
+        -------
+        dict[IssueId, list[RelationData]]
+            Mapping from issue UUID to relation edges, in the same shape
+            as :meth:`get_ticket_relations`.
+
+        Raises
+        ------
+        SystemicRemoteError
+            If a systemic upstream failure prevents the batch read.
         """
         ...
