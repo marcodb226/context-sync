@@ -88,6 +88,12 @@ readiness review, and the actual `1.0.0` cut plus next-cycle bootstrap.
   [docs/execution/M4-R1.md](execution/M4-R1.md),
   [docs/execution/M4-R2.md](execution/M4-R2.md), and
   [docs/planning/change-requests/CR-26.03.24.md](planning/change-requests/CR-26.03.24.md).
+- Material-amendment candidate sources applied on 2026-03-24 (second):
+  [docs/policies/common/coding-guidelines.md](policies/common/coding-guidelines.md),
+  [docs/policies/common/python/coding-guidelines.md](policies/common/python/coding-guidelines.md),
+  [docs/policies/common/python/agent-awareness.md](policies/common/python/agent-awareness.md),
+  [docs/policies/common/README.md](policies/common/README.md), and
+  [docs/planning/change-requests/CR-26.03.24-policy-compliance.md](planning/change-requests/CR-26.03.24-policy-compliance.md).
 
 ### 1.2 Candidate Decisions
 
@@ -154,6 +160,7 @@ Ticket identifiers in this active plan use these forms:
 | M3 | Incremental maintenance and drift inspection | `refresh`, `add`, `remove-root`, and `diff` with the ADR's missing-root and lock semantics |
 | M4 | CLI and release readiness | Human-facing commands, separate CLI and API reviews, operational logging, validation coverage, and onboarding docs |
 | M4.1 | CLI and library simplification | Four-command public CLI (`sync [TICKET]`, `refresh`, `remove TICKET`, `diff`), matching library method boundaries, traversal-config preservation semantics, and optional-ticket `sync` covering the full-rebuild-all-roots use case without root-membership change |
+| M4.2 | Common-policy compliance | `scripts/validate.sh`, Pyright integration, semantic types (`_types.py`), `py.typed` marker, `coverage.py` tooling, `examples/` directory, `docs/design/dependency-map.md`, public interface docstring completion, and README common-policy bootstrap fixes |
 | M5 | Supported runtime gateway | A real `linear-client`-backed gateway, wired public CLI/library entry points, and supported validation of the shipped runtime path |
 | M6 | Supported docs and `1.0.0` release workflow | Canonical user-facing docs, release automation/checklist/version guardrails, an explicit `1.0.0` readiness review, and the actual `1.0.0` cut plus next-cycle bootstrap |
 
@@ -765,21 +772,128 @@ This ticket addresses two review findings from
 
 ---
 
-## 8. Milestone 5 - Supported Runtime Gateway
+## 8. Milestone 4.2 - Common-Policy Compliance
+
+**Goal:** close the immediate common-policy compliance gaps so that M5 and later
+milestones build on a conforming toolchain, type-checking, coverage, and
+documentation baseline. This milestone addresses nine gaps identified by
+[CR-26.03.24-policy-compliance](planning/change-requests/CR-26.03.24-policy-compliance.md).
+
+### 8.1 Implementation Tickets
+
+| # | Status | Ticket | Description | Dependencies | Tests | Source |
+| --- | --- | --- | --- | --- | --- | --- |
+| <a id="m4.2-1---quality-gate-entry-point-static-analysis-baseline-and-semantic-types"></a>M4.2-1 | Todo | Quality gate entry point, static analysis baseline, and semantic types | Create `scripts/validate.sh` that runs `ruff check`, `ruff format --check`, `pyright`, and `pytest` in sequence, exiting non-zero on any failure. Add `pyright` to dev deps. Add `[tool.pyright]` config to `pyproject.toml`. Create `src/context_sync/py.typed` and add `[tool.setuptools.package-data]` entry. Create `src/context_sync/_types.py` with `NewType` aliases for the identified domain concepts (`IssueId`, `IssueKey`, `WorkspaceId`, `WorkspaceSlug`, `CommentId`, `AttachmentId`, `WriterId`; constrained-string or `NewType` aliases for RFC 3339 timestamps and similar). Adopt the new types across the source tree. Resolve all Pyright errors. | [M4.1-2](#m4.1-2---sync-path-consolidation-and-full-rebuild-standalone) | `validate.sh` exits 0 on clean tree; `py.typed` is included in built wheel; Pyright reports zero errors; `_types.py` defines `NewType` aliases for all identified domain concepts; no bare `str` remains for semantically distinct domain fields at public boundaries | [docs/policies/common/coding-guidelines.md](policies/common/coding-guidelines.md), [docs/policies/common/python/coding-guidelines.md](policies/common/python/coding-guidelines.md) |
+| <a id="m4.2-2---coverage-tooling-agent-awareness-artifacts-and-interface-documentation"></a>M4.2-2 | Todo | Coverage tooling, agent-awareness artifacts, and interface documentation | Add `coverage[toml]>=7,<8` and `pytest-cov>=5,<6` to dev deps. Add `[tool.coverage.run]` and `[tool.coverage.report]` config. Update `scripts/validate.sh` to include `--cov --cov-report=term-missing` flags. Create `examples/` directory with at least one runnable script exercising `ContextSync` via the fake gateway. Create `docs/design/dependency-map.md` with entry points, module summaries, workflow-to-code map, anti-patterns, and async ownership. Complete the missing docstring dimensions on all four `ContextSync` public methods and `LinearGateway` protocol methods. Update README to add `ripgrep` and `cloc` to system prerequisites and add an explicit symlink verification step. | [M4.2-1](#m4.2-1---quality-gate-entry-point-static-analysis-baseline-and-semantic-types) | `pytest --cov --cov-report=term-missing` produces branch coverage report; `validate.sh` includes coverage flags; example script runs without error; dependency map covers all public entry points; all `ContextSync` public methods document all ten required dimensions; `LinearGateway` protocol methods have complete parameter, output, and `Raises` documentation; README prerequisites list `ripgrep` and `cloc`; README includes symlink verification step | [docs/policies/common/python/agent-awareness.md](policies/common/python/agent-awareness.md), [docs/policies/common/coding-guidelines.md](policies/common/coding-guidelines.md), [docs/policies/common/README.md](policies/common/README.md) |
+
+### 8.2 Detailed Ticket Notes
+
+#### M4.2-1 - Quality gate entry point, static analysis baseline, and semantic types
+
+- `scripts/validate.sh` is the canonical "validate everything" command per
+  [coding-guidelines.md](policies/common/coding-guidelines.md). It must
+  run all declared quality gates and exit non-zero on any failure.
+- Pyright config should target the same Python version as the rest of the
+  toolchain (3.13). Use `pythonVersion = "3.13"` and `typeCheckingMode = "standard"`
+  as the starting baseline; tighten to `strict` only if zero errors is achievable
+  without excessive `type: ignore` annotations.
+- Resolving Pyright errors may require adding or tightening type annotations in
+  some modules. This is expected and should be treated as part of the ticket scope.
+- The `py.typed` marker is a zero-byte file at `src/context_sync/py.typed`. The
+  `[tool.setuptools.package-data]` entry ensures it ships in the wheel.
+- Create `src/context_sync/_types.py` as the dedicated module for reusable type
+  aliases per
+  [python/coding-guidelines.md §Semantic Types](policies/common/python/coding-guidelines.md).
+  At minimum define `NewType` aliases for: `IssueId`, `IssueKey`, `WorkspaceId`,
+  `WorkspaceSlug`, `CommentId`, `AttachmentId`, `WriterId`. For RFC 3339
+  timestamps and other constrained strings, `Annotated[str, StringConstraints(...)]`
+  or `NewType` aliases are both acceptable.
+- Adopt the new types across the source tree, replacing bare `str` at public
+  boundaries. The type migration touches every module that handles issue IDs,
+  issue keys, workspace IDs, and similar domain concepts. This is a wide
+  mechanical change — scope the initial `NewType` set to the minimum that closes
+  the policy gap rather than attempting a maximal migration. If the migration
+  surfaces Pyright errors that are actually logic bugs (e.g. passing an
+  `IssueKey` where an `IssueId` is expected), treat those as valuable
+  discoveries and fix them as part of this ticket.
+- Introducing semantic types and the type checker in the same ticket ensures
+  Pyright validates the new type boundaries from the start rather than leaving
+  bare `str` to pass unchecked.
+- Update `scripts/validate.sh` in lockstep with any future toolchain changes so
+  the script remains the single source of truth for quality gates.
+
+#### M4.2-2 - Coverage tooling, agent-awareness artifacts, and interface documentation
+
+- Coverage config should enable branch coverage and source from `src/`, omitting
+  `version.py` per
+  [python/agent-awareness.md](policies/common/python/agent-awareness.md).
+- Update `scripts/validate.sh` to invoke `pytest --cov --cov-report=term-missing`
+  instead of bare `pytest`. This is the lockstep obligation from M4.2-1: when
+  a new quality gate tool is added, the canonical script must be updated in the
+  same ticket that introduces the tool.
+- The `examples/` script must be runnable against the fake gateway since the real
+  gateway is not yet available. Use the `_gateway_override` testing hook with a
+  brief comment explaining that the example will switch to the real constructor
+  once the gateway lands in M5.
+- The dependency map should follow the minimum content requirements from
+  [python/agent-awareness.md](policies/common/python/agent-awareness.md):
+  main entry points, key internal modules, workflow-to-code map, anti-patterns,
+  and async ownership. Keep to 1-2 pages. **Scope risk:** if the dependency map
+  writing blocks the other deliverables, the ticket owner should land the
+  independent deliverables (coverage tooling, `examples/`, README fixes) first
+  rather than holding the entire ticket.
+- Complete the missing docstring dimensions on all four `ContextSync` public
+  methods (`sync`, `refresh`, `remove`, `diff`): add realistic examples,
+  idempotency statements, mutability statements, and thread-safety statements.
+  Complete `LinearGateway` protocol method documentation: add missing parameter
+  type documentation and `Raises` sections across `get_workspace_identity`,
+  `get_ticket_relations`, `get_refresh_issue_metadata`,
+  `get_refresh_comment_metadata`, `get_refresh_relation_metadata`. Note that the
+  `LinearGateway` protocol method documentation may need updating again when
+  [M5-1](#m5-1---real-linear-gateway-and-runtime-wiring) implements the real
+  gateway.
+- The README already covers common-policy dependency, symlink setup, recovery,
+  and common-layer reference. The three targeted additions are: (1) add `ripgrep`
+  to the Prerequisites section, (2) promote `cloc` from Developer commands into
+  the Prerequisites section, and (3) add an explicit symlink verification step.
+
+### 8.3 Exit Criteria
+
+1. `scripts/validate.sh` runs all quality gates (Ruff lint, Ruff format check,
+   Pyright, pytest with coverage) and exits 0 on a clean tree.
+2. Pyright reports zero errors across the source tree.
+3. `py.typed` is present and included in the built wheel.
+4. `_types.py` exists and defines `NewType` aliases for all identified domain
+   concepts; no bare `str` remains for semantically distinct domain fields at
+   public boundaries; Pyright validates the `NewType` boundaries with zero
+   errors.
+5. `pytest --cov --cov-report=term-missing` produces a branch coverage report.
+6. `examples/` contains at least one runnable script that exercises the primary
+   `ContextSync` workflow.
+7. `docs/design/dependency-map.md` covers all minimum-content requirements.
+8. All four `ContextSync` public methods document all ten required interface
+   dimensions. `LinearGateway` protocol methods have complete parameter, output,
+   and `Raises` documentation.
+9. README Prerequisites section lists `ripgrep` and `cloc` as system
+   prerequisites. README includes an explicit symlink verification step.
+
+---
+
+## 9. Milestone 5 - Supported Runtime Gateway
 
 **Goal:** replace the current fake-gateway-only public runtime with a real
 `linear-client`-backed execution path, keep the adapter boundary aligned with
 the existing design artifacts, and validate the actual public CLI/library
 entry points rather than only private testing hooks.
 
-### 8.1 Implementation Tickets
+### 9.1 Implementation Tickets
 
 | # | Status | Ticket | Description | Dependencies | Tests | Source |
 | --- | --- | --- | --- | --- | --- | --- |
-| <a id="m5-1---real-linear-gateway-and-runtime-wiring"></a>M5-1 | Todo | Real Linear gateway and runtime wiring | Implement the concrete `RealLinearGateway` over the [M1-D2](#m1-d2---linear-domain-coverage-audit-and-adapter-boundary) boundary, map all required ticket-bundle and refresh-metadata reads, and wire `ContextSync(linear=...)` plus CLI startup to create that gateway instead of failing with "No gateway available"; this ticket is the explicit defer target for [M4-2-R1](execution/M4-2-review.md) | [M1-D2](#m1-d2---linear-domain-coverage-audit-and-adapter-boundary), [M3-O1](#m3-o1---comments-signature-input-settlement), [M4-1](#m4-1---cli-surface-and-command-output-contracts), [M4.1-1](#m4.1-1---cli-and-library-simplification) | Automated tests for the real gateway implementation using maintained fake/fixture transport inputs at the adapter boundary, integration tests that route `sync` / `refresh` / `remove` / `diff` through that real gateway implementation without a live workspace, and bootstrap error-path coverage for missing auth or unavailable upstream services | [docs/design/linear-domain-coverage-audit.md](design/linear-domain-coverage-audit.md), [docs/execution/M4-1-review.md](execution/M4-1-review.md), [docs/execution/M4-2-review.md](execution/M4-2-review.md), [README.md](../README.md) |
-| <a id="m5-2---supported-public-runtime-validation-and-smoke-path"></a>M5-2 | Todo | Supported public runtime validation and smoke path | Exercise the supported CLI and library entry points through `main()` or the installed console script, replace private-handler-only "end-to-end" claims with real public-surface coverage, and add a maintained smoke-validation recipe for one successful run plus one representative failure path; this ticket is the explicit defer target for [M4-2-R2](execution/M4-2-review.md) and [M4-2-R3](execution/M4-2-review.md) | [M5-1](#m5-1---real-linear-gateway-and-runtime-wiring), [M4-2](#m4-2---operational-logging-validation-hardening-and-user-docs) | CLI integration tests through the real parser/dispatch path with maintained fake/fixture-backed runtime inputs, plus real-environment smoke validation in a credentialed Linear workspace or equivalent maintained live validation environment, and JSON/text failure-contract regression tests | [docs/execution/M4-1-review.md](execution/M4-1-review.md), [docs/execution/M4-2-review.md](execution/M4-2-review.md), [README.md](../README.md) |
+| <a id="m5-1---real-linear-gateway-and-runtime-wiring"></a>M5-1 | Todo | Real Linear gateway and runtime wiring | Implement the concrete `RealLinearGateway` over the [M1-D2](#m1-d2---linear-domain-coverage-audit-and-adapter-boundary) boundary, map all required ticket-bundle and refresh-metadata reads, and wire `ContextSync(linear=...)` plus CLI startup to create that gateway instead of failing with "No gateway available"; this ticket is the explicit defer target for [M4-2-R1](execution/M4-2-review.md) | [M1-D2](#m1-d2---linear-domain-coverage-audit-and-adapter-boundary), [M3-O1](#m3-o1---comments-signature-input-settlement), [M4-1](#m4-1---cli-surface-and-command-output-contracts), [M4.1-1](#m4.1-1---cli-and-library-simplification), [M4.2-1](#m4.2-1---quality-gate-entry-point-static-analysis-baseline-and-semantic-types) | Automated tests for the real gateway implementation using maintained fake/fixture transport inputs at the adapter boundary, integration tests that route `sync` / `refresh` / `remove` / `diff` through that real gateway implementation without a live workspace, and bootstrap error-path coverage for missing auth or unavailable upstream services | [docs/design/linear-domain-coverage-audit.md](design/linear-domain-coverage-audit.md), [docs/execution/M4-1-review.md](execution/M4-1-review.md), [docs/execution/M4-2-review.md](execution/M4-2-review.md), [README.md](../README.md) |
+| <a id="m5-2---supported-public-runtime-validation-and-smoke-path"></a>M5-2 | Todo | Supported public runtime validation and smoke path | Exercise the supported CLI and library entry points through `main()` or the installed console script, replace private-handler-only "end-to-end" claims with real public-surface coverage, and add a maintained smoke-validation recipe for one successful run plus one representative failure path; this ticket is the explicit defer target for [M4-2-R2](execution/M4-2-review.md) and [M4-2-R3](execution/M4-2-review.md) | [M5-1](#m5-1---real-linear-gateway-and-runtime-wiring), [M4-2](#m4-2---operational-logging-validation-hardening-and-user-docs), [M4.2-2](#m4.2-2---coverage-tooling-agent-awareness-artifacts-and-interface-documentation) | CLI integration tests through the real parser/dispatch path with maintained fake/fixture-backed runtime inputs, plus real-environment smoke validation in a credentialed Linear workspace or equivalent maintained live validation environment, and JSON/text failure-contract regression tests | [docs/execution/M4-1-review.md](execution/M4-1-review.md), [docs/execution/M4-2-review.md](execution/M4-2-review.md), [README.md](../README.md) |
 
-### 8.2 Detailed Ticket Notes
+### 9.2 Detailed Ticket Notes
 
 #### M5-1 - Real Linear gateway and runtime wiring
 
@@ -836,7 +950,7 @@ entry points rather than only private testing hooks.
   current pre-release runtime warning so the supported docs no longer
   advertise a deliberately inert surface.
 
-### 8.3 Exit Criteria
+### 9.3 Exit Criteria
 
 1. The public `ContextSync(linear=...)` path and shipped CLI can execute
    against a real `linear-client`-backed gateway without `_gateway_override`.
@@ -851,27 +965,27 @@ entry points rather than only private testing hooks.
 
 ---
 
-## 9. Milestone 6 - Supported Docs and `1.0.0` Release Workflow
+## 10. Milestone 6 - Supported Docs and `1.0.0` Release Workflow
 
 **Goal:** define and exercise the repository's supported documentation and
 release boundary so the real runtime from Milestone 5 can ship as `1.0.0`
 under a documented, repeatable process with durable review and close-out
 artifacts.
 
-### 9.1 Operational Prerequisites
+### 10.1 Operational Prerequisites
 
 | # | Status | Item | Requirement | Unblocks | Verification | Source |
 | --- | --- | --- | --- | --- | --- | --- |
 | <a id="m6-o1---release-channel-and-install-path-chosen"></a>M6-O1 | Todo | Release channel and install path chosen | The supported `1.0.0` publication destination and install path are chosen and recorded before docs, release-workflow, or release-readiness work begins | [M6-1](#m6-1---supported-user-facing-docs-and-installoperator-guide), [M6-2](#m6-2---canonical-release-workflow-checklist-and-version-state-guardrails), [M6-R1](#m6-r1---100-release-readiness-review) | Record the chosen publication channel and supported install path in repository artifacts before Milestone 6 drafting proceeds | [docs/policies/common/release-workflow.md](policies/common/release-workflow.md), direct human request |
 | <a id="m6-o2---release-publication-credentials-and-approval-window-available"></a>M6-O2 | Todo | Release publication credentials and approval window available | The required tag/publish credentials and any human approval window needed for the canonical release path are available before the final release cut begins | [M6-3](#m6-3---100-release-cut-archive-and-next-cycle-bootstrap) | Confirm access to the required credentials and approvals before running the final release workflow | [docs/policies/common/release-workflow.md](policies/common/release-workflow.md), direct human request |
 
-### 9.2 Review Tickets
+### 10.2 Review Tickets
 
 | # | Status | Ticket | Deliverable | Dependencies | Reviewers | Source |
 | --- | --- | --- | --- | --- | --- | --- |
 | <a id="m6-r1---100-release-readiness-review"></a>M6-R1 | Todo | `1.0.0` release-readiness review | A durable repository review artifact that evaluates whether the real runtime, supported docs, install path, release checklist, version-state guardrails, and known deferrals together define a credible `1.0.0` boundary. The deliverable must distinguish must-fix blockers from post-`1.0.0` backlog items. | [M6-O1](#m6-o1---release-channel-and-install-path-chosen), [M6-1](#m6-1---supported-user-facing-docs-and-installoperator-guide), [M6-2](#m6-2---canonical-release-workflow-checklist-and-version-state-guardrails) | Independent Stage 2 review session | [docs/policies/common/documentation-workflow.md](policies/common/documentation-workflow.md), [docs/policies/common/release-workflow.md](policies/common/release-workflow.md), [README.md](../README.md) |
 
-### 9.3 Implementation Tickets
+### 10.3 Implementation Tickets
 
 | # | Status | Ticket | Description | Dependencies | Tests | Source |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -879,7 +993,7 @@ artifacts.
 | <a id="m6-2---canonical-release-workflow-checklist-and-version-state-guardrails"></a>M6-2 | Todo | Canonical release workflow, checklist, and version-state guardrails | Define and implement the repository's canonical `1.0.0` release process, including the release automation entrypoint, human-readable release checklist, the standard maintained Python-package release scripts unless a justified exception is documented, artifact build/install validation, top-level `CHANGELOG.md` bootstrap for the first stable release, and a machine-checkable version-state guardrail for release tags versus unreleased development state | [M6-O1](#m6-o1---release-channel-and-install-path-chosen), [M6-1](#m6-1---supported-user-facing-docs-and-installoperator-guide) | Release dry-run or equivalent local validation, artifact build/install checks, version-state tests, and docs-gate evidence for the supported docs surface | [docs/policies/common/release-workflow.md](policies/common/release-workflow.md), [docs/policies/common/python/release-workflow.md](policies/common/python/release-workflow.md), [docs/policies/common/release-checklist-template.md](policies/common/release-checklist-template.md), [docs/policies/common/coding-guidelines.md](policies/common/coding-guidelines.md) |
 | <a id="m6-3---100-release-cut-archive-and-next-cycle-bootstrap"></a>M6-3 | Todo | `1.0.0` release cut, archive, and next-cycle bootstrap | Run the canonical release workflow for `1.0.0`, publish the release through the chosen channel, archive the active plan / planning / execution artifacts under the release archive layout, and bootstrap the next unreleased development version and planning state | [M6-O2](#m6-o2---release-publication-credentials-and-approval-window-available), [M6-R1](#m6-r1---100-release-readiness-review) | Tagged-release verification, archive-layout verification, and post-release version/bootstrap checks proving the repo is back in a valid unreleased state | [docs/policies/common/release-workflow.md](policies/common/release-workflow.md), [docs/policies/common/python/release-workflow.md](policies/common/python/release-workflow.md), [docs/policies/common/planning-model.md](policies/common/planning-model.md), [src/context_sync/version.py](../src/context_sync/version.py) |
 
-### 9.4 Detailed Ticket Notes
+### 10.4 Detailed Ticket Notes
 
 #### M6-1 - Supported user-facing docs and install/operator guide
 
@@ -940,7 +1054,7 @@ artifacts.
 - The next-cycle bootstrap must leave the repository in a valid unreleased
   development state rather than stranded on the release version after publish.
 
-### 9.5 Exit Criteria
+### 10.5 Exit Criteria
 
 1. The repository has a supported `1.0.0` docs surface aligned with actual
    installation, configuration, CLI, and library behavior.
@@ -953,7 +1067,7 @@ artifacts.
 
 ---
 
-## 10. Validation Strategy
+## 11. Validation Strategy
 
 **Unit and component tests**
 - [M1-1](#m1-1---project-scaffold-and-public-runtime-contracts) should define
@@ -1015,7 +1129,7 @@ artifacts.
 
 ---
 
-## 11. Open Items to Resolve Before Execution
+## 12. Open Items to Resolve Before Execution
 
 | Item | Blocks | Resolution path |
 | --- | --- | --- |
@@ -1023,7 +1137,7 @@ artifacts.
 
 ---
 
-## 12. Risk Register
+## 13. Risk Register
 
 | Risk | Impact | Mitigation |
 | --- | --- | --- |
@@ -1037,7 +1151,7 @@ artifacts.
 
 ---
 
-## 13. Notes
+## 14. Notes
 
 - This active plan was promoted from the reviewed Stage 3 draft on 2026-03-17
   under
@@ -1050,6 +1164,14 @@ artifacts.
 - The active plan was materially amended again on 2026-03-23 by accepting and
   applying
   [docs/planning/change-requests/CR-26.03.23.md](planning/change-requests/CR-26.03.23.md).
+- The active plan was materially amended on 2026-03-24 by accepting and
+  applying
+  [docs/planning/change-requests/CR-26.03.24.md](planning/change-requests/CR-26.03.24.md).
+- The active plan was materially amended again on 2026-03-24 by accepting and
+  applying
+  [docs/planning/change-requests/CR-26.03.24-policy-compliance.md](planning/change-requests/CR-26.03.24-policy-compliance.md),
+  adding Milestone 4.2 (common-policy compliance) and updating M5-1/M5-2
+  dependencies.
 - If future work currently deferred in
   [docs/future-work.md](future-work.md)
   is pulled into this release, treat that as a material planning change rather
