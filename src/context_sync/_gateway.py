@@ -32,6 +32,7 @@ from context_sync._types import (
     CommentId,
     IssueId,
     IssueKey,
+    Timestamp,
     WorkspaceId,
     WorkspaceSlug,
 )
@@ -106,8 +107,8 @@ class IssueData:
     creator: str | None
     priority: int | None
     description: str | None
-    created_at: str
-    updated_at: str
+    created_at: Timestamp
+    updated_at: Timestamp
     parent_issue_id: IssueId | None
     parent_issue_key: IssueKey | None
     labels: list[str] = field(default_factory=list)
@@ -139,8 +140,8 @@ class CommentData:
     comment_id: CommentId
     body: str
     author: str | None
-    created_at: str
-    updated_at: str | None
+    created_at: Timestamp
+    updated_at: Timestamp | None
     parent_comment_id: CommentId | None
 
 
@@ -183,7 +184,7 @@ class AttachmentData:
     attachment_id: AttachmentId
     title: str | None
     url: str
-    created_at: str
+    created_at: Timestamp
     creator: str | None
 
 
@@ -251,7 +252,7 @@ class RefreshIssueMeta:
 
     issue_id: IssueId
     issue_key: IssueKey
-    updated_at: str
+    updated_at: Timestamp
     visible: bool
 
 
@@ -278,7 +279,7 @@ class RefreshCommentMeta:
     comment_id: CommentId
     root_comment_id: CommentId
     parent_comment_id: CommentId | None
-    updated_at: str | None
+    updated_at: Timestamp | None
     deleted: bool | None
 
 
@@ -331,6 +332,12 @@ class LinearGateway(Protocol):
     async def fetch_issue(self, issue_id_or_key: str) -> TicketBundle:
         """
         Fetch a complete ticket bundle for a single issue.
+
+        The parameter is typed as bare ``str`` intentionally: this is the
+        polymorphic entry point where untyped external input (CLI arguments,
+        URL-extracted keys, raw UUIDs) enters the typed domain layer.
+        Callers genuinely do not know whether the value is an ``IssueId``
+        or an ``IssueKey``; the implementation resolves the ambiguity.
 
         Returns all data needed to render and persist one ticket file,
         including scalar fields, comments, attachments, and relations.

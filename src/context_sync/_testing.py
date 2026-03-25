@@ -38,7 +38,14 @@ from context_sync._gateway import (
 from context_sync._manifest import Manifest, ManifestSnapshot, initialize_manifest
 from context_sync._renderer import resolve_root_comment
 from context_sync._sync import ContextSync
-from context_sync._types import CommentId, IssueId, IssueKey, WorkspaceId, WorkspaceSlug
+from context_sync._types import (
+    CommentId,
+    IssueId,
+    IssueKey,
+    Timestamp,
+    WorkspaceId,
+    WorkspaceSlug,
+)
 
 # ---------------------------------------------------------------------------
 # Default workspace used by the fake
@@ -51,6 +58,7 @@ DEFAULT_FAKE_WORKSPACE = WorkspaceIdentity(
 
 _DEFAULT_ISSUE_ID: IssueId = IssueId("00000000-0000-0000-0000-000000000001")
 _DEFAULT_ISSUE_KEY: IssueKey = IssueKey("TEST-1")
+_DEFAULT_TIMESTAMP: Timestamp = Timestamp("2026-01-01T00:00:00Z")
 
 
 # ---------------------------------------------------------------------------
@@ -68,8 +76,8 @@ def make_issue(
     creator: str | None = "test-user",
     priority: int | None = None,
     description: str | None = "Test description.",
-    created_at: str = "2026-01-01T00:00:00Z",
-    updated_at: str = "2026-01-01T00:00:00Z",
+    created_at: Timestamp = _DEFAULT_TIMESTAMP,
+    updated_at: Timestamp = _DEFAULT_TIMESTAMP,
     parent_issue_id: IssueId | None = None,
     parent_issue_key: IssueKey | None = None,
     labels: list[str] | None = None,

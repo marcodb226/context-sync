@@ -315,16 +315,16 @@ def write_ticket(
 # ---------------------------------------------------------------------------
 
 
-def _extract_issue_keys(text: str) -> list[str]:
+def _extract_issue_keys(text: str) -> list[IssueKey]:
     """
     Extract Linear issue keys from Linear URL references in *text*.
 
     Returns
     -------
-    list[str]
+    list[IssueKey]
         Issue keys in order of appearance (may contain duplicates).
     """
-    return _LINEAR_ISSUE_KEY_RE.findall(text)
+    return [IssueKey(k) for k in _LINEAR_ISSUE_KEY_RE.findall(text)]
 
 
 def _bundle_content_texts(bundle: TicketBundle) -> list[str]:
@@ -409,8 +409,7 @@ def make_ticket_ref_provider(
 
             raw_refs: list[tuple[IssueId, IssueKey]] = []
             for text in _bundle_content_texts(bundle):
-                for raw_key in _extract_issue_keys(text):
-                    key = IssueKey(raw_key)
+                for key in _extract_issue_keys(text):
                     if key == bundle.issue.issue_key:
                         continue  # skip self-references
                     if key not in key_to_id:

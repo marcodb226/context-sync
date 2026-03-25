@@ -33,3 +33,6 @@ AttachmentId = NewType("AttachmentId", str)
 
 WriterId = NewType("WriterId", str)
 """Unique identifier for a writer-lock invocation."""
+
+Timestamp = NewType("Timestamp", str)
+"""UTC RFC 3339 timestamp (e.g. ``"2026-01-15T09:30:00Z"``)."""

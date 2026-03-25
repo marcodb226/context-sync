@@ -1030,6 +1030,10 @@ class ContextSync:
                         )
                     errors.append(
                         SyncError(
+                            # IssueKey(uid) fallback: when neither metadata nor a
+                            # manifest entry is available, the UUID is used as the
+                            # display key — a deliberate type-boundary crossing so
+                            # error consumers always receive a printable identifier.
                             ticket_key=(
                                 meta.issue_key
                                 if meta is not None
@@ -1046,6 +1050,9 @@ class ContextSync:
                 else:
                     # missing_root_policy == "remove"
                     ticket_entry = manifest.tickets.get(uid)
+                    # IssueKey(uid) fallback: see comment on quarantine path
+                    # above — UUID used as display key when no human-readable
+                    # key is available.
                     removed_key: IssueKey = (
                         ticket_entry.current_key
                         if ticket_entry is not None
@@ -1094,6 +1101,8 @@ class ContextSync:
         # dropping the root from traversal while leaving it marked active.
         for uid in prefetch_failed:
             ticket_entry = manifest.tickets.get(uid)
+            # IssueKey(uid) fallback: UUID used as display key when the
+            # manifest has no ticket entry for this root.
             failed_key: IssueKey = (
                 ticket_entry.current_key if ticket_entry is not None else IssueKey(uid)
             )
@@ -1262,6 +1271,8 @@ class ContextSync:
                         fetched[bundle.issue.issue_id] = bundle
                     except RootNotFoundError:
                         ticket_info = graph.tickets.get(issue_id)
+                        # IssueKey(issue_id) fallback: UUID used as display
+                        # key when traversal has no record for this ticket.
                         issue_key: IssueKey = (
                             ticket_info.issue_key if ticket_info else IssueKey(issue_id)
                         )

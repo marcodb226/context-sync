@@ -70,8 +70,9 @@ def _resolve_ref_to_uuid(ref: str, manifest: Manifest) -> IssueId | None:
     Returns ``None`` when no match is found.
     """
     # Step 1 — current key (highest priority).
+    ref_as_key = IssueKey(ref)
     for uid, entry in manifest.tickets.items():
-        if entry.current_key == ref:
+        if entry.current_key == ref_as_key:
             return uid
 
     # Step 2 — alias table: historical issue_key → UUID.
