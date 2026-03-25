@@ -366,8 +366,10 @@ needs to be explicitly granted for paths outside the project.
 
 The repository uses [Ruff](https://docs.astral.sh/ruff/) for linting and
 formatting, [Pyright](https://github.com/microsoft/pyright) for static type
-checking, and [pytest](https://docs.pytest.org/) with
-[pytest-asyncio](https://github.com/pytest-dev/pytest-asyncio) for testing.
+checking, [pytest](https://docs.pytest.org/) with
+[pytest-asyncio](https://github.com/pytest-dev/pytest-asyncio) for testing, and
+[coverage.py](https://coverage.readthedocs.io/) with
+[pytest-cov](https://pytest-cov.readthedocs.io/) for branch coverage reporting.
 Install dev dependencies with `pip install -e ".[dev]"`.
 
 The canonical "validate everything" command is `scripts/validate.sh`. It runs

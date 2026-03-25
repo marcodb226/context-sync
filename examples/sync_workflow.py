@@ -33,9 +33,8 @@ import asyncio
 import tempfile
 from pathlib import Path
 
-from context_sync import ContextSync, DiffResult, RelationData, SyncResult
+from context_sync import ContextSync, DiffResult, IssueId, IssueKey, RelationData, SyncResult, Timestamp
 from context_sync._testing import FakeLinearGateway, make_issue
-from context_sync._types import IssueId, IssueKey, Timestamp
 
 
 def _print_sync_result(label: str, result: SyncResult) -> None:

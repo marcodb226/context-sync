@@ -388,8 +388,8 @@ class ContextSync:
 
         Behavioral Constraints
         ----------------------
-        Requires an authenticated ``LinearGateway`` (either via ``linear=``
-        or ``_gateway_override``).  ``sync()`` without a key requires a
+        Requires an authenticated ``LinearGateway`` via the ``linear=``
+        constructor parameter.  ``sync()`` without a key requires a
         pre-existing manifest; it does not create an empty snapshot.
         ``sync(key=K)`` for an already-tracked root triggers a full rebuild
         of the entire reachable graph, not just the named root.
@@ -1689,9 +1689,9 @@ class ContextSync:
 
         Side Effects
         ------------
-        None.  This method is read-only — it does not acquire the writer
-        lock, create files, or modify the manifest.  It does make network
-        calls to the Linear API to fetch current metadata.
+        Read-only with respect to local disk state — does not acquire the
+        writer lock, create files, or modify the manifest.  Does make
+        network calls to the Linear API to fetch current metadata.
 
         Mutability
         ----------

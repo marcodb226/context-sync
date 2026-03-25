@@ -131,3 +131,16 @@ public methods:
 
 The sole `asyncio.run` call site is in `_cli.py`. Library callers must provide
 their own event loop.
+
+## Private Dependency Pointers
+
+| Dependency | Install method | Pinned version | Main entry points |
+|---|---|---|---|
+| [`linear-client`](https://github.com/marcodb226/linear-client) | `pip install` from private GitHub repo via SSH | `v1.0.0` | `linear_client.Linear` (authenticated async client) |
+
+`linear-client` is installed as a standard pip dependency, not vendored under
+`deps/`. The install command is in the [README](../../README.md#installation).
+`context-sync` interacts with `linear-client` exclusively through the
+[`LinearGateway`](../../src/context_sync/_gateway.py) protocol boundary — no
+direct `linear_client` imports appear outside the future `RealLinearGateway`
+adapter (M5-1).

@@ -339,8 +339,19 @@ class LinearGateway(Protocol):
         Callers genuinely do not know whether the value is an ``IssueId``
         or an ``IssueKey``; the implementation resolves the ambiguity.
 
-        Returns all data needed to render and persist one ticket file,
-        including scalar fields, comments, attachments, and relations.
+        Parameters
+        ----------
+        issue_id_or_key:
+            A stable issue UUID, human-facing issue key (e.g. ``"ACP-123"``),
+            or any string that the implementation can resolve to a single
+            issue.  Typed as bare ``str`` because the caller does not know
+            which form it holds.
+
+        Returns
+        -------
+        TicketBundle
+            All data needed to render and persist one ticket file, including
+            scalar fields, comments, attachments, and relations.
 
         Raises
         ------
