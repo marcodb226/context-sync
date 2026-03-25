@@ -38,15 +38,19 @@ from context_sync._gateway import (
 from context_sync._manifest import Manifest, ManifestSnapshot, initialize_manifest
 from context_sync._renderer import resolve_root_comment
 from context_sync._sync import ContextSync
+from context_sync._types import CommentId, IssueId, IssueKey, WorkspaceId, WorkspaceSlug
 
 # ---------------------------------------------------------------------------
 # Default workspace used by the fake
 # ---------------------------------------------------------------------------
 
 DEFAULT_FAKE_WORKSPACE = WorkspaceIdentity(
-    workspace_id="ws-fake-00000000",
-    workspace_slug="fake-workspace",
+    workspace_id=WorkspaceId("ws-fake-00000000"),
+    workspace_slug=WorkspaceSlug("fake-workspace"),
 )
+
+_DEFAULT_ISSUE_ID: IssueId = IssueId("00000000-0000-0000-0000-000000000001")
+_DEFAULT_ISSUE_KEY: IssueKey = IssueKey("TEST-1")
 
 
 # ---------------------------------------------------------------------------
@@ -56,8 +60,8 @@ DEFAULT_FAKE_WORKSPACE = WorkspaceIdentity(
 
 def make_issue(
     *,
-    issue_id: str = "00000000-0000-0000-0000-000000000001",
-    issue_key: str = "TEST-1",
+    issue_id: IssueId = _DEFAULT_ISSUE_ID,
+    issue_key: IssueKey = _DEFAULT_ISSUE_KEY,
     title: str = "Test issue",
     status: str | None = "Todo",
     assignee: str | None = None,
@@ -66,8 +70,8 @@ def make_issue(
     description: str | None = "Test description.",
     created_at: str = "2026-01-01T00:00:00Z",
     updated_at: str = "2026-01-01T00:00:00Z",
-    parent_issue_id: str | None = None,
-    parent_issue_key: str | None = None,
+    parent_issue_id: IssueId | None = None,
+    parent_issue_key: IssueKey | None = None,
     labels: list[str] | None = None,
     workspace: WorkspaceIdentity | None = None,
     comments: list[CommentData] | None = None,
@@ -129,9 +133,9 @@ class FakeLinearGateway:
     """
 
     def __init__(self) -> None:
-        self._bundles: dict[str, TicketBundle] = {}  # keyed by issue UUID
-        self._key_index: dict[str, str] = {}  # issue_key → issue UUID
-        self._hidden: set[str] = set()  # issue UUIDs marked as not visible
+        self._bundles: dict[IssueId, TicketBundle] = {}  # keyed by issue UUID
+        self._key_index: dict[IssueKey, IssueId] = {}  # issue_key → issue UUID
+        self._hidden: set[IssueId] = set()  # issue UUIDs marked as not visible
 
     def add_issue(self, bundle: TicketBundle) -> None:
         """
@@ -147,7 +151,7 @@ class FakeLinearGateway:
         self._bundles[uid] = bundle
         self._key_index[bundle.issue.issue_key] = uid
 
-    def hide_issue(self, issue_id: str) -> None:
+    def hide_issue(self, issue_id: IssueId) -> None:
         """
         Mark a pre-loaded issue as not visible to the caller.
 
@@ -158,7 +162,7 @@ class FakeLinearGateway:
         """
         self._hidden.add(issue_id)
 
-    def unhide_issue(self, issue_id: str) -> None:
+    def unhide_issue(self, issue_id: IssueId) -> None:
         """Restore visibility for a previously hidden issue."""
         self._hidden.discard(issue_id)
 
@@ -166,22 +170,24 @@ class FakeLinearGateway:
 
     async def fetch_issue(self, issue_id_or_key: str) -> TicketBundle:
         """Return the pre-loaded bundle, or raise :class:`RootNotFoundError`."""
-        resolved_id = self._key_index.get(issue_id_or_key, issue_id_or_key)
+        resolved_id = self._key_index.get(IssueKey(issue_id_or_key), IssueId(issue_id_or_key))
         bundle = self._bundles.get(resolved_id)
         if bundle is None or resolved_id in self._hidden:
             raise RootNotFoundError(f"Fake issue not found: {issue_id_or_key!r}")
         return bundle
 
-    async def get_workspace_identity(self, issue_id: str) -> WorkspaceIdentity:
+    async def get_workspace_identity(self, issue_id: IssueId) -> WorkspaceIdentity:
         """Return workspace identity for a pre-loaded issue."""
         bundle = self._bundles.get(issue_id)
         if bundle is None:
             raise RootNotFoundError(f"Fake issue not found: {issue_id!r}")
         return bundle.workspace
 
-    async def get_ticket_relations(self, issue_ids: Sequence[str]) -> dict[str, list[RelationData]]:
+    async def get_ticket_relations(
+        self, issue_ids: Sequence[IssueId]
+    ) -> dict[IssueId, list[RelationData]]:
         """Return relations for pre-loaded issues."""
-        result: dict[str, list[RelationData]] = {}
+        result: dict[IssueId, list[RelationData]] = {}
         for uid in issue_ids:
             bundle = self._bundles.get(uid)
             if bundle is not None:
@@ -189,10 +195,10 @@ class FakeLinearGateway:
         return result
 
     async def get_refresh_issue_metadata(
-        self, issue_ids: Sequence[str]
-    ) -> dict[str, RefreshIssueMeta]:
+        self, issue_ids: Sequence[IssueId]
+    ) -> dict[IssueId, RefreshIssueMeta]:
         """Return minimal issue metadata for freshness checks."""
-        result: dict[str, RefreshIssueMeta] = {}
+        result: dict[IssueId, RefreshIssueMeta] = {}
         for uid in issue_ids:
             bundle = self._bundles.get(uid)
             if bundle is not None:
@@ -205,16 +211,16 @@ class FakeLinearGateway:
         return result
 
     async def get_refresh_comment_metadata(
-        self, issue_ids: Sequence[str]
-    ) -> dict[str, tuple[list[RefreshCommentMeta], list[RefreshThreadMeta]]]:
+        self, issue_ids: Sequence[IssueId]
+    ) -> dict[IssueId, tuple[list[RefreshCommentMeta], list[RefreshThreadMeta]]]:
         """Return comment/thread metadata for pre-loaded issues."""
-        result: dict[str, tuple[list[RefreshCommentMeta], list[RefreshThreadMeta]]] = {}
+        result: dict[IssueId, tuple[list[RefreshCommentMeta], list[RefreshThreadMeta]]] = {}
         for uid in issue_ids:
             bundle = self._bundles.get(uid)
             if bundle is None:
                 continue
             # Build a parent→root lookup by walking parent chains.
-            parent_map: dict[str, str | None] = {
+            parent_map: dict[CommentId, CommentId | None] = {
                 c.comment_id: c.parent_comment_id for c in bundle.comments
             }
             comment_metas = [
@@ -238,8 +244,8 @@ class FakeLinearGateway:
         return result
 
     async def get_refresh_relation_metadata(
-        self, issue_ids: Sequence[str]
-    ) -> dict[str, list[RelationData]]:
+        self, issue_ids: Sequence[IssueId]
+    ) -> dict[IssueId, list[RelationData]]:
         """Delegates to :meth:`get_ticket_relations` (same data in the fake)."""
         return await self.get_ticket_relations(issue_ids)
 

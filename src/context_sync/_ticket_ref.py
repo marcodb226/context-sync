@@ -16,6 +16,8 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
+from context_sync._types import IssueId, IssueKey
+
 if TYPE_CHECKING:
     from context_sync._manifest import Manifest
 
@@ -52,7 +54,7 @@ def _normalize_ticket_ref(ticket_ref: str) -> tuple[str | None, str]:
     return None, ticket_ref
 
 
-def _resolve_ref_to_uuid(ref: str, manifest: Manifest) -> str | None:
+def _resolve_ref_to_uuid(ref: str, manifest: Manifest) -> IssueId | None:
     """
     Attempt to resolve a ticket reference to a UUID using manifest data.
 
@@ -73,17 +75,19 @@ def _resolve_ref_to_uuid(ref: str, manifest: Manifest) -> str | None:
             return uid
 
     # Step 2 — alias table: historical issue_key → UUID.
-    if manifest.aliases and ref in manifest.aliases:
-        return manifest.aliases[ref]
+    alias_key = IssueKey(ref)
+    if manifest.aliases and alias_key in manifest.aliases:
+        return manifest.aliases[alias_key]
 
     # Step 3 — direct UUID match against all tracked tickets (roots and
     # derived), so that callers such as ``remove_root`` can accept raw UUIDs
     # for any tracked ticket and reach the correct downstream error path.
-    if ref in manifest.tickets:
-        return ref
-    if ref in manifest.roots and ref not in manifest.tickets:
+    uid = IssueId(ref)
+    if uid in manifest.tickets:
+        return uid
+    if uid in manifest.roots and uid not in manifest.tickets:
         # Root UUID that has no ticket entry yet (edge case during early
         # bootstrap).
-        return ref
+        return uid
 
     return None

@@ -17,6 +17,7 @@ context-sync = "context_sync._cli:main"
 
 [project.optional-dependencies]
 dev = [
+    "pyright>=1.1",
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
     "ruff>=0.8",
@@ -24,6 +25,9 @@ dev = [
 
 [tool.setuptools.dynamic]
 version = {attr = "context_sync.version.__version__"}
+
+[tool.setuptools.package-data]
+context_sync = ["py.typed"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -93,3 +97,11 @@ known-first-party = ["context_sync"]
 # inline comments, not through per-method or per-class docstrings.  Constructor
 # docstrings on test doubles add noise.
 "tests/**/*.py" = ["D101", "D102", "D107"]
+
+# Pyright is the repository's static type checker per the coding guidelines.
+# It complements Ruff ANN rules: Ruff enforces annotations are present, Pyright
+# verifies they are consistent and correct via full type-flow analysis.
+[tool.pyright]
+pythonVersion = "3.13"
+typeCheckingMode = "standard"
+include = ["src"]

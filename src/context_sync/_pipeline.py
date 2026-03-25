@@ -35,6 +35,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -55,6 +56,7 @@ from context_sync._renderer import (
 )
 from context_sync._signatures import compute_comments_signature, compute_relations_signature
 from context_sync._traversal import TicketRefProvider
+from context_sync._types import CommentId, IssueId, IssueKey
 
 logger = logging.getLogger(__name__)
 
@@ -91,9 +93,9 @@ class TicketWriteResult:
         directory (e.g. ``"ACP-123.md"``).
     """
 
-    issue_id: str
-    issue_key: str
-    previous_key: str | None
+    issue_id: IssueId
+    issue_key: IssueKey
+    previous_key: IssueKey | None
     file_path: str
 
 
@@ -124,7 +126,9 @@ def compute_refresh_cursor(bundle: TicketBundle) -> dict[str, str]:
         Mapping with keys ``issue_updated_at``, ``comments_signature``,
         and ``relations_signature``.
     """
-    parent_map: dict[str, str | None] = {c.comment_id: c.parent_comment_id for c in bundle.comments}
+    parent_map: dict[CommentId, CommentId | None] = {
+        c.comment_id: c.parent_comment_id for c in bundle.comments
+    }
     comment_metas: list[RefreshCommentMeta] = [
         RefreshCommentMeta(
             comment_id=c.comment_id,
@@ -152,11 +156,11 @@ def compute_refresh_cursor(bundle: TicketBundle) -> dict[str, str]:
 
 
 async def fetch_tickets(
-    issue_ids: list[str],
+    issue_ids: list[IssueId],
     *,
     gateway: LinearGateway,
     semaphore: asyncio.Semaphore,
-) -> dict[str, TicketBundle]:
+) -> dict[IssueId, TicketBundle]:
     """
     Fetch multiple ticket bundles concurrently under a shared semaphore.
 
@@ -180,9 +184,9 @@ async def fetch_tickets(
         Mapping from issue UUID to fetched bundle.  Any exception raised
         by the gateway propagates out of the task group to the caller.
     """
-    fetched: dict[str, TicketBundle] = {}
+    fetched: dict[IssueId, TicketBundle] = {}
 
-    async def _fetch_one(issue_id: str) -> None:
+    async def _fetch_one(issue_id: IssueId) -> None:
         async with semaphore:
             bundle = await gateway.fetch_issue(issue_id)
         fetched[bundle.issue.issue_id] = bundle
@@ -343,11 +347,11 @@ def _bundle_content_texts(bundle: TicketBundle) -> list[str]:
 
 
 def make_ticket_ref_provider(
-    fetched: dict[str, TicketBundle],
+    fetched: dict[IssueId, TicketBundle],
     *,
     gateway: LinearGateway,
     semaphore: asyncio.Semaphore,
-    aliases: dict[str, str] | None = None,
+    aliases: dict[IssueKey, IssueId] | None = None,
 ) -> TicketRefProvider:
     """
     Build a Tier 3 provider that scans already-fetched ticket content.
@@ -389,19 +393,24 @@ def make_ticket_ref_provider(
         :func:`_traversal.build_reachable_graph`.
     """
 
-    async def _provider(issue_ids: list[str]) -> dict[str, list[tuple[str, str]]]:
+    async def _provider(
+        issue_ids: Sequence[IssueId],
+    ) -> dict[IssueId, list[tuple[IssueId, IssueKey]]]:
         # Build a current key→UUID reverse index from whatever is in fetched.
-        key_to_id: dict[str, str] = {b.issue.issue_key: b.issue.issue_id for b in fetched.values()}
+        key_to_id: dict[IssueKey, IssueId] = {
+            b.issue.issue_key: b.issue.issue_id for b in fetched.values()
+        }
 
-        result: dict[str, list[tuple[str, str]]] = {}
+        result: dict[IssueId, list[tuple[IssueId, IssueKey]]] = {}
         for issue_id in issue_ids:
             bundle = fetched.get(issue_id)
             if bundle is None:
                 continue
 
-            raw_refs: list[tuple[str, str]] = []
+            raw_refs: list[tuple[IssueId, IssueKey]] = []
             for text in _bundle_content_texts(bundle):
-                for key in _extract_issue_keys(text):
+                for raw_key in _extract_issue_keys(text):
+                    key = IssueKey(raw_key)
                     if key == bundle.issue.issue_key:
                         continue  # skip self-references
                     if key not in key_to_id:
@@ -433,8 +442,8 @@ def make_ticket_ref_provider(
                     raw_refs.append((target_id, key))
 
             # Deduplicate by target UUID, preserving first-occurrence order.
-            seen: set[str] = set()
-            unique_refs: list[tuple[str, str]] = []
+            seen: set[IssueId] = set()
+            unique_refs: list[tuple[IssueId, IssueKey]] = []
             for tid, tkey in raw_refs:
                 if tid not in seen:
                     seen.add(tid)

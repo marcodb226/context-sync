@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from context_sync._types import IssueKey
+
 
 @dataclass(frozen=True)
 class SyncError:
@@ -30,7 +32,7 @@ class SyncError:
         Whether the caller should consider retrying this ticket.
     """
 
-    ticket_key: str
+    ticket_key: IssueKey
     error_type: str
     message: str
     retriable: bool
@@ -60,10 +62,10 @@ class SyncResult:
         Ticket-scoped errors that did not abort the overall run.
     """
 
-    created: list[str] = field(default_factory=list)
-    updated: list[str] = field(default_factory=list)
-    unchanged: list[str] = field(default_factory=list)
-    removed: list[str] = field(default_factory=list)
+    created: list[IssueKey] = field(default_factory=list)
+    updated: list[IssueKey] = field(default_factory=list)
+    unchanged: list[IssueKey] = field(default_factory=list)
+    removed: list[IssueKey] = field(default_factory=list)
     errors: list[SyncError] = field(default_factory=list)
 
 
@@ -89,7 +91,7 @@ class DiffEntry:
         - ``"issue_key"`` — issue key renamed
     """
 
-    ticket_key: str
+    ticket_key: IssueKey
     status: str
     changed_fields: list[str] = field(default_factory=list)
 

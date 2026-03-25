@@ -24,6 +24,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from context_sync._errors import ActiveLockError, StaleLockError
+from context_sync._types import WriterId
 from context_sync._yaml import dump_yaml
 
 logger = logging.getLogger(__name__)
@@ -60,7 +61,7 @@ class LockRecord(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    writer_id: str
+    writer_id: WriterId
     host: str
     pid: int | None = None
     acquired_at: str
@@ -120,7 +121,7 @@ def acquire_lock(
     context_dir: Path,
     mode: LOCK_MODES,
     *,
-    writer_id: str | None = None,
+    writer_id: WriterId | None = None,
     acquired_at: str | None = None,
 ) -> LockRecord:
     """
@@ -157,7 +158,7 @@ def acquire_lock(
     """
     lock_path = context_dir / LOCK_FILENAME
     record = LockRecord(
-        writer_id=writer_id or str(uuid.uuid4()),
+        writer_id=writer_id or WriterId(str(uuid.uuid4())),
         host=platform.node(),
         pid=os.getpid(),
         acquired_at=acquired_at or "1970-01-01T00:00:00Z",
@@ -238,7 +239,7 @@ def acquire_lock(
         )
 
 
-def release_lock(context_dir: Path, writer_id: str) -> None:
+def release_lock(context_dir: Path, writer_id: WriterId) -> None:
     """
     Remove the lock file after verifying ownership.
 

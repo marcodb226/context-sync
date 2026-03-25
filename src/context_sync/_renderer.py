@@ -21,6 +21,7 @@ from context_sync._gateway import (
     ThreadData,
     TicketBundle,
 )
+from context_sync._types import CommentId
 from context_sync._yaml import serialize_frontmatter
 
 # ---------------------------------------------------------------------------
@@ -303,14 +304,16 @@ def _render_comments_section(
 
 def _group_comments_by_thread(
     comments: list[CommentData],
-) -> dict[str, list[CommentData]]:
+) -> dict[CommentId, list[CommentData]]:
     """
     Group comments by their thread root comment ID.
 
     Walks the parent chain to find each comment's thread root.
     """
-    parent_map: dict[str, str | None] = {c.comment_id: c.parent_comment_id for c in comments}
-    groups: dict[str, list[CommentData]] = {}
+    parent_map: dict[CommentId, CommentId | None] = {
+        c.comment_id: c.parent_comment_id for c in comments
+    }
+    groups: dict[CommentId, list[CommentData]] = {}
     for comment in comments:
         root_id = resolve_root_comment(comment.comment_id, parent_map)
         groups.setdefault(root_id, []).append(comment)
@@ -392,7 +395,10 @@ def _render_children(
 # ---------------------------------------------------------------------------
 
 
-def resolve_root_comment(comment_id: str, parent_map: dict[str, str | None]) -> str:
+def resolve_root_comment(
+    comment_id: CommentId,
+    parent_map: dict[CommentId, CommentId | None],
+) -> CommentId:
     """
     Walk the parent chain to find the thread root comment.
 
@@ -409,7 +415,7 @@ def resolve_root_comment(comment_id: str, parent_map: dict[str, str | None]) -> 
         The root comment ID of the thread.
     """
     current = comment_id
-    seen: set[str] = set()
+    seen: set[CommentId] = set()
     while True:
         parent = parent_map.get(current)
         if parent is None:

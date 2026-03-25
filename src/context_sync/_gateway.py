@@ -27,6 +27,15 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 
+from context_sync._types import (
+    AttachmentId,
+    CommentId,
+    IssueId,
+    IssueKey,
+    WorkspaceId,
+    WorkspaceSlug,
+)
+
 # ---------------------------------------------------------------------------
 # Gateway data types
 #
@@ -48,8 +57,8 @@ class WorkspaceIdentity:
         Human-readable workspace slug (e.g. ``"myteam"``).
     """
 
-    workspace_id: str
-    workspace_slug: str
+    workspace_id: WorkspaceId
+    workspace_slug: WorkspaceSlug
 
 
 @dataclass(frozen=True)
@@ -89,8 +98,8 @@ class IssueData:
         form, sorted lexicographically.
     """
 
-    issue_id: str
-    issue_key: str
+    issue_id: IssueId
+    issue_key: IssueKey
     title: str
     status: str | None
     assignee: str | None
@@ -99,8 +108,8 @@ class IssueData:
     description: str | None
     created_at: str
     updated_at: str
-    parent_issue_id: str | None
-    parent_issue_key: str | None
+    parent_issue_id: IssueId | None
+    parent_issue_key: IssueKey | None
     labels: list[str] = field(default_factory=list)
 
 
@@ -127,12 +136,12 @@ class CommentData:
         ``None`` for top-level comments.
     """
 
-    comment_id: str
+    comment_id: CommentId
     body: str
     author: str | None
     created_at: str
     updated_at: str | None
-    parent_comment_id: str | None
+    parent_comment_id: CommentId | None
 
 
 @dataclass(frozen=True)
@@ -148,7 +157,7 @@ class ThreadData:
         Whether the thread has been marked resolved.
     """
 
-    root_comment_id: str
+    root_comment_id: CommentId
     resolved: bool
 
 
@@ -171,7 +180,7 @@ class AttachmentData:
         Display name of the attachment creator, or ``None``.
     """
 
-    attachment_id: str
+    attachment_id: AttachmentId
     title: str | None
     url: str
     created_at: str
@@ -197,8 +206,8 @@ class RelationData:
 
     dimension: str
     relation_type: str
-    target_issue_id: str
-    target_issue_key: str
+    target_issue_id: IssueId
+    target_issue_key: IssueKey
 
 
 @dataclass(frozen=True)
@@ -240,8 +249,8 @@ class RefreshIssueMeta:
         Whether the issue is visible in the current caller's view.
     """
 
-    issue_id: str
-    issue_key: str
+    issue_id: IssueId
+    issue_key: IssueKey
     updated_at: str
     visible: bool
 
@@ -266,9 +275,9 @@ class RefreshCommentMeta:
         ``None`` if the signal is unavailable.
     """
 
-    comment_id: str
-    root_comment_id: str
-    parent_comment_id: str | None
+    comment_id: CommentId
+    root_comment_id: CommentId
+    parent_comment_id: CommentId | None
     updated_at: str | None
     deleted: bool | None
 
@@ -286,7 +295,7 @@ class RefreshThreadMeta:
         Whether the thread has been marked resolved.
     """
 
-    root_comment_id: str
+    root_comment_id: CommentId
     resolved: bool
 
 
@@ -334,7 +343,7 @@ class LinearGateway(Protocol):
         """
         ...
 
-    async def get_workspace_identity(self, issue_id: str) -> WorkspaceIdentity:
+    async def get_workspace_identity(self, issue_id: IssueId) -> WorkspaceIdentity:
         """
         Read stable workspace identity for manifest validation.
 
@@ -343,7 +352,9 @@ class LinearGateway(Protocol):
         """
         ...
 
-    async def get_ticket_relations(self, issue_ids: Sequence[str]) -> dict[str, list[RelationData]]:
+    async def get_ticket_relations(
+        self, issue_ids: Sequence[IssueId]
+    ) -> dict[IssueId, list[RelationData]]:
         """
         Batch-read issue relations for traversal and rendered frontmatter.
 
@@ -354,8 +365,8 @@ class LinearGateway(Protocol):
         ...
 
     async def get_refresh_issue_metadata(
-        self, issue_ids: Sequence[str]
-    ) -> dict[str, RefreshIssueMeta]:
+        self, issue_ids: Sequence[IssueId]
+    ) -> dict[IssueId, RefreshIssueMeta]:
         """
         Batch-read issue identity + ``updated_at`` for freshness checks.
 
@@ -366,8 +377,8 @@ class LinearGateway(Protocol):
         ...
 
     async def get_refresh_comment_metadata(
-        self, issue_ids: Sequence[str]
-    ) -> dict[str, tuple[list[RefreshCommentMeta], list[RefreshThreadMeta]]]:
+        self, issue_ids: Sequence[IssueId]
+    ) -> dict[IssueId, tuple[list[RefreshCommentMeta], list[RefreshThreadMeta]]]:
         """
         Batch-read comment/thread metadata for ``comments_signature``.
 
@@ -379,8 +390,8 @@ class LinearGateway(Protocol):
         ...
 
     async def get_refresh_relation_metadata(
-        self, issue_ids: Sequence[str]
-    ) -> dict[str, list[RelationData]]:
+        self, issue_ids: Sequence[IssueId]
+    ) -> dict[IssueId, list[RelationData]]:
         """
         Batch-read relation metadata for ``relations_signature``.
 

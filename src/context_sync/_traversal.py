@@ -26,6 +26,7 @@ from dataclasses import dataclass
 
 from context_sync._config import TRAVERSAL_TIERS, Dimension
 from context_sync._gateway import LinearGateway, RelationData
+from context_sync._types import IssueId, IssueKey
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +35,8 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 type TicketRefProvider = Callable[
-    [Sequence[str]],
-    Awaitable[dict[str, list[tuple[str, str]]]],
+    [Sequence[IssueId]],
+    Awaitable[dict[IssueId, list[tuple[IssueId, IssueKey]]]],
 ]
 """
 Async provider for Tier 3 (``ticket_ref``) edge discovery.
@@ -76,10 +77,10 @@ class TraversedTicket:
         active traversal configuration and per-root caps.
     """
 
-    issue_id: str
-    issue_key: str
+    issue_id: IssueId
+    issue_key: IssueKey
     effective_depth: int
-    root_ids: frozenset[str]
+    root_ids: frozenset[IssueId]
 
 
 @dataclass(frozen=True)
@@ -108,9 +109,9 @@ class TraversalResult:
     of the dict contents.  Callers should treat both fields as read-only.
     """
 
-    per_root_tickets: dict[str, frozenset[str]]
-    tickets: dict[str, TraversedTicket]
-    roots_at_cap: frozenset[str]
+    per_root_tickets: dict[IssueId, frozenset[IssueId]]
+    tickets: dict[IssueId, TraversedTicket]
+    roots_at_cap: frozenset[IssueId]
 
 
 # ---------------------------------------------------------------------------
@@ -148,13 +149,13 @@ def _active_dims_for_tier(
 
 async def _traverse_single_root(
     *,
-    root_id: str,
-    root_key: str,
+    root_id: IssueId,
+    root_key: IssueKey,
     dimensions: dict[str, int],
     max_tickets_per_root: int,
     gateway: LinearGateway,
     ticket_ref_fn: TicketRefProvider | None,
-) -> tuple[dict[str, int], dict[str, str], bool]:
+) -> tuple[dict[IssueId, int], dict[IssueId, IssueKey], bool]:
     """
     BFS traversal from a single root with tiered cap enforcement.
 
@@ -191,19 +192,19 @@ async def _traverse_single_root(
           least one candidate ticket could not be added.
     """
     # Depth from this root for each visited issue UUID.
-    visited_depth: dict[str, int] = {root_id: 0}
+    visited_depth: dict[IssueId, int] = {root_id: 0}
     # Key recorded when the issue was first discovered.
-    visited_keys: dict[str, str] = {root_id: root_key}
+    visited_keys: dict[IssueId, IssueKey] = {root_id: root_key}
     # BFS frontier: list of (issue_id, issue_key, depth_from_root).
-    frontier: list[tuple[str, str, int]] = [(root_id, root_key, 0)]
+    frontier: list[tuple[IssueId, IssueKey, int]] = [(root_id, root_key, 0)]
     # Remaining capacity after the root itself occupies one slot.
     cap_remaining: int = max_tickets_per_root - 1
     at_cap: bool = False
 
     while frontier and not at_cap:
         current_depth: int = frontier[0][2]
-        frontier_ids: list[str] = [t[0] for t in frontier]
-        next_frontier: list[tuple[str, str, int]] = []
+        frontier_ids: list[IssueId] = [t[0] for t in frontier]
+        next_frontier: list[tuple[IssueId, IssueKey, int]] = []
 
         # Batch-fetch relations once for Tier 1 + Tier 2 at this depth level.
         # Tier 3 (ticket_ref) uses a separate provider path below.
@@ -213,7 +214,7 @@ async def _traverse_single_root(
             if Dimension.TICKET_REF not in t
             for d in _active_dims_for_tier(t, dimensions, current_depth)
         )
-        relation_map: dict[str, list[RelationData]] = (
+        relation_map: dict[IssueId, list[RelationData]] = (
             await gateway.get_ticket_relations(frontier_ids) if tier12_active else {}
         )
 
@@ -308,7 +309,7 @@ async def _traverse_single_root(
 
 async def build_reachable_graph(
     *,
-    roots: dict[str, str],
+    roots: dict[IssueId, IssueKey],
     dimensions: dict[str, int],
     max_tickets_per_root: int,
     gateway: LinearGateway,
@@ -356,13 +357,13 @@ async def build_reachable_graph(
     if max_tickets_per_root < 1:
         raise ValueError(f"max_tickets_per_root must be at least 1, got {max_tickets_per_root}")
 
-    per_root_tickets: dict[str, frozenset[str]] = {}
-    roots_at_cap: set[str] = set()
+    per_root_tickets: dict[IssueId, frozenset[IssueId]] = {}
+    roots_at_cap: set[IssueId] = set()
 
     # Global union tracking across all roots.
-    global_depth: dict[str, int] = {}  # issue_id → shortest depth from any root
-    global_keys: dict[str, str] = {}  # issue_id → key at first discovery
-    global_root_ids: dict[str, set[str]] = {}  # issue_id → set of root UUIDs
+    global_depth: dict[IssueId, int] = {}  # issue_id → shortest depth from any root
+    global_keys: dict[IssueId, IssueKey] = {}  # issue_id → key at first discovery
+    global_root_ids: dict[IssueId, set[IssueId]] = {}  # issue_id → set of root UUIDs
 
     for root_id, root_key in roots.items():
         logger.debug("Traversing root %s (%s)", root_id, root_key)
@@ -389,7 +390,7 @@ async def build_reachable_graph(
                 global_root_ids[issue_id] = set()
             global_root_ids[issue_id].add(root_id)
 
-    tickets: dict[str, TraversedTicket] = {
+    tickets: dict[IssueId, TraversedTicket] = {
         issue_id: TraversedTicket(
             issue_id=issue_id,
             issue_key=global_keys[issue_id],

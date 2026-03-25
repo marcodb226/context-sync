@@ -20,6 +20,7 @@ from context_sync._config import FORMAT_VERSION
 from context_sync._errors import ManifestError
 from context_sync._gateway import WorkspaceIdentity
 from context_sync._io import atomic_write
+from context_sync._types import IssueId, IssueKey, WorkspaceId, WorkspaceSlug
 from context_sync._yaml import dump_yaml
 
 MANIFEST_FILENAME: str = ".context-sync.yml"
@@ -63,7 +64,7 @@ class ManifestTicketEntry(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    current_key: str
+    current_key: IssueKey
     current_path: str
 
 
@@ -105,13 +106,13 @@ class Manifest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     format_version: int
-    workspace_id: str
-    workspace_slug: str
+    workspace_id: WorkspaceId
+    workspace_slug: WorkspaceSlug
     dimensions: dict[str, int]
     max_tickets_per_root: int
-    roots: dict[str, ManifestRootEntry] = {}
-    tickets: dict[str, ManifestTicketEntry] = {}
-    aliases: dict[str, str] = {}
+    roots: dict[IssueId, ManifestRootEntry] = {}
+    tickets: dict[IssueId, ManifestTicketEntry] = {}
+    aliases: dict[IssueKey, IssueId] = {}
     snapshot: ManifestSnapshot | None = None
 
 

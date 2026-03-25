@@ -73,6 +73,7 @@ from context_sync._pipeline import (
 from context_sync._signatures import compute_comments_signature, compute_relations_signature
 from context_sync._ticket_ref import _normalize_ticket_ref, _resolve_ref_to_uuid
 from context_sync._traversal import TraversalResult, build_reachable_graph
+from context_sync._types import IssueId, IssueKey
 from context_sync._yaml import extract_body, parse_frontmatter, serialize_frontmatter
 
 if TYPE_CHECKING:
@@ -124,7 +125,7 @@ _QUARANTINE_WARNING = (
 
 def _rewrite_quarantined_ticket(
     *,
-    uid: str,
+    uid: IssueId,
     context_dir: Path,
     manifest: Manifest,
     last_synced_at: str,
@@ -411,7 +412,7 @@ class ContextSync:
         url_slug, normalized_ref = _normalize_ticket_ref(key)
         manifest_path = context_dir / MANIFEST_FILENAME
         manifest: Manifest | None = None
-        resolved_uuid: str | None = None
+        resolved_uuid: IssueId | None = None
 
         if manifest_path.is_file():
             manifest = load_manifest(context_dir)
@@ -486,16 +487,16 @@ class ContextSync:
         # fetched now so that the Tier 3 ticket_ref provider can scan their
         # content at depth 0.  Per-ticket errors are caught so a single
         # unavailable existing root does not abort the entire run.
-        fetched = {root_uuid: root_bundle}
+        fetched: dict[IssueId, TicketBundle] = {root_uuid: root_bundle}
         other_active_roots = [
             uid
             for uid, entry in manifest.roots.items()
             if uid != root_uuid and entry.state == "active"
         ]
-        prefetch_failed: set[str] = set()
+        prefetch_failed: set[IssueId] = set()
         if other_active_roots:
 
-            async def _fetch_existing_root(issue_id: str) -> None:
+            async def _fetch_existing_root(issue_id: IssueId) -> None:
                 async with semaphore:
                     try:
                         bundle = await gateway.fetch_issue(issue_id)
@@ -513,7 +514,7 @@ class ContextSync:
                     tg.create_task(_fetch_existing_root(uid))
 
         # -- Build traversal roots dict {uuid: current_key} -------------------
-        roots_for_traversal: dict[str, str] = {}
+        roots_for_traversal: dict[IssueId, IssueKey] = {}
         for uid, entry in manifest.roots.items():
             if entry.state != "active":
                 continue
@@ -609,12 +610,12 @@ class ContextSync:
         # -- Pre-fetch all active root bundles --------------------------------
         active_roots = [uid for uid, entry in manifest.roots.items() if entry.state == "active"]
 
-        fetched: dict[str, TicketBundle] = {}
-        prefetch_failed: set[str] = set()
+        fetched: dict[IssueId, TicketBundle] = {}
+        prefetch_failed: set[IssueId] = set()
 
         if active_roots:
 
-            async def _fetch_root(issue_id: str) -> None:
+            async def _fetch_root(issue_id: IssueId) -> None:
                 async with semaphore:
                     try:
                         bundle = await gateway.fetch_issue(issue_id)
@@ -631,7 +632,7 @@ class ContextSync:
                     tg.create_task(_fetch_root(uid))
 
         # -- Build traversal roots dict {uuid: current_key} -------------------
-        roots_for_traversal: dict[str, str] = {}
+        roots_for_traversal: dict[IssueId, IssueKey] = {}
         for uid, entry in manifest.roots.items():
             if entry.state != "active":
                 continue
@@ -681,7 +682,7 @@ class ContextSync:
         self,
         *,
         graph: TraversalResult,
-        fetched: dict[str, TicketBundle],
+        fetched: dict[IssueId, TicketBundle],
         manifest: Manifest,
         context_dir: Path,
         gateway: LinearGateway,
@@ -702,16 +703,16 @@ class ContextSync:
         :meth:`_standalone_sync_under_lock`.
         """
         # -- Fetch remaining reachable tickets --------------------------------
-        created: list[str] = []
-        updated: list[str] = []
-        unchanged: list[str] = []
+        created: list[IssueKey] = []
+        updated: list[IssueKey] = []
+        unchanged: list[IssueKey] = []
         errors: list[SyncError] = []
 
         missing_ids = [uid for uid in graph.tickets if uid not in fetched]
         if missing_ids:
-            fetch_errors: list[tuple[str, str]] = []
+            fetch_errors: list[tuple[IssueKey, IssueId]] = []
 
-            async def _fetch_linked(issue_id: str) -> None:
+            async def _fetch_linked(issue_id: IssueId) -> None:
                 async with semaphore:
                     try:
                         bundle = await gateway.fetch_issue(issue_id)
@@ -774,7 +775,7 @@ class ContextSync:
                 updated.append(bundle.issue.issue_key)
 
         # -- Prune derived tickets no longer reachable ------------------------
-        removed: list[str] = []
+        removed: list[IssueKey] = []
         reachable_uuids = set(graph.tickets.keys())
         for uid in list(manifest.tickets.keys()):
             if uid not in reachable_uuids and uid not in manifest.roots:
@@ -967,7 +968,7 @@ class ContextSync:
         )
 
         errors: list[SyncError] = []
-        removed_by_policy: list[str] = []
+        removed_by_policy: list[IssueKey] = []
 
         # -- Batch-check root visibility --------------------------------------
         root_uuids = list(manifest.roots.keys())
@@ -975,7 +976,7 @@ class ContextSync:
             # No roots in manifest — prune all remaining tracked tickets and
             # finalize.  This handles the case where remove_root deleted the
             # last root.
-            removed: list[str] = []
+            removed: list[IssueKey] = []
             for uid in list(manifest.tickets.keys()):
                 entry = manifest.tickets[uid]
                 file_path = context_dir / entry.current_path
@@ -1034,7 +1035,7 @@ class ContextSync:
                                 if meta is not None
                                 else manifest.tickets[uid].current_key
                                 if uid in manifest.tickets
-                                else uid
+                                else IssueKey(uid)
                             ),
                             error_type="root_quarantined",
                             message="Root ticket not available in the current visible view",
@@ -1045,12 +1046,12 @@ class ContextSync:
                 else:
                     # missing_root_policy == "remove"
                     ticket_entry = manifest.tickets.get(uid)
-                    removed_key = (
+                    removed_key: IssueKey = (
                         ticket_entry.current_key
                         if ticket_entry is not None
                         else meta.issue_key
                         if meta is not None
-                        else uid
+                        else IssueKey(uid)
                     )
                     if ticket_entry is not None:
                         file_path = context_dir / ticket_entry.current_path
@@ -1071,12 +1072,12 @@ class ContextSync:
             uid for uid, entry in manifest.roots.items() if entry.state == "active"
         ]
 
-        fetched: dict[str, TicketBundle] = {}
-        prefetch_failed: set[str] = set()
+        fetched: dict[IssueId, TicketBundle] = {}
+        prefetch_failed: set[IssueId] = set()
 
         if active_root_uuids:
 
-            async def _fetch_root(issue_id: str) -> None:
+            async def _fetch_root(issue_id: IssueId) -> None:
                 async with semaphore:
                     try:
                         bundle = await gateway.fetch_issue(issue_id)
@@ -1093,7 +1094,9 @@ class ContextSync:
         # dropping the root from traversal while leaving it marked active.
         for uid in prefetch_failed:
             ticket_entry = manifest.tickets.get(uid)
-            failed_key = ticket_entry.current_key if ticket_entry is not None else uid
+            failed_key: IssueKey = (
+                ticket_entry.current_key if ticket_entry is not None else IssueKey(uid)
+            )
 
             if missing_root_policy == "quarantine":
                 manifest.roots[uid] = ManifestRootEntry(
@@ -1139,7 +1142,7 @@ class ContextSync:
         # -- Build traversal roots dict {uuid: current_key} -------------------
         # Re-derive active roots after prefetch-failure handling since some
         # roots may have been quarantined or removed above.
-        roots_for_traversal: dict[str, str] = {}
+        roots_for_traversal: dict[IssueId, IssueKey] = {}
         for uid in active_root_uuids:
             if uid in prefetch_failed:
                 continue
@@ -1175,8 +1178,8 @@ class ContextSync:
 
         # -- Batch-check freshness for all tracked reachable tickets ----------
         reachable_uuids = list(graph.tickets.keys())
-        stale_uuids: set[str] = set()
-        newly_discovered: set[str] = set()
+        stale_uuids: set[IssueId] = set()
+        newly_discovered: set[IssueId] = set()
 
         # Identify newly discovered tickets (in graph but not in manifest).
         for uid in reachable_uuids:
@@ -1241,25 +1244,27 @@ class ContextSync:
                     logger.debug("refresh: fresh — %s", ticket_key)
 
         # -- Fetch stale and newly discovered tickets -------------------------
-        created: list[str] = []
-        updated: list[str] = []
-        unchanged: list[str] = []
+        created: list[IssueKey] = []
+        updated: list[IssueKey] = []
+        unchanged: list[IssueKey] = []
 
         fetch_targets = list(stale_uuids | newly_discovered)
         # Remove tickets already fetched during root pre-fetch.
         to_fetch = [uid for uid in fetch_targets if uid not in fetched]
 
         if to_fetch:
-            fetch_errors: list[tuple[str, str]] = []
+            fetch_errors: list[tuple[IssueKey, IssueId]] = []
 
-            async def _fetch_linked(issue_id: str) -> None:
+            async def _fetch_linked(issue_id: IssueId) -> None:
                 async with semaphore:
                     try:
                         bundle = await gateway.fetch_issue(issue_id)
                         fetched[bundle.issue.issue_id] = bundle
                     except RootNotFoundError:
                         ticket_info = graph.tickets.get(issue_id)
-                        issue_key = ticket_info.issue_key if ticket_info else issue_id
+                        issue_key: IssueKey = (
+                            ticket_info.issue_key if ticket_info else IssueKey(issue_id)
+                        )
                         fetch_errors.append((issue_key, issue_id))
 
             async with asyncio.TaskGroup() as tg:
@@ -1325,7 +1330,7 @@ class ContextSync:
                         unchanged.append(ticket_entry.current_key)
 
         # -- Prune derived tickets no longer reachable ------------------------
-        removed: list[str] = list(removed_by_policy)
+        removed: list[IssueKey] = list(removed_by_policy)
         reachable_set = set(graph.tickets.keys())
         for uid in list(manifest.tickets.keys()):
             if uid not in reachable_set and uid not in manifest.roots:

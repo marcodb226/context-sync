@@ -96,6 +96,15 @@ from context_sync._traversal import (
     TraversedTicket,
     build_reachable_graph,
 )
+from context_sync._types import (
+    AttachmentId,
+    CommentId,
+    IssueId,
+    IssueKey,
+    WorkspaceId,
+    WorkspaceSlug,
+    WriterId,
+)
 from context_sync.version import __prog_name__ as __prog_name__
 from context_sync.version import __version__ as __version__
 
@@ -180,6 +189,14 @@ __all__ = [
     "TraversalResult",
     "TraversedTicket",
     "build_reachable_graph",
+    # Semantic types
+    "AttachmentId",
+    "CommentId",
+    "IssueId",
+    "IssueKey",
+    "WorkspaceId",
+    "WorkspaceSlug",
+    "WriterId",
     # Version / identity
     "__prog_name__",
     "__version__",
