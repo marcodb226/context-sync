@@ -204,7 +204,7 @@ Phase C) for a named plan item:
    - **Phase A:** §4.1 rule 9 (explicit completion gate with
      sub-requirements, including the applicable ticket-type subsection).
    - **Phase B:** §5 rule 13 (explicit completion gate with sub-requirements).
-   - **Phase C:** §6 rule 15 (explicit completion gate with sub-requirements).
+   - **Phase C:** §6 rule 17 (explicit completion gate with sub-requirements).
 4. **Do not mark a ticket `Done` during Phase A unless the human explicitly
    instructs you to do so.** The default Phase A row status for an
    execution-model ticket is `In progress`. Even when the Phase A execution
