@@ -21,18 +21,13 @@ absent and that work cannot continue until the symlink or directory is restored
 Before writing or modifying any code, read and follow:
 
 - `docs/policies/common/coding-guidelines.md` — language-agnostic documentation, security, and repository versioning/changelog conventions.
-- `docs/policies/common/python/coding-guidelines.md` — apply only if the repository uses Python.
 - `docs/policies/common/cli-conventions.md` — apply only if the repository builds CLI tools.
-- `docs/policies/common/python/cli-conventions.md` — apply only if the repository builds CLI tools in Python.
 - `docs/policies/common/documentation-workflow.md` — apply when the repository publishes supported docs, generated API reference, or operator guides.
-- `docs/policies/common/python/documentation-workflow.md` — apply only if the repository is a Python package that publishes supported docs with MkDocs or an equivalent maintained docs site.
 - `docs/policies/common/reference-material.md` — apply when the repository stores external reference inputs in `docs/external-sources/` or adopts conclusions from non-authoritative reference material.
 - `docs/policies/common/planning-model.md` — planning model for candidate selection, draft-plan creation, review, and activation.
 - `docs/policies/common/future-work-model.md` — apply when the repository uses a future-work artifact such as `docs/future-work.md`.
 - `docs/policies/common/execution-model.md` — execution model for active named plan-item work.
 - `docs/policies/common/release-workflow.md` — apply when the repository publishes versioned releases or maintains explicit release/bootstrap workflow artifacts.
-- `docs/policies/common/python/release-workflow.md` — apply only if the repository publishes Python package artifacts.
-- `docs/policies/common/python/agent-awareness.md` — apply if the repository builds a Python package with a public API surface.
 - `docs/policies/common/terminology-policy.md` — apply when the repository maintains a `docs/policies/terminology.md` file with project-specific terminology constraints.
 
 When the task materially edits planning, design, PRDs, ADRs, or other
@@ -49,26 +44,27 @@ whole section or file.
 
 ## Instruction file source of truth
 
-- `docs/policies/common/agent-instructions.md` is the source-of-truth file for the shared common layer of repository-level agent instructions.
+- `docs/policies/common/agent-instructions.md` is the source-of-truth file for the shared cross-language layer of repository-level agent instructions.
+- `docs/policies/common/<layer>/agent-instructions.md` files are optional source-of-truth files for shared language/runtime-specific agent-instruction layers. They are included in generated entrypoints only when selected by the repo-local `docs/policies/agent-entrypoints.cfg` config.
 - `docs/policies/agent-instructions.md` is the optional repo-local layer for instructions that should not be shared across the whole client-repo group.
-- `docs/policies/common/*.md` files other than
-  `docs/policies/common/agent-instructions.md` are shared common-policy
-  documents for humans and agents alike. When editing those files, keep the
-  language and requirements human-neutral unless the document is explicitly
-  scoped to agents.
+- Common policy documents outside the `agent-instructions.md` entrypoint files
+  are shared common-policy documents for humans and agents alike. When editing
+  those files, keep the language and requirements human-neutral unless the
+  document is explicitly scoped to agents.
 - Agent-only workflow, refusal behavior, or tool-usage guidance belongs in
-  `docs/policies/common/agent-instructions.md` or
+  `docs/policies/common/agent-instructions.md`, an applicable
+  `docs/policies/common/<layer>/agent-instructions.md`, or
   `docs/policies/agent-instructions.md`, not in the shared planning,
-  execution, future-work, coding, or reference-material policy documents
-  unless the rule genuinely applies to humans too.
+  execution, future-work, coding, or reference-material policy documents unless
+  the rule genuinely applies to humans too.
 - Repo-local policy that is meant for humans as well as agents should have its
   primary home in human-facing repository docs such as `docs/policies/*.md` or
   other clearly designated project documentation. Use
   `docs/policies/agent-instructions.md` to summarize or reference that local
   policy when agent workflow needs it, not as the sole normative home.
 - `AGENTS.md` and `CLAUDE.md` are generated artifacts and must never be edited directly.
-- Never suggest direct edits to `AGENTS.md` or `CLAUDE.md`. When instruction changes are needed, edit the appropriate source layer and then run `.venv/bin/python docs/policies/common/tools/sync_agent_instructions.py` to sync the generated files.
-- Optionally run `.venv/bin/python docs/policies/common/tools/sync_agent_instructions.py --check` after syncing to confirm the source layers, `AGENTS.md`, and `CLAUDE.md` are aligned.
+- Never suggest direct edits to `AGENTS.md` or `CLAUDE.md`. When instruction changes are needed, edit the appropriate source layer and then run `python docs/policies/common/tools/sync_agent_instructions.py` to sync the generated files.
+- Optionally run `python docs/policies/common/tools/sync_agent_instructions.py --check` after syncing to confirm the source layers, `AGENTS.md`, and `CLAUDE.md` are aligned.
 
 ## Validation scope gate
 
@@ -217,8 +213,9 @@ Phase C) for a named plan item:
 
 - Prefer `rg` and `rg --files` over slower text/file discovery tools such as
   `grep` and `find` for routine codebase navigation.
-- When a semantic symbol-navigation tool is available for Python, prefer it to
-  raw text search when locating Python definitions, references, or call sites.
+- When a semantic symbol-navigation tool is available for the active language,
+  prefer it to raw text search when locating definitions, references, or call
+  sites.
 - Use plain-text search for comments, string literals, config keys, SQL, YAML,
   logs, or similar non-symbol content, and as the fallback when symbol-aware
   lookup is unavailable or fails.
@@ -241,6 +238,37 @@ Phase C) for a named plan item:
   assume the source repository's tool choices apply to every client repository
   in the group.
 <!-- end common instructions: docs/policies/common/agent-instructions.md -->
+
+<!-- begin common layer instructions (python): docs/policies/common/python/agent-instructions.md -->
+Apply this layer when the repo-local entrypoint composition config includes the
+`python` layer.
+
+This file keeps the highest-salience Python-specific instructions directly in
+generated agent entrypoints. It supplements, and does not replace, the full
+Python policy documents listed below.
+
+## Mandatory references
+
+Before writing or modifying Python code, read and follow:
+
+- `docs/policies/common/python/coding-guidelines.md` — Python-specific typing, linting, async, exception, testing, and version-metadata rules.
+- `docs/policies/common/python/cli-conventions.md` — apply only if the repository builds CLI tools in Python.
+- `docs/policies/common/python/documentation-workflow.md` — apply only if the repository is a Python package that publishes supported docs with MkDocs or an equivalent maintained docs site.
+- `docs/policies/common/python/release-workflow.md` — apply only if the repository publishes Python package artifacts.
+- `docs/policies/common/python/agent-awareness.md` — apply if the repository builds a Python package with a public API surface.
+
+## Pre-completion checklist
+
+Before marking Python implementation work complete, verify:
+
+1. No new `typing.Any` appears in function or method signatures when a concrete type is available.
+2. Use `TYPE_CHECKING` imports with `from __future__ import annotations` for deferred annotation resolution instead of falling back to `Any`.
+3. If `Any` is genuinely required, keep the exception targeted with `# noqa: ANN401` and a brief justification.
+
+## Codebase Navigation
+
+- When a semantic symbol-navigation tool is available for Python, prefer it to raw text search when locating definitions, references, or call sites.
+<!-- end common layer instructions (python): docs/policies/common/python/agent-instructions.md -->
 
 <!-- begin local instructions: docs/policies/agent-instructions.md -->
 This is the repo-local layer for agent instructions that should not be shared
