@@ -45,7 +45,7 @@ whole section or file.
 ## Instruction file source of truth
 
 - `docs/policies/common/agent-instructions.md` is the source-of-truth file for the shared cross-language layer of repository-level agent instructions.
-- `docs/policies/common/<layer>/agent-instructions.md` files are optional source-of-truth files for shared language/runtime-specific agent-instruction layers. They are included in generated entrypoints only when selected by the repo-local `docs/policies/agent-entrypoints.cfg` config.
+- `docs/policies/common/<layer>/agent-instructions.md` files are optional source-of-truth files for shared language/runtime-specific agent-instruction layers. They are included in generated entrypoints only when selected by the repo-local `docs/policies/agent-instructions.cfg` profile.
 - `docs/policies/agent-instructions.md` is the optional repo-local layer for instructions that should not be shared across the whole client-repo group.
 - Common policy documents outside the `agent-instructions.md` entrypoint files
   are shared common-policy documents for humans and agents alike. When editing
@@ -65,6 +65,7 @@ whole section or file.
 - `AGENTS.md` and `CLAUDE.md` are generated artifacts and must never be edited directly.
 - Never suggest direct edits to `AGENTS.md` or `CLAUDE.md`. When instruction changes are needed, edit the appropriate source layer and then run `python docs/policies/common/tools/sync_agent_instructions.py` to sync the generated files.
 - Optionally run `python docs/policies/common/tools/sync_agent_instructions.py --check` after syncing to confirm the source layers, `AGENTS.md`, and `CLAUDE.md` are aligned.
+- When using `docs/policies/common/tools/sync_agent_instructions.py`, never run multiple invocations in parallel. In particular, do not run the write command and the `--check` command concurrently; run the sync first, then run `--check` only after the sync command exits.
 
 ## Validation scope gate
 
