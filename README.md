@@ -287,12 +287,11 @@ async methods on `ContextSync`. See the class docstring for parameter details.
 git clone git@github.com:marcodb226/context-sync.git
 cd context-sync
 
-# 2. Clone the shared policy repository next to this one,
-#    using a checkout dedicated to this client repo
-git clone git@github.com:marcodb226/agent-policies.git ../agent-policies-context-sync
+# 2. Clone the shared policy repository next to this one
+git clone git@github.com:marcodb226/agent-policies.git ../agent-policies
 
 # 3. Create the common-policies symlink
-ln -s ../../../agent-policies-context-sync/docs/policies/common docs/policies/common
+ln -s ../../../agent-policies/docs/policies/common docs/policies/common
 
 # 4. Verify the symlink resolves correctly
 ls docs/policies/common/coding-guidelines.md
@@ -338,7 +337,7 @@ most tooling will not work correctly.
 If the symlink is missing or broken, re-create it:
 
 ```bash
-ln -s ../../../agent-policies-context-sync/docs/policies/common docs/policies/common
+ln -s ../../../agent-policies/docs/policies/common docs/policies/common
 ```
 
 For the full rationale behind the symlink approach, recommended workspace
@@ -349,14 +348,16 @@ see [`docs/policies/common/README.md`](docs/policies/common/README.md).
 
 Because `docs/policies/common` is a symlink whose target lives outside this
 repository, Claude Code needs explicit write access to the resolved path.
-Add the following to `.claude/settings.json`:
+Add the following to `.claude/settings.json`, replacing `<workspace-root>`
+with the absolute path to the parent directory that contains all three repos
+(for example, `~/src/context-sync-workspace`):
 
 ```json
 {
   "sandbox": {
     "filesystem": {
       "allowWrite": [
-        "~/src/agent-policies-context-sync/docs/policies/common"
+        "<workspace-root>/agent-policies/docs/policies/common"
       ]
     }
   }
