@@ -30,7 +30,7 @@ the same shell session that will run Linear-dependent commands.
 
 ```bash
 # Install from the workspace clone (preferred for development)
-.venv/bin/python -m pip install -e ../linear-client
+.venv/bin/python -m pip install ../linear-client
 
 # Alternative: install from the private repo by tag
 .venv/bin/python -m pip install "linear-client @ git+ssh://git@github.com/marcodb226/linear-client.git@v1.1.0"

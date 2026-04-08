@@ -311,32 +311,38 @@ git clone git@github.com:marcodb226/context-sync.git
 git clone git@github.com:marcodb226/agent-policies.git
 git clone --branch v1.1.0 git@github.com:marcodb226/linear-client.git
 
-# 2. Create the common-policies symlink
+# 2. Make the linear-client clone read-only (pinned to a release tag),
+#    but pre-create the .egg-info directory writable so pip can build it
+mkdir -p linear-client/src/linear_client.egg-info
+chmod -R a-w linear-client
+chmod -R u+w linear-client/.git linear-client/src/linear_client.egg-info
+
+# 3. Create the common-policies symlink
 cd context-sync
 ln -s ../../../agent-policies/docs/policies/common docs/policies/common
 
-# 3. Verify the symlink resolves correctly
+# 4. Verify the symlink resolves correctly
 ls docs/policies/common/coding-guidelines.md
 
-# 4. Create and activate a virtualenv
+# 5. Create and activate a virtualenv
 python3 -m venv .venv
 source .venv/bin/activate
 
-# 5. Install linear-client as an editable dependency from the workspace clone
+# 6. Install linear-client as an editable dependency from the workspace clone
 pip install -e ../linear-client
 
-# 6. Install this project with dev dependencies
+# 7. Install this project with dev dependencies
 pip install -e ".[dev]"
 
-# 7. Verify pyright can see linear-client types
+# 8. Verify pyright can see linear-client types
 pyright --verifytypes linear_client --ignoreexternal
 ```
 
 Step 5 installs `linear-client` from the sibling workspace clone rather than
-from a remote git URL. This gives pyright and Pylance full access to the
-library's source, type annotations, and `py.typed` marker — which is important
-both for IDE navigation and for agent tooling that follows imports across the
-dependency boundary.
+from a remote git URL. The installed package carries a `py.typed` marker and
+100% type completeness, so pyright and Pylance get full type information.
+Agent and IDE source navigation into the library works through the multi-root
+VS Code workspace (see `.vscode/context-sync.code-workspace`).
 
 For the full VSCode multi-root workspace configuration — including how to set
 up `agent-policies` and `linear-client` as read-only reference clones — see
