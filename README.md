@@ -320,6 +320,10 @@ source scripts/.linear_env.sh
 [`scripts/.linear_env.sh.sample`](scripts/.linear_env.sh.sample) documents all
 available environment variables with comments. The local copy is gitignored.
 
+For VSCode multi-root workspace setup (including read-only clones of
+`agent-policies` and `linear-client` as peer repos), see
+[`docs/workspace-setup.md`](docs/workspace-setup.md).
+
 ### Common policies
 
 This project uses a **shared common-policy layer** managed in the
