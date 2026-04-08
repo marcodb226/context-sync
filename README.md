@@ -34,7 +34,7 @@ package not published to PyPI. Both packages are installed from their private
 GitHub repositories via SSH.
 
 ```bash
-pip install "linear-client @ git+ssh://git@github.com/marcodb226/linear-client.git@v1.0.0"
+pip install "linear-client @ git+ssh://git@github.com/marcodb226/linear-client.git@v1.1.0"
 pip install "context-sync @ git+ssh://git@github.com/marcodb226/context-sync.git"
 ```
 
@@ -43,8 +43,14 @@ Use a virtualenv if you prefer isolation.
 
 ### Credential setup
 
-All Linear credentials are read from the environment at runtime. Set the
-required variables before running any command:
+All Linear credentials are read from the environment at runtime. The simplest
+option is a personal API key (new in `linear-client` v1.1.0):
+
+```bash
+export LINEAR_API_KEY="<your-linear-api-key>"
+```
+
+Alternatively, use OAuth client-credentials for machine-actor identity:
 
 ```bash
 export LINEAR_CLIENT_ID="<your-oauth-client-id>"
@@ -154,19 +160,24 @@ and endpoint configuration is provided by the
 [`linear-client`](https://github.com/marcodb226/linear-client) library, which
 reads the following variables at runtime. They are documented here for
 convenience so that tool users do not need to consult the `linear-client`
-documentation separately. This list is complete as of `linear-client` v1.0.0;
-newer releases may introduce additional variables.
+documentation separately. This list is complete as of `linear-client` v1.1.0;
+see the `linear-client`
+[configuration docs](https://github.com/marcodb226/linear-client/blob/v1.1.0/docs/pub/configuration.md)
+for the full reference.
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `LINEAR_CLIENT_ID` | Yes | Linear OAuth application client ID. |
-| `LINEAR_CLIENT_SECRET` | Yes | Linear OAuth application client secret. |
-| `LINEAR_OAUTH_SCOPE` | Yes | Comma-separated OAuth scopes (e.g. `read,write,app:assignable,app:mentionable`). |
-| `LINEAR_OAUTH_TOKEN_PATH` | No | Path to persisted token JSON file. Default: `~/.linear_client_oauth.json`. |
-| `LINEAR_OAUTH_URL` | No | OAuth token endpoint URL. Default: `https://api.linear.app/oauth/token`. |
-| `LINEAR_OAUTH_SKEW_SECONDS` | No | Expiry skew in seconds. Default: `30`. |
-| `LINEAR_API_URL` | No | Linear GraphQL API endpoint. Default: `https://api.linear.app/graphql`. |
-| `LINEAR_LOG_LEVEL` | No | Log level for the `linear-client` library. Default: `ERROR`. |
+The library supports three auth modes. Only one set of credentials is needed.
+
+| Variable | Auth mode | Required | Description |
+|----------|-----------|----------|-------------|
+| `LINEAR_API_KEY` | `api_key` | Yes (for this mode) | Personal Linear API key. Simplest option — no token exchange or refresh. |
+| `LINEAR_CLIENT_ID` | `oauth`, `client_credentials` | Yes (for these modes) | Linear OAuth application client ID. |
+| `LINEAR_CLIENT_SECRET` | `oauth`, `client_credentials` | Yes (for these modes) | Linear OAuth application client secret. |
+| `LINEAR_OAUTH_SCOPE` | `oauth`, `client_credentials` | Yes (for these modes) | Comma-separated OAuth scopes (e.g. `read,write,app:assignable,app:mentionable`). |
+| `LINEAR_OAUTH_TOKEN_PATH` | `oauth`, `client_credentials` | No | Path to persisted token JSON file. Default: `~/.linear_client_oauth.json`. |
+| `LINEAR_OAUTH_URL` | `oauth`, `client_credentials` | No | OAuth token endpoint URL. Default: `https://api.linear.app/oauth/token`. |
+| `LINEAR_OAUTH_SKEW_SECONDS` | `oauth`, `client_credentials` | No | Expiry skew in seconds. Default: `30`. |
+| `LINEAR_API_URL` | All | No | Linear GraphQL API endpoint. Default: `https://api.linear.app/graphql`. |
+| `LINEAR_LOG_LEVEL` | All | No | Log level for the `linear-client` library. Default: `ERROR`. |
 
 No secrets should appear in source files, logs, or error output.
 
@@ -289,7 +300,7 @@ directory:
 context-sync-workspace/          # any name you like
 ├── context-sync/                # main project (writable)
 ├── agent-policies/              # shared agent policies
-└── linear-client/               # integration target (read-only, pinned to tag)
+└── linear-client/               # private dependency (v1.1.0, editable install)
 ```
 
 ```bash
@@ -298,7 +309,7 @@ mkdir context-sync-workspace
 cd context-sync-workspace
 git clone git@github.com:marcodb226/context-sync.git
 git clone git@github.com:marcodb226/agent-policies.git
-git clone git@github.com:marcodb226/linear-client.git
+git clone --branch v1.1.0 git@github.com:marcodb226/linear-client.git
 
 # 2. Create the common-policies symlink
 cd context-sync
@@ -311,12 +322,21 @@ ls docs/policies/common/coding-guidelines.md
 python3 -m venv .venv
 source .venv/bin/activate
 
-# 5. Install the private linear-client dependency
-pip install "linear-client @ git+ssh://git@github.com/marcodb226/linear-client.git@v1.0.0"
+# 5. Install linear-client as an editable dependency from the workspace clone
+pip install -e ../linear-client
 
 # 6. Install this project with dev dependencies
 pip install -e ".[dev]"
+
+# 7. Verify pyright can see linear-client types
+pyright --verifytypes linear_client --ignoreexternal
 ```
+
+Step 5 installs `linear-client` from the sibling workspace clone rather than
+from a remote git URL. This gives pyright and Pylance full access to the
+library's source, type annotations, and `py.typed` marker — which is important
+both for IDE navigation and for agent tooling that follows imports across the
+dependency boundary.
 
 For the full VSCode multi-root workspace configuration — including how to set
 up `agent-policies` and `linear-client` as read-only reference clones — see

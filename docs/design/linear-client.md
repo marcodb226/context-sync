@@ -5,7 +5,7 @@
 > library's own documentation; this file exists so humans and agents can
 > resolve repository-level integration questions without leaving this repo.
 >
-> Wheel releases: https://github.com/marcodb226/linear-client/releases/tag/v1.0.0
+> Wheel releases: https://github.com/marcodb226/linear-client/releases/tag/v1.1.0
 >
 > The installation and boundary guidance below adopts the private-dependency
 > handling pattern documented in
@@ -29,8 +29,11 @@ to `scripts/.linear_env.sh`, fill in the required values, and source it into
 the same shell session that will run Linear-dependent commands.
 
 ```bash
-# Human-only bootstrap step; requires SSH access to the private repo
-.venv/bin/python -m pip install "linear-client @ git+ssh://git@github.com/marcodb226/linear-client.git@v1.0.0"
+# Install from the workspace clone (preferred for development)
+.venv/bin/python -m pip install -e ../linear-client
+
+# Alternative: install from the private repo by tag
+.venv/bin/python -m pip install "linear-client @ git+ssh://git@github.com/marcodb226/linear-client.git@v1.1.0"
 ```
 
 Once `linear-client` is present, install this repository itself:
