@@ -282,30 +282,45 @@ async methods on `ContextSync`. See the class docstring for parameter details.
 
 ### Developer setup
 
+All three project repositories live as peers inside a shared workspace
+directory:
+
+```text
+context-sync-workspace/          # any name you like
+├── context-sync/                # main project (writable)
+├── agent-policies/              # shared agent policies
+└── linear-client/               # integration target (read-only, pinned to tag)
+```
+
 ```bash
-# 1. Clone this repository
+# 1. Create the workspace directory and clone all three repos
+mkdir context-sync-workspace
+cd context-sync-workspace
 git clone git@github.com:marcodb226/context-sync.git
+git clone git@github.com:marcodb226/agent-policies.git
+git clone git@github.com:marcodb226/linear-client.git
+
+# 2. Create the common-policies symlink
 cd context-sync
-
-# 2. Clone the shared policy repository next to this one
-git clone git@github.com:marcodb226/agent-policies.git ../agent-policies
-
-# 3. Create the common-policies symlink
 ln -s ../../../agent-policies/docs/policies/common docs/policies/common
 
-# 4. Verify the symlink resolves correctly
+# 3. Verify the symlink resolves correctly
 ls docs/policies/common/coding-guidelines.md
 
-# 5. Create and activate a virtualenv
+# 4. Create and activate a virtualenv
 python3 -m venv .venv
 source .venv/bin/activate
 
-# 6. Install the private linear-client dependency
+# 5. Install the private linear-client dependency
 pip install "linear-client @ git+ssh://git@github.com/marcodb226/linear-client.git@v1.0.0"
 
-# 7. Install this project with dev dependencies
+# 6. Install this project with dev dependencies
 pip install -e ".[dev]"
 ```
+
+For the full VSCode multi-root workspace configuration — including how to set
+up `agent-policies` and `linear-client` as read-only reference clones — see
+[`docs/workspace-setup.md`](docs/workspace-setup.md).
 
 For running Linear-dependent commands during development, create and source a
 local env file from the tracked sample:
@@ -318,10 +333,6 @@ source scripts/.linear_env.sh
 
 [`scripts/.linear_env.sh.sample`](scripts/.linear_env.sh.sample) documents all
 available environment variables with comments. The local copy is gitignored.
-
-For VSCode multi-root workspace setup (including read-only clones of
-`agent-policies` and `linear-client` as peer repos), see
-[`docs/workspace-setup.md`](docs/workspace-setup.md).
 
 ### Common policies
 
