@@ -293,60 +293,26 @@ async methods on `ContextSync`. See the class docstring for parameter details.
 
 ### Developer setup
 
-All three project repositories live as peers inside a shared workspace
-directory:
+The project uses a multi-repo workspace with three peer repositories
+(`context-sync`, `agent-policies`, `linear-client`). Follow
+[`docs/workspace-setup.md`](docs/workspace-setup.md) to clone all three repos,
+set up the common-policies symlink, and configure the VSCode multi-root
+workspace.
 
-```text
-context-sync-workspace/          # any name you like
-├── context-sync/                # main project (writable)
-├── agent-policies/              # shared agent policies
-└── linear-client/               # private dependency (v1.1.0, editable install)
-```
+Once the workspace is in place, create a virtualenv and install:
 
 ```bash
-# 1. Create the workspace directory and clone all three repos
-mkdir context-sync-workspace
-cd context-sync-workspace
-git clone git@github.com:marcodb226/context-sync.git
-git clone git@github.com:marcodb226/agent-policies.git
-git clone --branch v1.1.0 git@github.com:marcodb226/linear-client.git
-
-# 2. Make the linear-client clone read-only (pinned to a release tag),
-#    but pre-create the .egg-info directory writable so pip can build it
-mkdir -p linear-client/src/linear_client.egg-info
-chmod -R a-w linear-client
-chmod -R u+w linear-client/.git linear-client/src/linear_client.egg-info
-
-# 3. Create the common-policies symlink
 cd context-sync
-ln -s ../../../agent-policies/docs/policies/common docs/policies/common
-
-# 4. Verify the symlink resolves correctly
-ls docs/policies/common/coding-guidelines.md
-
-# 5. Create and activate a virtualenv
 python3 -m venv .venv
 source .venv/bin/activate
-
-# 6. Install linear-client as an editable dependency from the workspace clone
-pip install -e ../linear-client
-
-# 7. Install this project with dev dependencies
+pip install -e ../linear-client          # v1.1.0, from the workspace clone
 pip install -e ".[dev]"
-
-# 8. Verify pyright can see linear-client types
-pyright --verifytypes linear_client --ignoreexternal
+pyright --verifytypes linear_client --ignoreexternal  # verify type info
 ```
 
-Step 5 installs `linear-client` from the sibling workspace clone rather than
-from a remote git URL. The installed package carries a `py.typed` marker and
-100% type completeness, so pyright and Pylance get full type information.
-Agent and IDE source navigation into the library works through the multi-root
-VS Code workspace (see `.vscode/context-sync.code-workspace`).
-
-For the full VSCode multi-root workspace configuration — including how to set
-up `agent-policies` and `linear-client` as read-only reference clones — see
-[`docs/workspace-setup.md`](docs/workspace-setup.md).
+The editable install of `linear-client` gives pyright and Pylance full type
+information (`py.typed` marker, 100% type completeness). Agent and IDE source
+navigation works through the multi-root VS Code workspace.
 
 For running Linear-dependent commands during development, create and source a
 local env file from the tracked sample:
