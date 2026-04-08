@@ -107,15 +107,21 @@ cat > .vscode/settings.json <<'JSON'
   "files.readonlyFromPermissions": true
 }
 JSON
+# Pre-create .egg-info so pip can build/install from this read-only clone
+mkdir -p src/linear_client.egg-info
 find . \
   -path './.git' -prune -o \
   -path './.vscode' -prune -o \
+  -path './src/linear_client.egg-info' -prune -o \
   -exec chmod a-w {} +
 cd ..
 ```
 
 The detached-HEAD checkout pins the clone to the exact commit tagged `v1.1.0`.
-The same three layers of protection (Git, file system, VSCode) apply.
+The same three layers of protection (Git, file system, VSCode) apply. The
+`src/linear_client.egg-info` directory is kept writable so that `pip install`
+(editable or not) can write build metadata there — it is gitignored and does
+not affect the pinned source.
 
 ## 5. Verify the layout
 
@@ -217,13 +223,15 @@ cd linear-client
 find . \
   -path './.git' -prune -o \
   -path './.vscode' -prune -o \
+  -path './src/linear_client.egg-info' -prune -o \
   -exec chmod u+w {} +
 git fetch origin
 git checkout --detach v<new-version>
-# re-lock
+# re-lock (keep .egg-info writable for pip)
 find . \
   -path './.git' -prune -o \
   -path './.vscode' -prune -o \
+  -path './src/linear_client.egg-info' -prune -o \
   -exec chmod a-w {} +
 cd ..
 ```
@@ -241,6 +249,7 @@ cd <repo>
 find . \
   -path './.git' -prune -o \
   -path './.vscode' -prune -o \
+  -path './src/*.egg-info' -prune -o \
   -exec chmod u+w {} +
 git remote set-url --push origin git@github.com:marcodb226/<repo>.git
 git switch main
