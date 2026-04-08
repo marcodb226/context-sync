@@ -182,7 +182,7 @@ def _create_linear_client() -> object:
         If ``linear-client`` is not installed or client initialization fails.
     """
     try:
-        from linear_client import Linear  # type: ignore[import-untyped]
+        from linear_client import Linear
     except ImportError as exc:
         raise ContextSyncError(
             "linear-client is not installed.  Install it into the active "
