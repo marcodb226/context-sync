@@ -314,10 +314,12 @@ class LinearGateway(Protocol):
     `docs/design/linear-domain-coverage-audit-v1.1.0.md
     <../../docs/design/linear-domain-coverage-audit-v1.1.0.md>`_:
 
-    * :meth:`fetch_issue` — domain-layer single-ticket fetch plus relation
-      read, assembled into a :class:`TicketBundle`.
+    * :meth:`fetch_issue` — domain-layer single-ticket fetch (comments,
+      attachments, relations) plus raw-GraphQL supplementary data (workspace,
+      labels, parent, priority), assembled into a :class:`TicketBundle`.
     * :meth:`get_workspace_identity` — raw-GraphQL workspace identity lookup.
-    * :meth:`get_ticket_relations` — raw-GraphQL batched relation read.
+    * :meth:`get_ticket_relations` — domain-layer fan-out via
+      ``Issue.get_links()`` for traversal and rendered relations.
     * :meth:`get_refresh_issue_metadata` — raw-GraphQL batched issue freshness.
     * :meth:`get_refresh_comment_metadata` — raw-GraphQL batched comment
       metadata for ``comments_signature``.

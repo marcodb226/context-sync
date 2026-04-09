@@ -760,14 +760,14 @@ class TestSyncLinkedTicketFetchFailure:
 
 
 class TestSyncGatewayReadiness:
-    """R2: ContextSync(linear=...) fails fast when gateway is not wired."""
+    """R2: ContextSync(linear=...) wraps the client in a RealLinearGateway."""
 
-    async def test_linear_constructor_raises_on_sync(self) -> None:
-        """Calling sync() through the linear= constructor path raises immediately."""
+    async def test_invalid_linear_object_raises_on_sync(self) -> None:
+        """Passing a non-Linear object fails with SystemicRemoteError at call time."""
         from context_sync._sync import ContextSync
 
         ctx = ContextSync(linear=object(), context_dir="/tmp/ctx-r2-test")
-        with pytest.raises(ContextSyncError, match="No gateway available"):
+        with pytest.raises(ContextSyncError):
             await ctx.sync("ANY-1")
 
 

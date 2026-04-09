@@ -199,13 +199,15 @@ class ContextSync:
 
     The caller provides an authenticated ``linear-client`` ``Linear`` instance
     (or, for testing, a ``LinearGateway`` via ``_gateway_override``), a target
-    directory, and optional traversal configuration.  All mutating and
-    read-only operations are async methods.
+    directory, and optional traversal configuration.  When *linear* is
+    provided, a :class:`RealLinearGateway` is created automatically.
+    All mutating and read-only operations are async methods.
 
     Parameters
     ----------
     linear:
-        An authenticated ``linear_client.Linear`` instance.  Ignored when
+        An authenticated ``linear_client.Linear`` instance.  Wrapped in a
+        :class:`RealLinearGateway` automatically.  Ignored when
         *_gateway_override* is provided.
     context_dir:
         Path to the context directory that will hold ticket files, the
@@ -246,10 +248,9 @@ class ContextSync:
         if _gateway_override is not None:
             self._gateway: LinearGateway = _gateway_override
         elif linear is not None:
-            # The real gateway wrapping linear-client will be created by a
-            # later implementation ticket.  For now, store the raw reference.
-            self._linear = linear
-            self._gateway = None  # type: ignore[assignment]
+            from context_sync._real_gateway import RealLinearGateway
+
+            self._gateway = RealLinearGateway(linear)
         else:
             raise ContextSyncError("Either 'linear' or '_gateway_override' must be provided.")
 
@@ -394,13 +395,6 @@ class ContextSync:
         ``sync(key=K)`` for an already-tracked root triggers a full rebuild
         of the entire reachable graph, not just the named root.
         """
-        if self._gateway is None:
-            raise ContextSyncError(
-                "No gateway available. The real Linear gateway wrapper is not "
-                "yet implemented. Use _gateway_override with a LinearGateway "
-                "instance."
-            )
-
         context_dir = self._context_dir
         gateway = self._gateway
         semaphore = self._semaphore
@@ -965,13 +959,6 @@ class ContextSync:
             raise ValueError(
                 f"missing_root_policy must be one of {valid_policies!r}, "
                 f"got {missing_root_policy!r}"
-            )
-
-        if self._gateway is None:
-            raise ContextSyncError(
-                "No gateway available. The real Linear gateway wrapper is not "
-                "yet implemented. Use _gateway_override with a LinearGateway "
-                "instance."
             )
 
         context_dir = self._context_dir
@@ -1565,13 +1552,6 @@ class ContextSync:
         derived node from another root, it is kept.  The refresh that follows
         removal re-fetches metadata for all remaining tracked tickets.
         """
-        if self._gateway is None:
-            raise ContextSyncError(
-                "No gateway available. The real Linear gateway wrapper is not "
-                "yet implemented. Use _gateway_override with a LinearGateway "
-                "instance."
-            )
-
         context_dir = self._context_dir
         gateway = self._gateway
         semaphore = self._semaphore
@@ -1729,13 +1709,6 @@ class ContextSync:
         capacity with an active writer.  This is intentional — wait for the
         active writer to finish or verify the lock is stale before retrying.
         """
-        if self._gateway is None:
-            raise ContextSyncError(
-                "No gateway available. The real Linear gateway wrapper is not "
-                "yet implemented. Use _gateway_override with a LinearGateway "
-                "instance."
-            )
-
         return await run_diff(
             context_dir=self._context_dir,
             gateway=self._gateway,
