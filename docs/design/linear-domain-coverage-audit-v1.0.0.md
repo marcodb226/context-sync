@@ -7,7 +7,7 @@
 > [docs/adr.md](../adr.md#31-foundation),
 > [docs/design/0-top-level-design.md](0-top-level-design.md#11-linear-dependency-boundary),
 > [docs/design/0-top-level-design.md](0-top-level-design.md#62-refresh-flow),
-> [docs/design/linear-client.md](linear-client.md),
+> [docs/design/linear-client-v1.0.0.md](linear-client-v1.0.0.md),
 > and [M1-D3](../execution/M1-D3.md)
 
 This audit records which v1 `context-sync` read operations are already covered

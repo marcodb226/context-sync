@@ -12,7 +12,7 @@
 > [docs/adr.md](../adr.md#31-foundation),
 > [docs/design/0-top-level-design.md](../design/0-top-level-design.md#11-linear-dependency-boundary),
 > [docs/design/0-top-level-design.md](../design/0-top-level-design.md#62-refresh-flow),
-> [docs/design/linear-client.md](../design/linear-client.md),
+> [docs/design/linear-client-v1.0.0.md](../design/linear-client-v1.0.0.md),
 > [docs/design/linear-domain-coverage-audit.md](../design/linear-domain-coverage-audit.md),
 > [docs/execution/M1-D3.md](M1-D3.md)
 

@@ -9,7 +9,7 @@
 > [docs/policies/common/execution-model.md](../policies/common/execution-model.md),
 > [docs/policies/common/reviews/code-review.md](../policies/common/reviews/code-review.md),
 > [docs/design/0-top-level-design.md](../design/0-top-level-design.md#11-linear-dependency-boundary),
-> [docs/design/linear-client.md](../design/linear-client.md#authentication),
+> [docs/design/linear-client-v1.0.0.md](../design/linear-client-v1.0.0.md#authentication),
 > [scripts/.linear_env.sh.sample](../../scripts/.linear_env.sh.sample)
 
 ## Findings
@@ -37,14 +37,14 @@ No Phase B findings.
   context:
   [docs/implementation-plan.md:137](../implementation-plan.md#m1-o1---live-linear-validation-environment-available),
   [docs/design/0-top-level-design.md:82](../design/0-top-level-design.md#11-linear-dependency-boundary),
-  [docs/design/linear-client.md:22](../design/linear-client.md#installation),
+  [docs/design/linear-client-v1.0.0.md:22](../design/linear-client-v1.0.0.md#installation),
   [scripts/.linear_env.sh.sample:1](../../scripts/.linear_env.sh.sample).
 - The recorded library-default failure is not a blocker for
   [M1-O1](../implementation-plan.md#m1-o1---live-linear-validation-environment-available),
   because the governing auth contract explicitly requires
   `client_credentials` mode. Evidence:
   [docs/execution/M1-O1.md:30](M1-O1.md),
-  [docs/design/linear-client.md:68](../design/linear-client.md#authentication).
+  [docs/design/linear-client-v1.0.0.md:68](../design/linear-client-v1.0.0.md#authentication).
 
 ## Residual Risks and Testing Gaps
 

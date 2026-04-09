@@ -82,7 +82,7 @@ Traversal semantics and interface rationale live in [docs/adr.md](<../adr.md>).
 `ContextSync` assumes the caller already has `linear-client` installed and
 can provide an authenticated `Linear` instance. The dependency is a private
 GitHub repository documented in
-[docs/design/linear-client.md](<linear-client.md>), so agent sessions must not
+[docs/design/linear-client-v1.0.0.md](<linear-client-v1.0.0.md>), so agent sessions must not
 treat installation as self-serve bootstrap work. If the project virtualenv
 does not already contain `linear-client`, ask a human to install it before
 running imports, CLI commands, or validations that depend on the library.

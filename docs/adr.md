@@ -282,7 +282,7 @@ The library API is the primary integration surface. It supports full sync, expli
 
 The library receives an authenticated `Linear` client instance from the caller instead of constructing one internally. This keeps authentication, connection reuse, and lifecycle management with the embedding application.
 
-The CLI is a convenience layer over the library API. It is responsible for reading configuration and constructing its own authenticated client using the same environment and credential model used by [`docs/design/linear-client.md`](<design/linear-client.md>).
+The CLI is a convenience layer over the library API. It is responsible for reading configuration and constructing its own authenticated client using the same environment and credential model used by [`docs/design/linear-client-v1.0.0.md`](<design/linear-client-v1.0.0.md>).
 
 Detailed method signatures and return types belong in [`docs/design/0-top-level-design.md`](<design/0-top-level-design.md>), not in the problem statement.
 
