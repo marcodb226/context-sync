@@ -41,6 +41,7 @@ other opaque structural assumptions while making the functional change.
 When editing an existing file, inspect the surrounding lines first and preserve
 the local formatting conventions unless you are intentionally reformatting the
 whole section or file.
+When a task directs you to use or leverage a shared common-policy template artifact, treat the template itself as the maintained starting point. Copy and adapt the template artifact rather than recreating a de-commented equivalent, and preserve explanatory comments unless a given comment becomes false after adaptation.
 
 ## Instruction file source of truth
 
@@ -145,19 +146,49 @@ Agent-side reminder:
   new `docs/execution/` artifact unless a named active-plan item explicitly
   requires that edit.
 
-## Ticket review requests
+## Review requests
 
-Requests to review a named active-plan item (for example, `review M1-2` or `review M1-D3`) are treated as
-Phase B review work under `docs/policies/common/execution-model.md`.
+Before starting a review, determine which review process governs the item:
 
-For those requests, the agent must:
+- **Execution-model tickets** (plan-item IDs such as `M1-2`, `M1-D3`):
+  follow the execution-model review process below.
+- **Planning artifacts** (`CR-<iso-date>` change requests in
+  `docs/planning/change-requests/`, or a draft plan in `docs/planning/`):
+  follow the planning review process below.
+- **Release defects** (`RD-n` IDs tracked in a
+  `docs/execution/release-<version>-defects.md` defect log): follow the
+  release defect review process further below.
+
+### Execution-model ticket reviews
+
+Requests to review a named active-plan item (for example, `review M1-2` or
+`review M1-D3`) are review work under
+`docs/policies/common/execution-model.md`.
+
+Before starting the review, determine the correct phase by inspecting the
+ticket's current lifecycle state:
+
+- If the ticket has **not** completed Phase C (its active-plan row is not
+  `Done`, or no Phase C section exists in the `*-review.md` artifact), treat
+  the request as a **Phase B** review pass.
+- If the ticket **has** completed Phase C and its active-plan row is `Done`,
+  treat the request as a **Phase D** post-close verification.
+
+Phase B and Phase D use different artifacts, finding-ID schemes, and scope
+rules. Selecting the wrong phase produces structural violations that require
+cleanup. When in doubt, check the ticket's execution file status header and
+the active-plan row before choosing a phase.
+
+#### Phase B review requests
+
+For Phase B requests, the agent must:
 
 - create or update the matching review artifact at `docs/execution/<ticket>-review.md`
 - follow the required review-file format from `docs/policies/common/execution-model.md`
 - treat the repository review artifact as mandatory, not optional
 
 Requests for a second review, rereview, or other additional review pass are
-also valid review requests. Across planning review, design review, and
+also valid Phase B review requests. Across planning review, design review, and
 implementation review workflows, multiple independent review passes are allowed
 and encouraged when another reviewer can add perspective or when the reviewed
 artifact changed materially. Unless the governing planning or execution policy
@@ -165,17 +196,106 @@ documents a different workflow, update the existing matching review artifact
 and append the new review pass rather than refusing the request because a prior
 review already exists.
 
+#### Phase D review requests
+
+For Phase D requests, the agent must:
+
+- create the post-close review artifact at `docs/execution/<ticket>-review-post-close.md`
+- use `<ticket-id>-PCn` finding IDs, not `<ticket-id>-Rn`
+- follow the Phase D rules in `docs/policies/common/execution-model.md` §7
+- not modify the Phase B/C review file (`*-review.md`)
+
+#### Chat-only review disambiguation
+
 If the user also asks for chat-only feedback or says not to edit files, that conflicts with the
-Phase B review contract. In that case, do not silently choose one path. Stop and ask the user
+Phase B or Phase D review contract. In that case, do not silently choose one path. Stop and ask the user
 which mode they want:
 
-- official Phase B review with `docs/execution/<ticket>-review.md` updated
+- official Phase B or Phase D review with the appropriate artifact updated
 - informal in-chat review with no file edits
+
+### Planning reviews
+
+Requests to review a planning change request (for example, `review CR-26.04.07`)
+or a draft plan are Stage 2 review work under
+`docs/policies/common/planning-model.md`.
+
+For these requests, the agent must:
+
+- create or update the matching review artifact at the path documented in the
+  planning artifact (for change requests, typically
+  `docs/planning/change-requests/CR-<iso-date>-review.md`; for draft plans,
+  typically `docs/planning/implementation-plan-review.md`)
+- use the same findings-table format as the execution model
+  (`| ID | Severity | Status | Area | Finding | Evidence | Impact | Recommendation |`)
+  per planning-model §3.2
+- use `CR-<iso-date>-Rn` finding IDs for change requests, or plan-scoped
+  finding IDs for draft-plan reviews
+- treat the repository review artifact as mandatory, not optional
+
+If the user also asks for chat-only feedback or says not to edit files, that
+conflicts with the Stage 2 review contract. In that case, do not silently
+choose one path. Stop and ask the user which mode they want:
+
+- official Stage 2 review with the matching review artifact created or updated
+- informal in-chat review with no file edits
+
+### Release defect reviews
+
+Release defects use the defect lifecycle defined in
+`docs/policies/common/release-workflow.md` § "Release Validation Defects."
+The critical structural difference from execution-model tickets is that **all
+phases are recorded inline in the single defect log artifact** — there are no
+separate `*-review.md` files.
+
+Before starting the review, re-read the "Release Validation Defects" section
+of `docs/policies/common/release-workflow.md`. Do not rely on a prior reading
+or on recall of the execution model's Phase B rules — the defect lifecycle
+shares the A/B/C/D phase names but differs in artifact structure, heading
+conventions, and status ownership.
+
+#### Phase routing
+
+Determine the correct phase from context:
+
+- If the release has **not** shipped and the defect status is `Fixed`, the
+  review is a **Phase B** code review pass.
+- If the release **has** shipped and the defect status is `Verified`, the
+  review is a **Phase D** post-release verification.
+
+#### Phase B — where to record findings
+
+- Record findings under a sub-heading in the defect's detail section:
+  `#### Phase B — Review` (or `#### Phase B — Review (pass N)` when multiple
+  passes exist).
+- Place this heading **after** the Phase A content (Symptoms / Root cause /
+  Fix description / Verification) and **before** any Phase C content.
+- For each finding, note the issue, its severity, and a recommendation. Use
+  the applicable review checklists
+  (`docs/policies/common/reviews/code-review.md`) as a lightweight prompt set.
+- Fill in the `Reviewer` column in the defect summary table.
+
+#### What Phase B does NOT do
+
+- **Do not create a separate `*-review.md` file.** The defect log is the
+  single artifact for all phases.
+- **Do not change the defect's status.** Phase B reviewers provide findings
+  and evidence. Status transitions (`Fixed` → `Verified` or back to `Fixed`
+  for another pass) are owned by the Phase C fixer.
+
+#### Review scope
+
+1. Review the fix for correctness, design soundness, edge cases, test
+   coverage, and coding-guidelines compliance.
+2. Confirm the fix resolves the defect by rerunning the failing validation
+   step, harness check, or equivalent targeted verification.
+3. Confirm the fix does not introduce regressions (at minimum, the
+   repository's declared test suite must pass).
 
 ## Execution-model phase transitions
 
-When beginning work on a specific execution-model phase (Phase A, Phase B, or
-Phase C) for a named plan item:
+When beginning work on a specific execution-model phase (Phase A, Phase B,
+Phase C, or Phase D) for a named plan item:
 
 1. **Re-read the governing section before starting.** Open
    `docs/policies/common/execution-model.md` and read the section for the phase
@@ -185,11 +305,16 @@ Phase C) for a named plan item:
    from earlier in the same conversation — the rules are detailed enough that
    recall-based approximation leads to structural violations.
 
-2. **Create the required artifact structure first, then do the work.** For
-   Phase C, create the verdict table in the review file before implementing any
-   code fixes. For Phase B, create the review file and findings table before
-   writing findings prose. Getting the artifact skeleton right first prevents
-   the structural requirements from being forgotten once implementation work
+2. **Create the required artifact structure first, then do the work.** Include
+   the execution-model metadata block (`LLM`, `Effort`, `Time spent`) in that
+   initial skeleton. For Phase C, create the verdict table in the review file
+   before implementing any code fixes. For Phase B, create the review file and
+   findings table before writing findings prose. If `Time spent` is not known
+   yet, leave the field in place and update it before marking the phase
+   complete. For `Effort` or any other metadata field whose value depends on
+   session configuration the agent might not be able to introspect, record `N/A`
+   rather than guessing. Getting the artifact skeleton right first prevents the
+   structural requirements from being forgotten once implementation work
    begins.
 
 3. **Run the phase completion gate before declaring done.** Each phase has
@@ -198,10 +323,12 @@ Phase C) for a named plan item:
    each sub-requirement individually. Do not treat this as a mental
    checklist — read the actual rules and confirm against the actual artifacts.
    The completion gates are:
-   - **Phase A:** §4.1 rule 9 (explicit completion gate with
+   - **Phase A:** §4.1 rule 10 (explicit completion gate with
      sub-requirements, including the applicable ticket-type subsection).
-   - **Phase B:** §5 rule 13 (explicit completion gate with sub-requirements).
+   - **Phase B:** §5 rule 15 (explicit completion gate with sub-requirements).
    - **Phase C:** §6 rule 17 (explicit completion gate with sub-requirements).
+   - **Phase D:** §7 rules 1–8 (post-close verification rules, separate
+     artifact at `*-review-post-close.md`, `<ticket-id>-PCn` finding IDs).
 4. **Do not mark a ticket `Done` during Phase A unless the human explicitly
    instructs you to do so.** The default Phase A row status for an
    execution-model ticket is `In progress`. Even when the Phase A execution
@@ -209,6 +336,18 @@ Phase C) for a named plan item:
    the execution model's post-review closeout rules say the row may move to
    `Done` (for example, after a no-findings Phase B review is observed or
    after Phase C / accepted post-review closeout is complete).
+5. **Stop and report unsatisfied dependencies before doing any implementation
+   work.** When a human asks you to work on a named plan item and one or
+   more listed dependencies are unsatisfied (status is not `Done` or
+   equivalent), do not begin substantive work. Present the unsatisfied
+   dependencies, explain what they block, and ask whether to (a) work on
+   the dependency first, (b) explicitly waive the dependency for this
+   ticket, or (c) defer the ticket until the dependency ships. Do not
+   treat the human's request to "work on X" as an implicit waiver of X's
+   listed dependencies — the human may not be aware of the dependency
+   status. Ticket-text language allowing partial or phased delivery does
+   not substitute for a human-confirmed waiver at execution time. Only
+   proceed after receiving an explicit answer.
 
 ## Codebase Navigation
 
@@ -247,6 +386,26 @@ Apply this layer when the repo-local entrypoint composition config includes the
 This file keeps the highest-salience Python-specific instructions directly in
 generated agent entrypoints. It supplements, and does not replace, the full
 Python policy documents listed below.
+
+## Environment Activation
+
+When repo-local policy or maintained repository docs designate a project
+virtualenv or equivalent local environment for normal local Python work,
+agent-managed sessions must activate that environment before running routine
+repository commands from the repository root or against repository files.
+
+Treat activation as part of the command contract for inspection, linting,
+formatting, type-checking, testing, docs builds, packaging, release, and
+maintained script entrypoints unless the user explicitly asks to inspect a
+different environment.
+
+Do not assume that invoking a tool by path (for example `.venv/bin/pytest`) is
+equivalent to activating the environment first.
+
+Maintained automation may use a different interpreter or activation flow only
+when that exception is explicit and documented by repo-local policy, such as CI
+provisioning the toolchain in the job interpreter instead of a repo-local
+virtualenv.
 
 ## Mandatory references
 
