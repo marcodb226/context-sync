@@ -136,7 +136,7 @@ their own event loop.
 
 | Dependency | Install method | Pinned version | Main entry points |
 |---|---|---|---|
-| [`linear-client`](https://github.com/marcodb226/linear-client) | `pip install` from private GitHub repo via SSH | `v1.0.0` | `linear_client.Linear` (authenticated async client) |
+| [`linear-client`](https://github.com/marcodb226/linear-client) | `pip install` from private GitHub repo via SSH | `v1.1.0` | `linear_client.Linear` (authenticated async client) |
 
 `linear-client` is installed as a standard pip dependency, not vendored under
 `deps/`. The install command is in the [README](../../README.md#installation).

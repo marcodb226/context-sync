@@ -160,10 +160,11 @@ and endpoint configuration is provided by the
 [`linear-client`](https://github.com/marcodb226/linear-client) library, which
 reads the following variables at runtime. They are documented here for
 convenience so that tool users do not need to consult the `linear-client`
-documentation separately. This list is complete as of `linear-client` v1.1.0;
-see the `linear-client`
+documentation separately. This table covers the commonly used variables as of
+`linear-client` v1.1.0; see the `linear-client`
 [configuration docs](https://github.com/marcodb226/linear-client/blob/v1.1.0/docs/pub/configuration.md)
-for the full reference.
+for the full reference including additional variables for OAuth bootstrap and
+file handling.
 
 The library supports three auth modes. Only one set of credentials is needed.
 
