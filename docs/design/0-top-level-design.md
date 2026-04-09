@@ -80,13 +80,19 @@ Traversal semantics and interface rationale live in [docs/adr.md](<../adr.md>).
 ### 1.1 Linear Dependency Boundary
 
 `ContextSync` assumes the caller already has `linear-client` installed and
-can provide an authenticated `Linear` instance. The dependency is a private
-GitHub repository documented in
-[docs/design/linear-client-v1.0.0.md](<linear-client-v1.0.0.md>), so agent sessions must not
-treat installation as self-serve bootstrap work. If the project virtualenv
-does not already contain `linear-client`, ask a human to install it before
-running imports, CLI commands, or validations that depend on the library.
-The repo keeps the local credential bootstrap template at
+can provide an authenticated `Linear` instance. `linear-client` v1.1.0 is
+installed as an editable dependency from a sibling clone in the multi-root
+workspace (see [docs/workspace-setup.md](<../workspace-setup.md>)). The
+library supports three authentication modes (`api_key`, `oauth`, and
+`client_credentials`); the library's own
+[`__init__.py` module docstring](../../../linear-client/src/linear_client/__init__.py)
+and [`docs/pub/`](../../../linear-client/docs/pub/) documentation are the
+authoritative references for authentication, configuration, and API surface.
+Agent sessions must treat workspace provisioning as a human-run environment
+bootstrap step: if the active virtualenv does not already contain
+`linear-client`, ask a human to set up the workspace before running imports,
+CLI commands, or validations that depend on the library. The repo keeps the
+local credential bootstrap template at
 [`scripts/.linear_env.sh.sample`](../../scripts/.linear_env.sh.sample); create
 the ignored `scripts/.linear_env.sh` from that sample and source it in the
 same shell session before running Linear-dependent commands.
@@ -94,10 +100,13 @@ same shell session before running Linear-dependent commands.
 Within `context-sync`, prefer the `linear-client` domain layer. Reach for
 `linear.gql.*` only when the domain layer does not yet expose a required
 operation, and keep that fallback behind a narrow adapter boundary so the rest
-of the tool does not grow direct GraphQL dependencies. Whenever such a gap is
-encountered, record the missing domain capability in an authoritative project
-artifact so maintainers can extend the upstream `linear-client` roadmap. If
-the gap is deferred rather than addressed immediately, track that follow-up in
+of the tool does not grow direct GraphQL dependencies. The authoritative
+adapter-boundary definition is in
+[docs/design/linear-domain-coverage-audit-v1.1.0.md](<linear-domain-coverage-audit-v1.1.0.md>).
+Whenever such a gap is encountered, record the missing domain capability in an
+authoritative project artifact so maintainers can extend the upstream
+`linear-client` roadmap. If the gap is deferred rather than addressed
+immediately, track that follow-up in
 [docs/future-work.md](<../future-work.md>).
 
 ---

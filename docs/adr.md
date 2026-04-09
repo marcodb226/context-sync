@@ -251,19 +251,28 @@ context-sync tool builds on top of it for authentication, domain-level access
 to Linear data, connection management, and rate-limit/backoff behavior. The
 tool must not create a parallel Linear integration stack.
 
-`linear-client` is also a private GitHub repository dependency and is not
-vendored in this repo. Agent sessions must treat installation as a human-run
-environment bootstrap step: if the active virtualenv does not already contain
-`linear-client`, the agent should stop and ask a human to install it before
-attempting imports, CLI runs, or validations that require the library.
+`linear-client` v1.1.0 is installed as an editable dependency from a sibling
+clone in the multi-root workspace (see
+[docs/workspace-setup.md](<workspace-setup.md>)). The library supports three
+authentication modes (`api_key`, `oauth`, and `client_credentials`); the
+library's own [`__init__.py` module docstring](../../linear-client/src/linear_client/__init__.py)
+and [`docs/pub/`](../../linear-client/docs/pub/) documentation are the
+authoritative references for authentication, configuration, and API surface.
+Agent sessions must treat workspace provisioning as a human-run environment
+bootstrap step: if the active virtualenv does not already contain
+`linear-client`, the agent should stop and ask a human to set up the workspace
+before attempting imports, CLI runs, or validations that require the library.
 
 Within `context-sync`, Linear access should use the `linear-client` domain
 layer by default. A `linear.gql.*` fallback is allowed only when the domain
 layer does not yet expose a required operation, and that fallback should remain
-inside a narrow adapter boundary. When such a gap is discovered, record the
-missing domain capability in the repository's authoritative planning or design
-artifacts so maintainers can extend the upstream `linear-client` roadmap
-instead of normalizing ad hoc GraphQL usage.
+inside a narrow adapter boundary. The authoritative adapter-boundary definition
+is in
+[docs/design/linear-domain-coverage-audit-v1.1.0.md](<design/linear-domain-coverage-audit-v1.1.0.md>).
+When a domain-layer gap is discovered, record the missing capability in the
+repository's authoritative planning or design artifacts so maintainers can
+extend the upstream `linear-client` roadmap instead of normalizing ad hoc
+GraphQL usage.
 
 All library entry points that can trigger remote or file I/O should be async functions, and the implementation should avoid introducing blocking I/O in the core sync path. The CLI may bridge into that async API with `asyncio.run()`, but synchronous wrappers are not the primary design center.
 
@@ -282,7 +291,11 @@ The library API is the primary integration surface. It supports full sync, expli
 
 The library receives an authenticated `Linear` client instance from the caller instead of constructing one internally. This keeps authentication, connection reuse, and lifecycle management with the embedding application.
 
-The CLI is a convenience layer over the library API. It is responsible for reading configuration and constructing its own authenticated client using the same environment and credential model used by [`docs/design/linear-client-v1.0.0.md`](<design/linear-client-v1.0.0.md>).
+The CLI is a convenience layer over the library API. It is responsible for
+reading configuration and constructing its own authenticated client using the
+same environment and credential model as `linear-client` (see the library's
+own [`__init__.py` module docstring](../../linear-client/src/linear_client/__init__.py)
+for authentication modes and configuration keys).
 
 Detailed method signatures and return types belong in [`docs/design/0-top-level-design.md`](<design/0-top-level-design.md>), not in the problem statement.
 

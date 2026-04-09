@@ -134,13 +134,19 @@ their own event loop.
 
 ## Private Dependency Pointers
 
-| Dependency | Install method | Pinned version | Main entry points |
-|---|---|---|---|
-| [`linear-client`](https://github.com/marcodb226/linear-client) | `pip install` from private GitHub repo via SSH | `v1.1.0` | `linear_client.Linear` (authenticated async client) |
+| Dependency | Install method | Pinned version | Main entry points | Library documentation |
+|---|---|---|---|---|
+| [`linear-client`](https://github.com/marcodb226/linear-client) | Editable install from sibling workspace clone (`pip install -e ../linear-client`) | `v1.1.0` | `linear_client.Linear` (authenticated async client) | [`__init__.py` module docstring](../../../linear-client/src/linear_client/__init__.py), [`docs/design/dependency-map.md`](../../../linear-client/docs/design/dependency-map.md), [`docs/pub/`](../../../linear-client/docs/pub/), [`examples/`](../../../linear-client/examples/) |
 
-`linear-client` is installed as a standard pip dependency, not vendored under
-`deps/`. The install command is in the [README](../../README.md#installation).
+The multi-root workspace layout places `linear-client` as a sibling clone
+alongside `context-sync` (see
+[docs/workspace-setup.md](../workspace-setup.md)). The editable install gives
+pyright and Pylance full type information across the dependency boundary. The
+install command and workspace setup are documented in the
+[README](../../README.md#installation).
+
 `context-sync` interacts with `linear-client` exclusively through the
 [`LinearGateway`](../../src/context_sync/_gateway.py) protocol boundary — no
 direct `linear_client` imports appear outside the future `RealLinearGateway`
-adapter (M5-1).
+adapter (M5-1). The authoritative adapter-boundary definition is in
+[docs/design/linear-domain-coverage-audit-v1.1.0.md](linear-domain-coverage-audit-v1.1.0.md).
