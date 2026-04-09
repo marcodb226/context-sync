@@ -250,7 +250,7 @@ class ContextSync:
         elif linear is not None:
             from context_sync._real_gateway import RealLinearGateway
 
-            self._gateway = RealLinearGateway(linear)
+            self._gateway = RealLinearGateway(linear, concurrency_limit=concurrency_limit)
         else:
             raise ContextSyncError("Either 'linear' or '_gateway_override' must be provided.")
 

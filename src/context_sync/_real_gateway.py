@@ -25,9 +25,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
+from context_sync._config import DEFAULT_CONCURRENCY_LIMIT
 from context_sync._errors import RootNotFoundError, SystemicRemoteError
 from context_sync._gateway import (
     AttachmentData,
@@ -53,6 +55,9 @@ from context_sync._types import (
 
 if TYPE_CHECKING:
     from linear_client import Linear
+    from linear_client.domain.attachment import Attachment
+    from linear_client.domain.comment import Comment
+    from linear_client.domain.issue_link import IssueLink
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +70,12 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _INFORMATIONAL_LINK_TYPES: frozenset[str] = frozenset({"related", "duplicate", "similar"})
+
+# UUID v4 pattern for distinguishing UUIDs from human-facing issue keys.
+_UUID_PATTERN: re.Pattern[str] = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.IGNORECASE,
+)
 
 # ---------------------------------------------------------------------------
 # Raw GraphQL queries — approved helpers per M5-D1 boundary audit
@@ -239,6 +250,10 @@ class RealLinearGateway:
     linear:
         An authenticated ``linear_client.Linear`` instance.  The caller is
         responsible for creating and (optionally) closing this client.
+    concurrency_limit:
+        Maximum number of concurrent upstream calls during gateway fan-out
+        operations (``get_ticket_relations``, ``get_refresh_comment_metadata``,
+        ``get_refresh_relation_metadata``).
 
     Example
     -------
@@ -254,8 +269,14 @@ class RealLinearGateway:
             result = await ctx.sync(key="ENG-42")
     """
 
-    def __init__(self, linear: Linear) -> None:
+    def __init__(
+        self,
+        linear: Linear,
+        *,
+        concurrency_limit: int = DEFAULT_CONCURRENCY_LIMIT,
+    ) -> None:
         self._linear = linear
+        self._semaphore = asyncio.Semaphore(concurrency_limit)
 
     # -- Protocol methods: domain-layer paths --------------------------------
 
@@ -289,11 +310,15 @@ class RealLinearGateway:
         try:
             from linear_client.errors import LinearNotFoundError
             from linear_client.types import IssueId as UpstreamIssueId
+            from linear_client.types import IssueKey as UpstreamIssueKey
         except ImportError as exc:
             raise SystemicRemoteError("linear-client is not installed") from exc
 
         try:
-            issue = self._linear.issue(id=UpstreamIssueId(issue_id_or_key))
+            if _UUID_PATTERN.match(issue_id_or_key):
+                issue = self._linear.issue(id=UpstreamIssueId(issue_id_or_key))
+            else:
+                issue = self._linear.issue(key=UpstreamIssueKey(issue_id_or_key))
             issue = await issue.fetch()
         except LinearNotFoundError as exc:
             raise RootNotFoundError(f"Issue not found: {issue_id_or_key!r}") from exc
@@ -438,6 +463,7 @@ class RealLinearGateway:
         SystemicRemoteError
             If a systemic upstream failure prevents the batch read.
         """
+        from linear_client.errors import LinearNotFoundError
         from linear_client.types import IssueId as UpstreamIssueId
 
         unique_ids = list(dict.fromkeys(issue_ids))
@@ -445,13 +471,14 @@ class RealLinearGateway:
             return {}
 
         async def fetch_one(uid: IssueId) -> tuple[IssueId, list[RelationData]]:
-            try:
-                issue = self._linear.issue(id=UpstreamIssueId(str(uid)))
-                links = await issue.get_links()
-                return uid, self._normalize_links(links, str(uid))
-            except Exception:
-                logger.debug("get_ticket_relations: skipping issue %s (not visible or error)", uid)
-                return uid, []
+            async with self._semaphore:
+                try:
+                    issue = self._linear.issue(id=UpstreamIssueId(str(uid)))
+                    links = await issue.get_links()
+                    return uid, self._normalize_links(links, str(uid))
+                except LinearNotFoundError:
+                    logger.debug("get_ticket_relations: issue %s not visible, returning empty", uid)
+                    return uid, []
 
         try:
             pairs = await asyncio.gather(*(fetch_one(uid) for uid in unique_ids))
@@ -556,18 +583,23 @@ class RealLinearGateway:
         if not unique_ids:
             return {}
 
+        from linear_client.errors import LinearNotFoundError
+
         async def fetch_one(
             uid: IssueId,
         ) -> tuple[IssueId, tuple[list[RefreshCommentMeta], list[RefreshThreadMeta]]]:
-            try:
-                nodes = await self._linear.gql.paginate_connection(
-                    document=_REFRESH_COMMENTS_QUERY,
-                    variables={"issueId": str(uid)},
-                    connection_path=["comments"],
-                )
-            except Exception:
-                logger.debug("get_refresh_comment_metadata: no comments for %s", uid)
-                return uid, ([], [])
+            async with self._semaphore:
+                try:
+                    nodes = await self._linear.gql.paginate_connection(
+                        document=_REFRESH_COMMENTS_QUERY,
+                        variables={"issueId": str(uid)},
+                        connection_path=["comments"],
+                    )
+                except LinearNotFoundError:
+                    logger.debug(
+                        "get_refresh_comment_metadata: issue %s not visible, returning empty", uid
+                    )
+                    return uid, ([], [])
 
             # Build parent map for root resolution.
             parent_map: dict[str, str | None] = {}
@@ -651,24 +683,30 @@ class RealLinearGateway:
         if not unique_ids:
             return {}
 
+        from linear_client.errors import LinearNotFoundError
+
         async def fetch_one(uid: IssueId) -> tuple[IssueId, list[RelationData]]:
             uid_str = str(uid)
-            try:
-                forward_nodes, inverse_nodes = await asyncio.gather(
-                    self._linear.gql.paginate_connection(
-                        document=_REFRESH_FORWARD_LINKS_QUERY,
-                        variables={"issueId": uid_str},
-                        connection_path=["issue", "relations"],
-                    ),
-                    self._linear.gql.paginate_connection(
-                        document=_REFRESH_INVERSE_LINKS_QUERY,
-                        variables={"issueId": uid_str},
-                        connection_path=["issue", "inverseRelations"],
-                    ),
-                )
-            except Exception:
-                logger.debug("get_refresh_relation_metadata: skipping %s (error)", uid)
-                return uid, []
+            async with self._semaphore:
+                try:
+                    forward_nodes, inverse_nodes = await asyncio.gather(
+                        self._linear.gql.paginate_connection(
+                            document=_REFRESH_FORWARD_LINKS_QUERY,
+                            variables={"issueId": uid_str},
+                            connection_path=["issue", "relations"],
+                        ),
+                        self._linear.gql.paginate_connection(
+                            document=_REFRESH_INVERSE_LINKS_QUERY,
+                            variables={"issueId": uid_str},
+                            connection_path=["issue", "inverseRelations"],
+                        ),
+                    )
+                except LinearNotFoundError:
+                    logger.debug(
+                        "get_refresh_relation_metadata: issue %s not visible, returning empty",
+                        uid,
+                    )
+                    return uid, []
 
             relations: list[RelationData] = []
 
@@ -803,7 +841,7 @@ class RealLinearGateway:
         )
 
     def _flatten_comments(
-        self, root_comments: list[Any]
+        self, root_comments: list[Comment]
     ) -> tuple[list[CommentData], list[ThreadData]]:
         """
         Flatten the domain-layer root-thread comment tree into
@@ -815,7 +853,7 @@ class RealLinearGateway:
         comments: list[CommentData] = []
         threads: list[ThreadData] = []
 
-        def walk(comment: Any, effective_parent_id: CommentId | None) -> None:  # noqa: ANN401
+        def walk(comment: Comment, effective_parent_id: CommentId | None) -> None:
             """Recursively walk a comment and its children."""
             is_placeholder = comment.is_placeholder()
             cid_raw = comment.peek_id()
@@ -867,7 +905,7 @@ class RealLinearGateway:
 
         return comments, threads
 
-    def _convert_attachments(self, attachments: list[Any]) -> list[AttachmentData]:  # noqa: ANN401
+    def _convert_attachments(self, attachments: list[Attachment]) -> list[AttachmentData]:
         """Convert domain-layer ``Attachment`` objects to ``AttachmentData``."""
         result: list[AttachmentData] = []
         for att in attachments:
@@ -894,8 +932,8 @@ class RealLinearGateway:
 
     def _normalize_links(
         self,
-        links: list[Any],
-        current_issue_id: str,  # noqa: ANN401
+        links: list[IssueLink],
+        current_issue_id: str,
     ) -> list[RelationData]:
         """
         Normalize ``IssueLink`` domain objects into ``RelationData`` values.

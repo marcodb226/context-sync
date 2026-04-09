@@ -515,18 +515,18 @@ class TestRealGatewayTicketRelations:
         # Should only be called once for the deduplicated id.
         assert IssueId("uid-1") in result
 
-    async def test_error_returns_empty_for_issue(self) -> None:
+    async def test_systemic_error_propagates(self) -> None:
+        """Transport/auth failures must propagate, not be swallowed."""
         issue = _mock_issue()
-        issue.get_links = AsyncMock(side_effect=Exception("network error"))
+        issue.get_links = AsyncMock(side_effect=RuntimeError("network error"))
 
         linear = MagicMock()
         linear.issue = MagicMock(return_value=issue)
         linear.gql = MagicMock()
         gw = RealLinearGateway(linear)
 
-        result = await gw.get_ticket_relations([IssueId("uid-1")])
-
-        assert result[IssueId("uid-1")] == []
+        with pytest.raises(SystemicRemoteError, match="network error"):
+            await gw.get_ticket_relations([IssueId("uid-1")])
 
 
 # ---------------------------------------------------------------------------
@@ -680,10 +680,179 @@ class TestRealGatewayRefreshRelationMeta:
         result = await gw.get_refresh_relation_metadata([])
         assert result == {}
 
-    async def test_error_returns_empty(self) -> None:
-        gql_paginate = AsyncMock(side_effect=Exception("network error"))
+    async def test_systemic_error_propagates(self) -> None:
+        """Transport/auth failures must propagate, not be swallowed."""
+        gql_paginate = AsyncMock(side_effect=RuntimeError("network error"))
         gw = _make_gateway(gql_paginate=gql_paginate)
 
-        result = await gw.get_refresh_relation_metadata([IssueId("uid-1")])
+        with pytest.raises(SystemicRemoteError, match="network error"):
+            await gw.get_refresh_relation_metadata([IssueId("uid-1")])
 
-        assert result[IssueId("uid-1")] == []
+
+# ---------------------------------------------------------------------------
+# UUID vs key selector routing (R1)
+# ---------------------------------------------------------------------------
+
+
+class TestRealGatewayKeySelector:
+    async def test_uuid_uses_id_selector(self) -> None:
+        """UUID input routes through linear.issue(id=...)."""
+        issue = _mock_issue()
+        factory = MagicMock(return_value=issue)
+        gw = _make_gateway(issue_factory=factory)
+
+        await gw.fetch_issue("00000000-1111-2222-3333-444444444444")
+
+        factory.assert_called_once()
+        call_kwargs = factory.call_args[1]
+        assert "id" in call_kwargs
+        assert "key" not in call_kwargs
+
+    async def test_key_uses_key_selector(self) -> None:
+        """Issue key input routes through linear.issue(key=...)."""
+        issue = _mock_issue()
+        factory = MagicMock(return_value=issue)
+        gw = _make_gateway(issue_factory=factory)
+
+        await gw.fetch_issue("ENG-42")
+
+        factory.assert_called_once()
+        call_kwargs = factory.call_args[1]
+        assert "key" in call_kwargs
+        assert "id" not in call_kwargs
+
+    async def test_url_slug_uses_key_selector(self) -> None:
+        """Non-UUID strings use the key selector path."""
+        issue = _mock_issue()
+        factory = MagicMock(return_value=issue)
+        gw = _make_gateway(issue_factory=factory)
+
+        await gw.fetch_issue("TEAM-123")
+
+        call_kwargs = factory.call_args[1]
+        assert "key" in call_kwargs
+
+
+# ---------------------------------------------------------------------------
+# Integration: real gateway → ContextSync (R4)
+# ---------------------------------------------------------------------------
+
+
+class TestRealGatewayIntegration:
+    """Integration tests routing ContextSync through RealLinearGateway."""
+
+    def _make_linear_mock(self, issue: MagicMock) -> MagicMock:
+        """Build a mock Linear client with standard wiring."""
+        linear = MagicMock()
+        linear.issue = MagicMock(return_value=issue)
+        linear.gql = MagicMock()
+        linear.gql.query = AsyncMock(return_value=_make_supplementary_response())
+        linear.gql.paginate_connection = AsyncMock(return_value=[])
+        return linear
+
+    async def test_sync_through_real_gateway(self, tmp_path: Any) -> None:
+        """sync(key=...) through ContextSync(linear=...) produces a snapshot."""
+        from context_sync._sync import ContextSync
+
+        issue = _mock_issue(
+            issue_id="00000000-0000-0000-0000-000000000001",
+            issue_key="INT-1",
+            title="Integration test",
+        )
+        linear = self._make_linear_mock(issue)
+        ctx_dir = tmp_path / "ctx"
+        ctx_dir.mkdir()
+
+        ctx = ContextSync(linear=linear, context_dir=ctx_dir)
+        result = await ctx.sync(key="INT-1")
+
+        assert "INT-1" in result.created
+        assert (ctx_dir / "INT-1.md").is_file()
+
+    async def test_refresh_through_real_gateway(self, tmp_path: Any) -> None:
+        """refresh() through ContextSync(linear=...) after a sync."""
+        from context_sync._sync import ContextSync
+
+        issue = _mock_issue(
+            issue_id="00000000-0000-0000-0000-000000000001",
+            issue_key="INT-1",
+            title="Integration test",
+        )
+        linear = self._make_linear_mock(issue)
+
+        # Also set up refresh metadata responses.
+        linear.gql.paginate_connection = AsyncMock(
+            return_value=[
+                {
+                    "id": "00000000-0000-0000-0000-000000000001",
+                    "identifier": "INT-1",
+                    "updatedAt": "2026-01-01T00:00:00Z",
+                },
+            ]
+        )
+
+        ctx_dir = tmp_path / "ctx"
+        ctx_dir.mkdir()
+
+        ctx = ContextSync(linear=linear, context_dir=ctx_dir)
+        await ctx.sync(key="INT-1")
+        result = await ctx.refresh()
+
+        assert len(result.errors) == 0
+
+    async def test_remove_through_real_gateway(self, tmp_path: Any) -> None:
+        """remove() through ContextSync(linear=...) after a sync."""
+        from context_sync._sync import ContextSync
+
+        issue = _mock_issue(
+            issue_id="00000000-0000-0000-0000-000000000001",
+            issue_key="INT-1",
+        )
+        linear = self._make_linear_mock(issue)
+        linear.gql.paginate_connection = AsyncMock(
+            return_value=[
+                {
+                    "id": "00000000-0000-0000-0000-000000000001",
+                    "identifier": "INT-1",
+                    "updatedAt": "2026-01-01T00:00:00Z",
+                },
+            ]
+        )
+
+        ctx_dir = tmp_path / "ctx"
+        ctx_dir.mkdir()
+
+        ctx = ContextSync(linear=linear, context_dir=ctx_dir)
+        await ctx.sync(key="INT-1")
+        await ctx.remove(key="INT-1")
+
+        # After removal, the ticket file should be gone.
+        assert not (ctx_dir / "INT-1.md").is_file()
+
+    async def test_diff_through_real_gateway(self, tmp_path: Any) -> None:
+        """diff() through ContextSync(linear=...) after a sync."""
+        from context_sync._sync import ContextSync
+
+        issue = _mock_issue(
+            issue_id="00000000-0000-0000-0000-000000000001",
+            issue_key="INT-1",
+        )
+        linear = self._make_linear_mock(issue)
+        linear.gql.paginate_connection = AsyncMock(
+            return_value=[
+                {
+                    "id": "00000000-0000-0000-0000-000000000001",
+                    "identifier": "INT-1",
+                    "updatedAt": "2026-01-01T00:00:00Z",
+                },
+            ]
+        )
+
+        ctx_dir = tmp_path / "ctx"
+        ctx_dir.mkdir()
+
+        ctx = ContextSync(linear=linear, context_dir=ctx_dir)
+        await ctx.sync(key="INT-1")
+        result = await ctx.diff()
+
+        assert result is not None
