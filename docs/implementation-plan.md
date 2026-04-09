@@ -902,7 +902,7 @@ entry points rather than only private testing hooks.
 
 | # | Status | Ticket | Description | Dependencies | Tests | Source |
 | --- | --- | --- | --- | --- | --- | --- |
-| <a id="m5-d1---linear-domain-coverage-audit-and-adapter-boundary--v110"></a>M5-D1 | In progress | Linear domain-coverage audit and adapter boundary — v1.1.0 | Inspect the installed `linear-client` v1.1.0 surface and produce a new domain-coverage audit at `docs/design/linear-domain-coverage-audit-v1.1.0.md` with an authoritative coverage matrix, adapter-boundary decision, approved raw-GQL helper set, recorded missing upstream capabilities, and a type-mapping table for the gateway boundary. This ticket supersedes the M1-D2 v1.0.0 audit (`docs/design/linear-domain-coverage-audit-v1.0.0.md`) as the governing adapter-boundary reference for M5-1. | None | N/A (design artifact) | [docs/design/linear-domain-coverage-audit-v1.0.0.md](design/linear-domain-coverage-audit-v1.0.0.md), [CR-26.04.07](planning/change-requests/CR-26.04.07.md), [linear-client docs/pub/release-1.1.0.md](../../linear-client/docs/pub/release-1.1.0.md) |
+| <a id="m5-d1---linear-domain-coverage-audit-and-adapter-boundary--v110"></a>M5-D1 | Done | Linear domain-coverage audit and adapter boundary — v1.1.0 | Inspect the installed `linear-client` v1.1.0 surface and produce a new domain-coverage audit at `docs/design/linear-domain-coverage-audit-v1.1.0.md` with an authoritative coverage matrix, adapter-boundary decision, approved raw-GQL helper set, recorded missing upstream capabilities, and a type-mapping table for the gateway boundary. This ticket supersedes the M1-D2 v1.0.0 audit (`docs/design/linear-domain-coverage-audit-v1.0.0.md`) as the governing adapter-boundary reference for M5-1. | None | N/A (design artifact) | [docs/design/linear-domain-coverage-audit-v1.0.0.md](design/linear-domain-coverage-audit-v1.0.0.md), [CR-26.04.07](planning/change-requests/CR-26.04.07.md), [linear-client docs/pub/release-1.1.0.md](../../linear-client/docs/pub/release-1.1.0.md) |
 | <a id="m5-d2---design-artifact-refresh-for-v110-workspace-model"></a>M5-D2 | Todo | Design-artifact refresh for v1.1.0 workspace model | Retire `docs/design/linear-client-v1.0.0.md` (the local API reference summary is redundant now that the full library source is in the multi-root workspace). Update stale workspace-access and dependency-version references in `docs/adr.md` and `docs/design/0-top-level-design.md` to reflect the current workspace model. Update `docs/design/dependency-map.md` private-dependency pointers to reference the library's own documentation paths within the workspace. The design layer should read as a seamless representation of current state, not a patchwork of v1.0.0-era and v1.1.0-era content. | [M5-D1](#m5-d1---linear-domain-coverage-audit-and-adapter-boundary--v110) | N/A (design artifact) | [docs/design/linear-client-v1.0.0.md](design/linear-client-v1.0.0.md), [docs/adr.md](adr.md), [docs/design/0-top-level-design.md](design/0-top-level-design.md), [docs/design/dependency-map.md](design/dependency-map.md), [CR-26.04.07](planning/change-requests/CR-26.04.07.md) |
 | <a id="m5-1---real-linear-gateway-and-runtime-wiring"></a>M5-1 | Todo | Real Linear gateway and runtime wiring | Implement the concrete `RealLinearGateway` over the [M5-D1](#m5-d1---linear-domain-coverage-audit-and-adapter-boundary--v110) boundary, map all required ticket-bundle and refresh-metadata reads, and wire `ContextSync(linear=...)` plus CLI startup to create that gateway instead of failing with "No gateway available"; this ticket is the explicit defer target for [M4-2-R1](execution/M4-2-review.md) | [M5-D1](#m5-d1---linear-domain-coverage-audit-and-adapter-boundary--v110), [M3-O1](#m3-o1---comments-signature-input-settlement), [M4-1](#m4-1---cli-surface-and-command-output-contracts), [M4.1-1](#m4.1-1---cli-and-library-simplification), [M4.2-1](#m4.2-1---quality-gate-entry-point-static-analysis-baseline-and-semantic-types) | Automated tests for the real gateway implementation using maintained fake/fixture transport inputs at the adapter boundary, integration tests that route `sync` / `refresh` / `remove` / `diff` through that real gateway implementation without a live workspace, and bootstrap error-path coverage for missing auth or unavailable upstream services | [docs/design/linear-domain-coverage-audit-v1.1.0.md](design/linear-domain-coverage-audit-v1.1.0.md), [docs/execution/M4-1-review.md](execution/M4-1-review.md), [docs/execution/M4-2-review.md](execution/M4-2-review.md), [README.md](../README.md), [CR-26.04.07](planning/change-requests/CR-26.04.07.md) |
 | <a id="m5-2---supported-public-runtime-validation-and-smoke-path"></a>M5-2 | Todo | Supported public runtime validation and smoke path | Exercise the supported CLI and library entry points through `main()` or the installed console script, replace private-handler-only "end-to-end" claims with real public-surface coverage, and add a maintained smoke-validation recipe for one successful run plus one representative failure path; this ticket is the explicit defer target for [M4-2-R2](execution/M4-2-review.md) and [M4-2-R3](execution/M4-2-review.md) | [M5-1](#m5-1---real-linear-gateway-and-runtime-wiring), [M4-2](#m4-2---operational-logging-validation-hardening-and-user-docs), [M4.2-2](#m4.2-2---coverage-tooling-agent-awareness-artifacts-and-interface-documentation) | CLI integration tests through the real parser/dispatch path with maintained fake/fixture-backed runtime inputs, plus real-environment smoke validation in a credentialed Linear workspace or equivalent maintained live validation environment, and JSON/text failure-contract regression tests | [docs/execution/M4-1-review.md](execution/M4-1-review.md), [docs/execution/M4-2-review.md](execution/M4-2-review.md), [README.md](../README.md) |
@@ -1010,7 +1010,10 @@ entry points rather than only private testing hooks.
   single-issue relation-read and per-issue comment-metadata gaps that were
   open under v1.0.0. The authoritative adapter boundary is defined by
   [M5-D1](#m5-d1---linear-domain-coverage-audit-and-adapter-boundary--v110);
-  implement against that boundary.
+  implement against that boundary. This supersedes the
+  [M3-O1](#m3-o1---comments-signature-input-settlement) raw-adapter-only
+  conclusion for single-ticket comment fetches; the raw helper remains only
+  for the batched refresh comment-metadata path.
 - This ticket is the explicit defer destination for
   [M4-2-R1](execution/M4-2-review.md), which concluded that the current
   operator-facing CLI and library docs cannot be treated as shippable while
@@ -1030,11 +1033,35 @@ entry points rather than only private testing hooks.
   routine validation.
 - `Issue.get_comments()` now returns a root-thread projection; the gateway
   must traverse `Comment.children` for full reply content.
+- The existing [src/context_sync/_gateway.py](../src/context_sync/_gateway.py)
+  protocol docstrings still describe `get_ticket_relations(issue_ids)` as a
+  raw-GraphQL path and still allow
+  `get_refresh_relation_metadata(issue_ids)` to share that query. Update
+  those docstrings during implementation so the code comments match the
+  audited M5-D1 boundary: domain-layer fan-out for traversal/rendered
+  relations, raw helper only for batched refresh relation metadata.
+- Treat the packaged `Issue.get_links()` safety cap (250 forward and 250
+  inverse links per issue) as the accepted v1 operational limit for the
+  audited domain-layer relation path. Do not add a raw fallback just because
+  of that cap without a separate accepted amendment.
+- Normalize `IssueLink` values from the fetched issue's perspective before
+  emitting `RelationData`: forward `"blocks"` becomes `blocks`, inverse
+  `"blocks"` becomes `is_blocked_by`, and informational link types
+  (`"related"`, `"duplicate"`, `"similar"`) become `relates_to` while the
+  raw upstream value is preserved in `RelationData.relation_type`. Do not
+  infer the `parent` / `child` hierarchy dimensions from `IssueLink`
+  records.
+- If `Issue.get_comments()` returns `Comment.is_placeholder()` synthetic
+  parents, exclude those placeholders from persisted bundles and normalize
+  each visible child of a placeholder into its own top-level thread root for
+  both bundle rendering and local `comments_signature` derivation.
 - `User.app` replaces the removed `User.is_app_actor()` for app-actor
   identification.
 - v1.1.0 provides `LinearNotFoundError` for entity-not-found handling, and
   semantic type aliases from `linear_client.types` should be adopted at the
-  gateway boundary.
+  gateway boundary. Catch `LinearNotFoundError` on explicit entity lookups
+  and map it to `RootNotFoundError`; map upstream auth, transport, or
+  GraphQL failures that make the run non-viable to `SystemicRemoteError`.
 - The gateway implementation must use a single `NewType` identity per domain
   concept across the boundary — no parallel definitions and no runtime casts.
   The type-mapping table produced by M5-D1 is the authoritative reference for
