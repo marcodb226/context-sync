@@ -102,7 +102,7 @@ Within `context-sync`, prefer the `linear-client` domain layer. Reach for
 operation, and keep that fallback behind a narrow adapter boundary so the rest
 of the tool does not grow direct GraphQL dependencies. The authoritative
 adapter-boundary definition is in
-[docs/design/linear-domain-coverage-audit-v1.1.0.md](<linear-domain-coverage-audit-v1.1.0.md>).
+[docs/design/linear-domain-coverage-audit.md](<linear-domain-coverage-audit.md>).
 Whenever such a gap is encountered, record the missing domain capability in an
 authoritative project artifact so maintainers can extend the upstream
 `linear-client` roadmap. If the gap is deferred rather than addressed

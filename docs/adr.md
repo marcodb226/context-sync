@@ -268,7 +268,7 @@ layer by default. A `linear.gql.*` fallback is allowed only when the domain
 layer does not yet expose a required operation, and that fallback should remain
 inside a narrow adapter boundary. The authoritative adapter-boundary definition
 is in
-[docs/design/linear-domain-coverage-audit-v1.1.0.md](<design/linear-domain-coverage-audit-v1.1.0.md>).
+[docs/design/linear-domain-coverage-audit.md](<design/linear-domain-coverage-audit.md>).
 When a domain-layer gap is discovered, record the missing capability in the
 repository's authoritative planning or design artifacts so maintainers can
 extend the upstream `linear-client` roadmap instead of normalizing ad hoc

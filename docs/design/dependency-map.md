@@ -143,10 +143,11 @@ alongside `context-sync` (see
 [docs/workspace-setup.md](../workspace-setup.md)). The editable install gives
 pyright and Pylance full type information across the dependency boundary. The
 install command and workspace setup are documented in the
-[README](../../README.md#installation).
+[README](../../README.md#developer-setup) and
+[docs/workspace-setup.md](../workspace-setup.md).
 
 `context-sync` interacts with `linear-client` exclusively through the
 [`LinearGateway`](../../src/context_sync/_gateway.py) protocol boundary — no
 direct `linear_client` imports appear outside the future `RealLinearGateway`
 adapter (M5-1). The authoritative adapter-boundary definition is in
-[docs/design/linear-domain-coverage-audit-v1.1.0.md](linear-domain-coverage-audit-v1.1.0.md).
+[docs/design/linear-domain-coverage-audit.md](linear-domain-coverage-audit.md).
