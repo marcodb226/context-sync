@@ -75,7 +75,7 @@ readiness review, and the actual `1.0.0` cut plus next-cycle bootstrap.
   [docs/execution/M4-2-review.md](execution/M4-2-review.md),
   [README.md](../README.md),
   [src/context_sync/version.py](../src/context_sync/version.py),
-  [docs/design/linear-domain-coverage-audit.md](design/linear-domain-coverage-audit.md),
+  [docs/design/linear-domain-coverage-audit-v1.0.0.md](design/linear-domain-coverage-audit-v1.0.0.md),
   [docs/policies/common/documentation-workflow.md](policies/common/documentation-workflow.md),
   [docs/policies/common/release-workflow.md](policies/common/release-workflow.md),
   [docs/policies/common/python/release-workflow.md](policies/common/python/release-workflow.md),
@@ -94,6 +94,13 @@ readiness review, and the actual `1.0.0` cut plus next-cycle bootstrap.
   [docs/policies/common/python/agent-awareness.md](policies/common/python/agent-awareness.md),
   [docs/policies/common/README.md](policies/common/README.md), and
   [docs/planning/change-requests/CR-26.03.24-policy-compliance.md](planning/change-requests/CR-26.03.24-policy-compliance.md).
+- Material-amendment candidate sources applied on 2026-04-07:
+  [linear-client CHANGELOG.md](../../linear-client/CHANGELOG.md),
+  [linear-client docs/pub/release-1.1.0.md](../../linear-client/docs/pub/release-1.1.0.md),
+  [docs/design/linear-domain-coverage-audit-v1.0.0.md](design/linear-domain-coverage-audit-v1.0.0.md),
+  [docs/design/linear-client-v1.0.0.md](design/linear-client-v1.0.0.md),
+  [docs/policies/common/python/agent-awareness.md](policies/common/python/agent-awareness.md),
+  and direct human request to upgrade context-sync to `linear-client` v1.1.0.
 
 ### 1.2 Candidate Decisions
 
@@ -131,6 +138,7 @@ human requests while explicitly keeping the current `FW-*` backlog deferred.
 | [FW-6](future-work.md#fw-6-transient-ticket-preview-without-persistence) | Defer | None in this plan | Preview-only behavior is explicitly out of scope for the first plan. |
 | Cross-process rate-limit coordination from [ADR-R5](planning/26.03.15%20-%20ADR%20review.md#adr-r5-discarded-the-thundering-herd-rate-limit-risk) | Drop | None in this plan | Keep rate-limit/backoff behavior inside `linear-client` or the embedding runtime. |
 | UUID-based ticket filenames from [ADR-R6](planning/26.03.15%20-%20ADR%20review.md#adr-r6-discarded-file-renaming-breaks-strict-idempotency) | Drop | None in this plan | Keep human-readable current issue-key filenames as the persisted default. |
+| Upgrade `linear-client` dependency from v1.0.0 to v1.1.0, add a new v1.1.0 domain-coverage audit, and update M5-1 to use the new audit from [CR-26.04.07](planning/change-requests/CR-26.04.07.md) | Keep | [M5-D1](#m5-d1---linear-domain-coverage-audit-and-adapter-boundary--v110) (new design ticket), [M5-D2](#m5-d2---design-artifact-refresh-for-v110-workspace-model) (new design ticket), updates to [M5-1](#m5-1---real-linear-gateway-and-runtime-wiring) dependencies and notes | v1.1.0 closes the relation-read and per-issue comment-metadata gaps. A new audit defines the authoritative boundary for M5-1 without retroactively modifying the completed M1-D2 deliverable. A separate design-artifact refresh brings the ADR, top-level design, and dependency pointers to current state. |
 
 ### 1.3 Execution Model
 
@@ -455,6 +463,10 @@ rather than reopen the refresh design during implementation.
   [M3-1](#m3-1---incremental-refresh-and-quarantined-root-recovery).
 - Traced from review finding
   [M1-D2-R1](execution/M1-D2-review.md) (Medium, Fix now).
+- Note: `linear-client` v1.1.0 now exposes per-issue comment metadata at the
+  domain layer (`Comment.updated_at`, `.resolved_at`, `.parent`, `.children`);
+  see [CR-26.04.07](planning/change-requests/CR-26.04.07.md). The batched
+  refresh-metadata path still requires raw-GQL.
 
 #### M3-1 - Incremental `refresh` and quarantined-root recovery
 
@@ -890,17 +902,114 @@ entry points rather than only private testing hooks.
 
 | # | Status | Ticket | Description | Dependencies | Tests | Source |
 | --- | --- | --- | --- | --- | --- | --- |
-| <a id="m5-1---real-linear-gateway-and-runtime-wiring"></a>M5-1 | Todo | Real Linear gateway and runtime wiring | Implement the concrete `RealLinearGateway` over the [M1-D2](#m1-d2---linear-domain-coverage-audit-and-adapter-boundary) boundary, map all required ticket-bundle and refresh-metadata reads, and wire `ContextSync(linear=...)` plus CLI startup to create that gateway instead of failing with "No gateway available"; this ticket is the explicit defer target for [M4-2-R1](execution/M4-2-review.md) | [M1-D2](#m1-d2---linear-domain-coverage-audit-and-adapter-boundary), [M3-O1](#m3-o1---comments-signature-input-settlement), [M4-1](#m4-1---cli-surface-and-command-output-contracts), [M4.1-1](#m4.1-1---cli-and-library-simplification), [M4.2-1](#m4.2-1---quality-gate-entry-point-static-analysis-baseline-and-semantic-types) | Automated tests for the real gateway implementation using maintained fake/fixture transport inputs at the adapter boundary, integration tests that route `sync` / `refresh` / `remove` / `diff` through that real gateway implementation without a live workspace, and bootstrap error-path coverage for missing auth or unavailable upstream services | [docs/design/linear-domain-coverage-audit.md](design/linear-domain-coverage-audit.md), [docs/execution/M4-1-review.md](execution/M4-1-review.md), [docs/execution/M4-2-review.md](execution/M4-2-review.md), [README.md](../README.md) |
+| <a id="m5-d1---linear-domain-coverage-audit-and-adapter-boundary--v110"></a>M5-D1 | Todo | Linear domain-coverage audit and adapter boundary — v1.1.0 | Inspect the installed `linear-client` v1.1.0 surface and produce a new domain-coverage audit at `docs/design/linear-domain-coverage-audit.md` with an authoritative coverage matrix, adapter-boundary decision, approved raw-GQL helper set, recorded missing upstream capabilities, and a type-mapping table for the gateway boundary. This ticket supersedes the M1-D2 v1.0.0 audit (`docs/design/linear-domain-coverage-audit-v1.0.0.md`) as the governing adapter-boundary reference for M5-1. | None | N/A (design artifact) | [docs/design/linear-domain-coverage-audit-v1.0.0.md](design/linear-domain-coverage-audit-v1.0.0.md), [CR-26.04.07](planning/change-requests/CR-26.04.07.md), [linear-client docs/pub/release-1.1.0.md](../../linear-client/docs/pub/release-1.1.0.md) |
+| <a id="m5-d2---design-artifact-refresh-for-v110-workspace-model"></a>M5-D2 | Todo | Design-artifact refresh for v1.1.0 workspace model | Retire `docs/design/linear-client-v1.0.0.md` (the local API reference summary is redundant now that the full library source is in the multi-root workspace). Update stale workspace-access and dependency-version references in `docs/adr.md` and `docs/design/0-top-level-design.md` to reflect the current workspace model. Update `docs/design/dependency-map.md` private-dependency pointers to reference the library's own documentation paths within the workspace. The design layer should read as a seamless representation of current state, not a patchwork of v1.0.0-era and v1.1.0-era content. | [M5-D1](#m5-d1---linear-domain-coverage-audit-and-adapter-boundary--v110) | N/A (design artifact) | [docs/design/linear-client-v1.0.0.md](design/linear-client-v1.0.0.md), [docs/adr.md](adr.md), [docs/design/0-top-level-design.md](design/0-top-level-design.md), [docs/design/dependency-map.md](design/dependency-map.md), [CR-26.04.07](planning/change-requests/CR-26.04.07.md) |
+| <a id="m5-1---real-linear-gateway-and-runtime-wiring"></a>M5-1 | Todo | Real Linear gateway and runtime wiring | Implement the concrete `RealLinearGateway` over the [M5-D1](#m5-d1---linear-domain-coverage-audit-and-adapter-boundary--v110) boundary, map all required ticket-bundle and refresh-metadata reads, and wire `ContextSync(linear=...)` plus CLI startup to create that gateway instead of failing with "No gateway available"; this ticket is the explicit defer target for [M4-2-R1](execution/M4-2-review.md) | [M5-D1](#m5-d1---linear-domain-coverage-audit-and-adapter-boundary--v110), [M3-O1](#m3-o1---comments-signature-input-settlement), [M4-1](#m4-1---cli-surface-and-command-output-contracts), [M4.1-1](#m4.1-1---cli-and-library-simplification), [M4.2-1](#m4.2-1---quality-gate-entry-point-static-analysis-baseline-and-semantic-types) | Automated tests for the real gateway implementation using maintained fake/fixture transport inputs at the adapter boundary, integration tests that route `sync` / `refresh` / `remove` / `diff` through that real gateway implementation without a live workspace, and bootstrap error-path coverage for missing auth or unavailable upstream services | [docs/design/linear-domain-coverage-audit.md](design/linear-domain-coverage-audit.md), [docs/execution/M4-1-review.md](execution/M4-1-review.md), [docs/execution/M4-2-review.md](execution/M4-2-review.md), [README.md](../README.md), [CR-26.04.07](planning/change-requests/CR-26.04.07.md) |
 | <a id="m5-2---supported-public-runtime-validation-and-smoke-path"></a>M5-2 | Todo | Supported public runtime validation and smoke path | Exercise the supported CLI and library entry points through `main()` or the installed console script, replace private-handler-only "end-to-end" claims with real public-surface coverage, and add a maintained smoke-validation recipe for one successful run plus one representative failure path; this ticket is the explicit defer target for [M4-2-R2](execution/M4-2-review.md) and [M4-2-R3](execution/M4-2-review.md) | [M5-1](#m5-1---real-linear-gateway-and-runtime-wiring), [M4-2](#m4-2---operational-logging-validation-hardening-and-user-docs), [M4.2-2](#m4.2-2---coverage-tooling-agent-awareness-artifacts-and-interface-documentation) | CLI integration tests through the real parser/dispatch path with maintained fake/fixture-backed runtime inputs, plus real-environment smoke validation in a credentialed Linear workspace or equivalent maintained live validation environment, and JSON/text failure-contract regression tests | [docs/execution/M4-1-review.md](execution/M4-1-review.md), [docs/execution/M4-2-review.md](execution/M4-2-review.md), [README.md](../README.md) |
 
 ### 9.2 Detailed Ticket Notes
 
+#### M5-D1 - Linear domain-coverage audit and adapter boundary — v1.1.0
+
+- The executor must verify that `linear-client` v1.1.0 is the installed
+  version before the audit begins (e.g.
+  `python -c "import linear_client; print(linear_client.__version__)"`).
+- The new audit inspects `linear-client` v1.1.0 as the installed package.
+  It is a standalone design artifact, not a patch on the v1.0.0 audit.
+- The v1.0.0 audit is preserved at
+  `docs/design/linear-domain-coverage-audit-v1.0.0.md` as a historical
+  reference. The new audit may reference it for continuity but does not
+  depend on it.
+- The output artifact lives at `docs/design/linear-domain-coverage-audit.md`
+  (the canonical filename without a version suffix), so that all forward-
+  looking references in the implementation plan resolve to the current audit
+  without requiring filename updates each time the dependency version changes.
+- The gap-closure analysis in
+  [CR-26.04.07](planning/change-requests/CR-26.04.07.md) and its
+  breaking-change and capability tables provide the starting input. The
+  audit ticket should verify and refine these findings against the installed
+  v1.1.0 source rather than copying them verbatim.
+- The audit must cover the same areas as M1-D2 (coverage matrix, boundary
+  decision, approved raw-GQL helpers, missing capabilities, risks) but
+  should produce a clean document that reflects v1.1.0 without carrying
+  forward v1.0.0-era qualifications.
+- The audit must verify whether the per-issue domain-layer comment surface in
+  v1.1.0 (`Comment.updated_at`, `.resolved_at`, `.parent`, `.children`)
+  changes the integration path relative to the M3-O1 raw-adapter-only
+  conclusion. The M3-O1 core decision (canonical input accepted) is
+  unchanged, but the per-issue vs. batched boundary must be clarified: the
+  audit should state which comment-metadata reads can use the domain layer
+  and which still require the raw-GQL batch path.
+- The adapter-boundary definition must include a **type-mapping table**: for
+  each value that crosses the gateway boundary, state whether it uses an
+  upstream `linear_client.types` alias, a context-sync-only alias (with
+  justification), or bare `str` (with justification). This makes the type
+  surface an explicit boundary deliverable rather than an implementation-time
+  afterthought.
+- The audit must evaluate adopting `linear_client.types` as the authoritative
+  source for the five context-sync types that are exact semantic duplicates
+  of upstream aliases (`IssueId`, `IssueKey`, `CommentId`, `AttachmentId`,
+  and `Timestamp`/`IsoTimestamp`) and recommend a concrete reconciliation
+  strategy. The preferred approach is re-exporting from upstream (e.g.
+  `from linear_client.types import IssueId as IssueId`) so that existing
+  import sites continue to work while the underlying `NewType` identity is
+  shared across the dependency boundary. For `Timestamp` vs. `IsoTimestamp`,
+  the audit should evaluate whether to adopt the upstream name or keep an
+  explicit alias. The three context-sync-only types (`WorkspaceId`,
+  `WorkspaceSlug`, `WriterId`) remain local since they have no upstream
+  counterpart.
+- The audit must also evaluate whether context-sync should adopt additional
+  upstream type aliases that are currently represented as bare `str`:
+  `UserId`, `TeamId`, `TeamKey`, `StatusId`, `LabelId`, `IssueLinkId`,
+  `IssueLinkType`, `StatusCategory`, and `AssetUrl`. Several of these appear
+  in the gateway protocol or rendered output today as bare `str`.
+- If the audit identifies required changes to existing done-ticket code, the
+  `LinearGateway` protocol, or artifacts outside M5-1's scope, those must be
+  represented as new follow-on tasks or scope amendments to existing Todo
+  tickets rather than silently absorbed into M5-1 or left untracked.
+
+#### M5-D2 - Design-artifact refresh for v1.1.0 workspace model
+
+- Retire `docs/design/linear-client-v1.0.0.md`. With the full `linear-client`
+  source in the multi-root workspace, the local API reference summary is
+  redundant — the library's own `__init__.py` module docstring,
+  `docs/design/dependency-map.md`, `docs/pub/` documentation, and `examples/`
+  directory are authoritative and better-maintained. The only context-sync-
+  specific content (boundary guidance) now lives in the domain-coverage audit
+  produced by M5-D1.
+- Update `docs/design/dependency-map.md`'s private-dependency pointers to
+  reference the library's own documentation paths within the workspace
+  rather than the retired local summary.
+- Update `docs/adr.md` to remove or replace stale workspace-access and
+  dependency references. Specifically: the passage describing `linear-client`
+  as a private GitHub repository that agents must not attempt to install
+  should reflect the current workspace model (sibling clone with editable
+  install, three auth modes available, v1.1.0 surface).
+- Update `docs/design/0-top-level-design.md` to replace the same stale
+  references. The dependency-boundary section should describe the current
+  workspace layout and install path rather than directing readers to a
+  retired design document.
+- These updates are factual corrections to bring design artifacts into
+  alignment with the current workspace reality, not architectural changes.
+  The core dependency-boundary decisions (domain-layer-first, narrow raw-GQL
+  escape hatch, read-only gateway) are unchanged and should not be revisited
+  by this ticket.
+- M5-D2 depends on M5-D1 so that the design-artifact refresh can reference
+  the new audit's boundary decisions and type-mapping table rather than
+  paraphrasing them independently.
+
 #### M5-1 - Real Linear gateway and runtime wiring
 
-- Implement the real gateway strictly inside the boundary already defined by
-  [docs/design/linear-domain-coverage-audit.md](design/linear-domain-coverage-audit.md).
+- Implement the real gateway strictly inside the boundary defined by
+  [M5-D1](#m5-d1---linear-domain-coverage-audit-and-adapter-boundary--v110).
   Do not widen raw `linear.gql.*` usage beyond the audited helper set without
   a separate accepted amendment.
+- The v1.1.0 upgrade
+  ([CR-26.04.07](planning/change-requests/CR-26.04.07.md)) closed the
+  single-issue relation-read and per-issue comment-metadata gaps that were
+  open under v1.0.0. The authoritative adapter boundary is defined by
+  [M5-D1](#m5-d1---linear-domain-coverage-audit-and-adapter-boundary--v110);
+  implement against that boundary.
 - This ticket is the explicit defer destination for
   [M4-2-R1](execution/M4-2-review.md), which concluded that the current
   operator-facing CLI and library docs cannot be treated as shippable while
@@ -918,9 +1027,17 @@ entry points rather than only private testing hooks.
   adapter boundary. They are not the live-Linear proof; they exist so the real
   adapter code is under automated coverage without requiring credentials for
   routine validation.
-- If `linear-client` 1.0.0 proves insufficient for one of the required audited
-  reads, record that gap explicitly in repository artifacts rather than hiding
-  the limitation in code comments.
+- `Issue.get_comments()` now returns a root-thread projection; the gateway
+  must traverse `Comment.children` for full reply content.
+- `User.app` replaces the removed `User.is_app_actor()` for app-actor
+  identification.
+- v1.1.0 provides `LinearNotFoundError` for entity-not-found handling, and
+  semantic type aliases from `linear_client.types` should be adopted at the
+  gateway boundary.
+- The gateway implementation must use a single `NewType` identity per domain
+  concept across the boundary — no parallel definitions and no runtime casts.
+  The type-mapping table produced by M5-D1 is the authoritative reference for
+  which types to use at each boundary position.
 
 #### M5-2 - Supported public runtime validation and smoke path
 
@@ -949,6 +1066,11 @@ entry points rather than only private testing hooks.
 - Once the public runtime genuinely works, remove or rewrite the README's
   current pre-release runtime warning so the supported docs no longer
   advertise a deliberately inert surface.
+- When exercising OAuth or client-credentials auth modes, the validation
+  environment must use a freshly created v1.1.0 token file. `linear-client`
+  v1.1.0 enforces a new token-file schema (`version` and `mode` fields
+  required); legacy cached token files from v1.0.0 will fail authentication.
+  See [CR-26.04.07](planning/change-requests/CR-26.04.07.md).
 
 ### 9.3 Exit Criteria
 
@@ -1010,6 +1132,12 @@ artifacts.
 - If [M4-R2](#m4-r2---api-interface-review) accepts follow-on public API
   changes beyond [M4-3](#m4-3---rename-root-ticket-id-to-key), land those
   blockers before freezing the `1.0.0` docs set.
+- The operator guide must document that `linear-client` v1.1.0 enforces a new
+  token-file schema (`version` and `mode` fields required). Operators with
+  cached OAuth or client-credentials token files from v1.0.0 must delete and
+  recreate them. This applies only to those two auth modes; `api_key` mode
+  does not use token files. See
+  [CR-26.04.07](planning/change-requests/CR-26.04.07.md).
 
 #### M6-2 - Canonical release workflow, checklist, and version-state guardrails
 
