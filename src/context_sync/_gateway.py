@@ -4,8 +4,8 @@ LinearGateway protocol and associated data types.
 This module defines the adapter boundary between context-sync and the Linear
 integration layer.  The ``LinearGateway`` protocol captures the exact read
 operations that context-sync requires, as audited by
-`docs/design/linear-domain-coverage-audit.md
-<../../docs/design/linear-domain-coverage-audit.md>`_.
+`docs/design/linear-domain-coverage-audit-v1.1.0.md
+<../../docs/design/linear-domain-coverage-audit-v1.1.0.md>`_.
 
 Implementations must stay **read-only** with respect to Linear.
 
@@ -311,8 +311,8 @@ class LinearGateway(Protocol):
     Contract for the subset of Linear operations that context-sync requires.
 
     The six methods below correspond to the narrow adapter helpers defined in
-    `docs/design/linear-domain-coverage-audit.md
-    <../../docs/design/linear-domain-coverage-audit.md>`_:
+    `docs/design/linear-domain-coverage-audit-v1.1.0.md
+    <../../docs/design/linear-domain-coverage-audit-v1.1.0.md>`_:
 
     * :meth:`fetch_issue` — domain-layer single-ticket fetch plus relation
       read, assembled into a :class:`TicketBundle`.
