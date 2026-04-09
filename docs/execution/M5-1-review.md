@@ -115,3 +115,185 @@ substitute empty data when upstream calls fail, and the key-based root path
 still bypasses the client library's supported key selector behavior. Combined
 with the missing real-gateway integration coverage, that is enough to keep
 this ticket open.
+
+---
+
+## Review Pass 2
+
+> **LLM**: opus-4.6
+> **Effort**: N/A
+> **Time spent**: ~40m
+
+### Scope
+
+Second independent implementation review of
+[M5-1](../implementation-plan.md#m5-1---real-linear-gateway-and-runtime-wiring),
+covering all Phase A artifacts, the new gateway module at
+[src/context_sync/_real_gateway.py](../../src/context_sync/_real_gateway.py),
+wiring changes in
+[src/context_sync/_sync.py](../../src/context_sync/_sync.py) and
+[src/context_sync/_gateway.py](../../src/context_sync/_gateway.py),
+the test suite at
+[tests/test_real_gateway.py](../../tests/test_real_gateway.py) and
+[tests/test_sync.py](../../tests/test_sync.py),
+the consuming traversal code at
+[src/context_sync/_traversal.py](../../src/context_sync/_traversal.py),
+the consuming refresh/diff code at
+[src/context_sync/_sync.py:1282–1309](../../src/context_sync/_sync.py#L1282) and
+[src/context_sync/_diff.py:265–268](../../src/context_sync/_diff.py#L265),
+the governing design artifact at
+[docs/design/linear-domain-coverage-audit-v1.1.0.md](../design/linear-domain-coverage-audit-v1.1.0.md),
+and the relevant `linear-client` source at
+[linear-client src/linear_client/linear.py](../../../linear-client/src/linear_client/linear.py),
+[linear-client src/linear_client/domain/issue.py](../../../linear-client/src/linear_client/domain/issue.py),
+[linear-client src/linear_client/domain/attachment.py](../../../linear-client/src/linear_client/domain/attachment.py),
+and [linear-client src/linear_client/gql/services/issues.py](../../../linear-client/src/linear_client/gql/services/issues.py).
+
+Validation run during review:
+`source .venv/bin/activate && PYTHON_BIN=python3 bash scripts/validate.sh`
+passed cleanly (Ruff, format check, Pyright, 510 tests, 91% branch coverage).
+
+### Dependency-Satisfaction Verification
+
+All five dependencies
+([M5-D1](../implementation-plan.md#m5-d1---linear-domain-coverage-audit-and-adapter-boundary--v110),
+[M3-O1](../implementation-plan.md#m3-o1---comments-signature-input-settlement),
+[M4-1](../implementation-plan.md#m4-1---cli-surface-and-command-output-contracts),
+[M4.1-1](../implementation-plan.md#m4.1-1---cli-and-library-simplification),
+[M4.2-1](../implementation-plan.md#m4.2-1---quality-gate-entry-point-static-analysis-baseline-and-semantic-types))
+are marked `Done` in the active plan and verified in the Phase A execution
+record. Verified.
+
+### Terminology Compliance
+
+Checked all reviewed files against
+[docs/policies/terminology.md](../policies/terminology.md). No banned-term
+violations found.
+
+### Changelog Review
+
+[src/context_sync/version.py](../../src/context_sync/version.py) is
+`0.1.0.dev0` — pre-stable, changelog gate does not apply.
+
+### Linear Boundary Check
+
+Raw-GraphQL usage stays within the five audited helper categories from
+[docs/design/linear-domain-coverage-audit-v1.1.0.md](../design/linear-domain-coverage-audit-v1.1.0.md).
+No `mutate(...)` calls, no unauthorized widening of the raw boundary.
+`get_ticket_relations` correctly uses domain-layer `Issue.get_links()` fan-out
+per the audit.
+
+### Agreement with Review Pass 1
+
+I independently confirmed all four Review Pass 1 findings:
+
+- **[M5-1-R1](M5-1-review.md) — Selector handling:** Confirmed by reading
+  [linear-client src/linear_client/domain/issue.py:1412–1415](../../../linear-client/src/linear_client/domain/issue.py#L1412)
+  and
+  [linear-client src/linear_client/gql/services/issues.py:149–212](../../../linear-client/src/linear_client/gql/services/issues.py#L149).
+  `Issue.fetch()` dispatches to `issues.get(issue_id=...)` when `id` is set
+  and `issues.get(issue_key=...)` when only `key` is set. The key path uses
+  a dedicated `IssueGetByKeyDirect` query with an automatic team-scoped
+  fallback. Constructing `linear.issue(id=UpstreamIssueId(issue_id_or_key))`
+  at [src/context_sync/_real_gateway.py:296](../../src/context_sync/_real_gateway.py#L296)
+  always routes through the id path, bypassing this entire key resolution
+  mechanism. Agree with severity and recommendation.
+
+- **[M5-1-R2](M5-1-review.md) — Traversal correctness:** The bare
+  `except Exception` at
+  [src/context_sync/_real_gateway.py:452](../../src/context_sync/_real_gateway.py#L452)
+  catches auth, transport, and GraphQL failures indiscriminately and maps them
+  to empty edge lists. The traversal at
+  [src/context_sync/_traversal.py:218](../../src/context_sync/_traversal.py#L218)
+  consumes these as "no relations" and proceeds. The test
+  [tests/test_real_gateway.py:518–529](../../tests/test_real_gateway.py#L518)
+  (`test_error_returns_empty_for_issue`) locks this fail-open behavior in as
+  expected. Agree with High severity — this is the single highest-risk gap.
+
+- **[M5-1-R3](M5-1-review.md) — Freshness correctness:** Same fail-open
+  pattern at
+  [src/context_sync/_real_gateway.py:568](../../src/context_sync/_real_gateway.py#L568)
+  and
+  [src/context_sync/_real_gateway.py:669](../../src/context_sync/_real_gateway.py#L669).
+  The consuming code at
+  [src/context_sync/_sync.py:1303](../../src/context_sync/_sync.py#L1303)
+  (`remote_comment_meta.get(uid, ([], []))`) and
+  [src/context_sync/_sync.py:1309](../../src/context_sync/_sync.py#L1309)
+  (`remote_relation_meta.get(uid, [])`) defaults missing entries to empty,
+  then hashes them into freshness signatures. A transient per-issue failure
+  thus fabricates a "no changes" signal. Agree with High severity.
+  [tests/test_real_gateway.py:683–689](../../tests/test_real_gateway.py#L683)
+  (`test_error_returns_empty`) similarly locks in the fail-open behavior.
+
+- **[M5-1-R4](M5-1-review.md) — Coverage:** The active-plan test column for
+  [M5-1](../implementation-plan.md#m5-1---real-linear-gateway-and-runtime-wiring)
+  explicitly requires "integration tests that route `sync` / `refresh` /
+  `remove` / `diff` through that real gateway implementation without a live
+  workspace." No such tests exist. The existing real-gateway tests are
+  unit-level mocks of `RealLinearGateway` in isolation, and existing
+  integration suites in
+  [tests/test_refresh.py](../../tests/test_refresh.py),
+  [tests/test_diff.py](../../tests/test_diff.py),
+  [tests/test_add_remove_root.py](../../tests/test_add_remove_root.py), and
+  [tests/test_e2e.py](../../tests/test_e2e.py) all use the fake gateway path.
+  Agree with severity and recommendation.
+
+### New Findings
+
+| ID | Severity | Status | Area | Finding | Evidence | Impact | Recommendation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| M5-1-R5 | Medium | Todo | Concurrency | The M5-D1 audit explicitly requires the gateway to "own bounded concurrency internally" for fan-out operations. All three fan-out methods (`get_ticket_relations`, `get_refresh_comment_metadata`, `get_refresh_relation_metadata`) use unbounded `asyncio.gather(*(fetch_one(uid) for uid in unique_ids))` with no semaphore. The `ContextSync._semaphore` at construction time throttles ticket-level fetches but does not wrap gateway fan-out calls. For N tracked issues, `refresh` fires `get_refresh_comment_metadata` and `get_refresh_relation_metadata` concurrently, producing up to 2×N simultaneous GraphQL queries. | [src/context_sync/_real_gateway.py:457](../../src/context_sync/_real_gateway.py#L457), [src/context_sync/_real_gateway.py:619](../../src/context_sync/_real_gateway.py#L619), [src/context_sync/_real_gateway.py:701](../../src/context_sync/_real_gateway.py#L701), [docs/design/linear-domain-coverage-audit-v1.1.0.md § 2](../design/linear-domain-coverage-audit-v1.1.0.md), [src/context_sync/_sync.py:1286–1289](../../src/context_sync/_sync.py#L1286), [src/context_sync/_traversal.py:218](../../src/context_sync/_traversal.py#L218) | For workspaces with large tracked issue sets, unbounded fan-out risks upstream rate limiting, connection exhaustion, or API throttling. The audit requirement for bounded concurrency exists precisely to prevent this class of operational failure. | Accept a concurrency limit at gateway construction (or derive it from the caller's `concurrency_limit`) and gate each `fetch_one` coroutine through an `asyncio.Semaphore`. Add a test confirming that fan-out concurrency is bounded (for example, by instrumenting the mock to track peak concurrent in-flight calls). |
+| M5-1-R6 | Low | Todo | Typing | `_flatten_comments`, `_convert_attachments`, and `_normalize_links` use `list[Any]` for domain-object parameters (`# noqa: ANN401`) when the concrete `linear-client` types (`Comment`, `Attachment`, `IssueLink`) are available in `linear_client.domain` and could be imported under `TYPE_CHECKING`. The Python coding guidelines require avoiding `Any` when a concrete type is available and using `TYPE_CHECKING` imports for deferred annotation resolution. | [src/context_sync/_real_gateway.py:806](../../src/context_sync/_real_gateway.py#L806), [src/context_sync/_real_gateway.py:870](../../src/context_sync/_real_gateway.py#L870), [src/context_sync/_real_gateway.py:895–898](../../src/context_sync/_real_gateway.py#L895), [src/context_sync/_real_gateway.py:54–55](../../src/context_sync/_real_gateway.py#L54) (existing `TYPE_CHECKING` block imports only `Linear`) | The `list[Any]` annotations erase the domain-layer contract at the type level, so Pyright cannot detect misuse of these internal methods (for example passing a `list[User]` where `list[Comment]` is expected). The concrete types exist and are importable. | Add `Comment`, `Attachment`, and `IssueLink` (or their equivalents) to the existing `TYPE_CHECKING` block and replace `list[Any]` with the concrete types. Remove the corresponding `# noqa: ANN401` suppressions. |
+
+### Residual Risks and Testing Gaps
+
+- The gateway module's overall structure is sound: raw-GraphQL is contained to
+  audited helpers, domain-layer fan-out is used where the audit requires it,
+  placeholder-thread normalization is correctly implemented, runtime wiring
+  genuinely creates a concrete gateway, and all quality gates pass.
+- The `_normalize_link` function maps both informational types (`related`,
+  `duplicate`, `similar`) and unknown types to `relates_to`. The two branches
+  produce identical output. This is intentional self-documentation matching the
+  audit table, but it means a new unknown link type silently becomes
+  `relates_to` without any operator signal. Review Pass 1 noted this as a
+  residual risk; I agree.
+- The `_extract_workspace` defensive-parsing chain at
+  [src/context_sync/_real_gateway.py:778–803](../../src/context_sync/_real_gateway.py#L778)
+  defaults missing intermediate dicts to `{}`, which means a GraphQL response
+  with `{"data": {}}` (issue field absent) falls through to
+  `SystemicRemoteError("Workspace identity incomplete")` rather than
+  `RootNotFoundError`. In practice the GraphQL API returns `{"data":
+  {"issue": null}}` for not-found issues, so this edge case is unlikely, but
+  the error classification would be wrong if it occurred.
+- No live-Linear validation was run. Assessment is based on repository
+  artifacts, local validation, and `linear-client` source.
+
+### Overall Assessment
+
+I independently confirm all four Review Pass 1 findings and add two new ones.
+The implementation delivers the right structural shape — the gateway module,
+runtime wiring, domain-layer fan-out, and placeholder handling are all
+directionally correct and the quality gates pass. However, three classes of
+issue keep the ticket from being review-clean:
+
+1. **Fail-open correctness** (M5-1-R2, M5-1-R3): The most critical gap. Bare
+   `except Exception` in traversal and refresh fan-out methods silently
+   substitutes empty data for upstream failures, producing corrupt snapshots
+   and fabricated freshness signals without operator visibility. The existing
+   tests lock in this behavior as expected.
+
+2. **Unbounded concurrency** (M5-1-R5): The M5-D1 audit explicitly requires
+   bounded concurrency for gateway fan-out, but the implementation fires
+   unbounded `asyncio.gather` calls. This is an operational risk for any
+   non-trivial workspace.
+
+3. **Selector bypass and missing integration coverage** (M5-1-R1, M5-1-R4):
+   The key-based root path bypasses `linear-client`'s supported key
+   resolution, and the integration test surface promised in the ticket's test
+   column does not exist.
+
+Combined, these issues mean the implementation would ship a runtime that can
+silently corrupt snapshots under transient failure, overload the upstream API
+under normal load, and bypass the client library's key resolution — with no
+integration-level test coverage to catch any of it. The ticket should remain
+open.
