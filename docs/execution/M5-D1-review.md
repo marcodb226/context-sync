@@ -120,3 +120,71 @@ audit changes a boundary assumption without acknowledging the impact on
 existing artifacts that
 [M5-1](../implementation-plan.md#m5-1---real-linear-gateway-and-runtime-wiring)
 will need to reconcile.
+
+## Review Pass 2
+
+> **LLM**: GPT-5 (Codex)
+> **Effort**: N/A
+> **Time spent**: ~45m
+
+### Scope
+
+Additional strict Phase B design review of
+[M5-D1](../implementation-plan.md#m5-d1---linear-domain-coverage-audit-and-adapter-boundary--v110),
+focused on whether the approved v1.1.0 domain-layer paths are fully specified
+enough for
+[M5-1](../implementation-plan.md#m5-1---real-linear-gateway-and-runtime-wiring)
+to implement traversal, relation rendering, and comment rendering without
+inventing new boundary rules. Primary artifact reviewed:
+[docs/design/linear-domain-coverage-audit-v1.1.0.md](../design/linear-domain-coverage-audit-v1.1.0.md).
+Supporting artifacts reviewed:
+[docs/execution/M5-D1.md](M5-D1.md),
+[src/context_sync/_gateway.py](../../src/context_sync/_gateway.py),
+[src/context_sync/_traversal.py](../../src/context_sync/_traversal.py), and
+the inspected `linear-client` v1.1.0 source under the sibling workspace.
+
+Review checklists used:
+[docs/policies/common/reviews/design-review.md](../policies/common/reviews/design-review.md)
+and
+[docs/policies/common/reviews/code-review.md](../policies/common/reviews/code-review.md).
+
+### Dependency-Satisfaction Verification
+
+[M5-D1](../implementation-plan.md#m5-d1---linear-domain-coverage-audit-and-adapter-boundary--v110)
+still lists `None` for dependencies, and
+[docs/execution/M5-D1.md:38-40](M5-D1.md) records that Phase A verified the
+active-plan state, dependency status, and installed `linear-client` version.
+Verified.
+
+### Terminology Compliance
+
+Re-opened [docs/policies/terminology.md](../policies/terminology.md) during
+this pass. No banned-term violations were found in the reviewed artifact.
+
+### Findings
+
+| ID | Severity | Status | Area | Finding | Evidence | Impact | Recommendation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| M5-D1-R5 | High | Todo | Boundary completeness | The audit approves domain-layer fan-out over `Issue.get_links()` for `get_ticket_relations(issue_ids)`, but it never records that the upstream relation read is itself capped at 250 forward links and 250 inverse links per issue. The audit therefore treats the domain-layer path as the authoritative single-issue relation source without addressing whether that built-in cap is acceptable for context-sync's traversal and relation-rendering contract. | [docs/design/linear-domain-coverage-audit-v1.1.0.md:21](../design/linear-domain-coverage-audit-v1.1.0.md) and [docs/design/linear-domain-coverage-audit-v1.1.0.md:33](../design/linear-domain-coverage-audit-v1.1.0.md) approve domain-layer fan-out; [linear-client src/linear_client/domain/issue.py:896-901](../../../linear-client/src/linear_client/domain/issue.py) says `Issue.get_links()` aggregates both directions only up to a safety cap of 250; [linear-client src/linear_client/gql/services/issues.py:972-975](../../../linear-client/src/linear_client/gql/services/issues.py) and [linear-client src/linear_client/gql/services/issues.py:1000-1013](../../../linear-client/src/linear_client/gql/services/issues.py) implement `MAX_LINK_FETCH` per direction; [src/context_sync/_traversal.py:262-268](../../src/context_sync/_traversal.py) treats `RelationData.dimension` edges as the traversal input | A heavily connected ticket can silently lose traversal edges and rendered frontmatter relations if [M5-1](../implementation-plan.md#m5-1---real-linear-gateway-and-runtime-wiring) implements the audited domain-layer path literally. That changes reachability and snapshot completeness, not just performance. | Amend the audit to acknowledge the upstream per-direction cap explicitly and decide the contract: either accept that cap for v1 with rationale, require a raw fallback once the cap is encountered, or record a follow-on amendment/probe as a prerequisite before [M5-1](../implementation-plan.md#m5-1---real-linear-gateway-and-runtime-wiring) treats `Issue.get_links()` as the full relation source. |
+| M5-D1-R6 | Medium | Todo | Boundary normalization | The audit moves per-issue relation reads to the domain layer but does not define how perspective-neutral `IssueLink` objects map into context-sync's directional traversal dimensions. Upstream returns both forward and inverse relations and exposes raw link-type strings such as `"blocks"` and `"related"`, while context-sync traversal filters on local dimension names such as `blocks`, `is_blocked_by`, `parent`, `child`, and `relates_to`. The design artifact never states the normalization rule from upstream `(from_issue, to_issue, link_type)` into `RelationData.dimension`. | [docs/design/linear-domain-coverage-audit-v1.1.0.md:21](../design/linear-domain-coverage-audit-v1.1.0.md) and [docs/design/linear-domain-coverage-audit-v1.1.0.md:33](../design/linear-domain-coverage-audit-v1.1.0.md) move `get_ticket_relations(issue_ids)` to domain-layer fan-out; [linear-client src/linear_client/domain/issue.py:896-901](../../../linear-client/src/linear_client/domain/issue.py) says `Issue.get_links()` merges forward and inverse relations; [linear-client src/linear_client/domain/issue_link.py:27-29](../../../linear-client/src/linear_client/domain/issue_link.py) describes `IssueLink` as perspective-neutral `from_issue` / `to_issue`; [linear-client src/linear_client/gql/models.py:168](../../../linear-client/src/linear_client/gql/models.py) documents upstream link types such as `"blocks"` and `"related"`; [docs/adr.md:30-39](../adr.md) and [src/context_sync/_traversal.py:267-268](../../src/context_sync/_traversal.py) show the local dimension vocabulary that the gateway must emit | Without an explicit normalization rule, [M5-1](../implementation-plan.md#m5-1---real-linear-gateway-and-runtime-wiring) has to invent how inverse blockers become `is_blocked_by`, how informational upstream values become `relates_to`, and how parent/child direction is derived. Different reasonable implementations would produce different reachable graphs and different persisted relation frontmatter. | Add a short normalization table or prose rule to the audit covering each supported relation shape: how direction is determined from `from_issue` / `to_issue`, which upstream link-type values map to which local dimensions, and which raw value should be preserved in `RelationData.relation_type`. |
+| M5-D1-R7 | Medium | Todo | Comment-boundary completeness | The audit says the v1.1.0 root-thread projection can be flattened into `CommentData` plus `ThreadData`, but it omits the upstream placeholder-parent case. `Issue.get_comments()` may return synthetic placeholder root comments when a reply references a parent absent from the hydrated set, and `Comment.is_placeholder()` is the documented discriminator. The audit never states whether the gateway should surface those placeholders, drop them, or normalize them into some other thread representation. | [docs/design/linear-domain-coverage-audit-v1.1.0.md:19](../design/linear-domain-coverage-audit-v1.1.0.md) says the gateway must flatten the root-thread projection; [docs/planning/change-requests/CR-26.04.07.md:55](../planning/change-requests/CR-26.04.07.md) explicitly calls out `Comment.is_placeholder()` as part of the new domain-layer surface; [linear-client src/linear_client/domain/repos/comment_repo.py:31-47](../../../linear-client/src/linear_client/domain/repos/comment_repo.py) says `list_for_issue()` returns root comments with synthetic placeholder parents appended when needed; [linear-client src/linear_client/domain/comment.py:642-649](../../../linear-client/src/linear_client/domain/comment.py) states placeholders have no non-id fields and must be detected via `is_placeholder()` | If [M5-1](../implementation-plan.md#m5-1---real-linear-gateway-and-runtime-wiring) encounters this case, it has no design-level guidance for whether an empty placeholder becomes a rendered thread root, is omitted from the bundle, or is replaced with a local synthetic marker. That can produce malformed comment rendering or inconsistent alignment between full-fetch bundles and refresh metadata. | Extend the audit's comment-boundary notes with an explicit rule for `Comment.is_placeholder()` handling during flattening. The rule should say whether placeholder parents are excluded from rendered bundles, surfaced as synthetic thread stubs, or handled some other way, and how that choice preserves the current comment-rendering and `comments_signature` contracts. |
+
+### Residual Risks and Testing Gaps
+
+- The audit's core factual claim remains correct: v1.1.0 genuinely closes the
+  per-issue relation-read and per-issue comment-metadata gaps. The additional
+  findings in this pass are about edge-case contract completeness, not about
+  the main boundary direction.
+- Once the design is amended, [M5-1](../implementation-plan.md#m5-1---real-linear-gateway-and-runtime-wiring)
+  should add focused tests for: very high relation counts (or a documented cap
+  behavior), inverse-relation normalization into local dimensions, and
+  placeholder-parent comment threads.
+
+### Overall Assessment
+
+This pass agrees with Review Pass 1 that the audit's main v1.1.0 boundary
+shift is directionally correct. The new findings are stricter contract issues:
+the design currently says "use the domain layer here" in a few places where
+the upstream domain objects still require additional normalization or edge-case
+policy decisions before they are a self-contained implementation reference for
+[M5-1](../implementation-plan.md#m5-1---real-linear-gateway-and-runtime-wiring).
