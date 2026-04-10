@@ -19,13 +19,6 @@ The project can be used in two ways:
 See [`docs/problem-statement.md`](docs/problem-statement.md) for the full
 motivation.
 
-> **Pre-release notice:** This project is at version `0.1.0.dev0`. The library
-> and CLI interfaces are implemented and tested against a fake gateway, but the
-> real `linear-client`-backed gateway adapter is not yet wired. Until that
-> adapter lands, the installed CLI and the `ContextSync(linear=...)` constructor
-> path will raise an error at runtime. The `_gateway_override` testing hook is
-> the only functional entry point today.
-
 ## Installation
 
 `context-sync` requires Python 3.13+ and depends on
@@ -248,6 +241,56 @@ are handled by the `--missing-root-policy` flag:
 | `Lock held by active process` | Another `context-sync` invocation is running | Wait for it to finish, or if the process is gone, the next run will preempt the stale lock. |
 | `Workspace mismatch` | Root ticket belongs to a different Linear workspace | Verify you are targeting the correct context directory or root ticket. |
 | `Root ticket not available` | Ticket is archived, deleted, or not visible | Check the ticket in Linear; use `--missing-root-policy remove` to clean up. |
+
+### Smoke validation
+
+Use this recipe to verify that the installed CLI works against a real Linear
+workspace.  Replace `TEAM-42` with any issue key visible to your configured
+credentials.
+
+**Happy path** — one successful sync, refresh, diff, and remove cycle:
+
+```bash
+# 1. Create a fresh context directory.
+mkdir -p /tmp/context-sync-smoke && cd /tmp/context-sync-smoke
+
+# 2. Sync a root ticket (creates ticket files).
+context-sync sync TEAM-42
+# Expected: text output listing the created ticket key(s), exit code 0.
+
+# 3. Refresh (re-fetches all tracked tickets).
+context-sync refresh
+# Expected: text output with unchanged/updated counts, exit code 0.
+
+# 4. Diff (compare local snapshot to live state, read-only).
+context-sync diff
+# Expected: text output with diff entries (likely empty if nothing changed), exit code 0.
+
+# 5. Remove the root and clean up.
+context-sync remove TEAM-42
+# Expected: text output confirming removal, exit code 0.
+
+# 6. Clean up the smoke directory.
+rm -rf /tmp/context-sync-smoke
+```
+
+**Failure path** — expected error behavior:
+
+```bash
+# Missing credentials: unset the auth variable and verify the error message.
+unset LINEAR_API_KEY
+context-sync sync TEAM-42
+# Expected: "Failed to initialize Linear client" on stderr, exit code 1.
+
+# Invalid ticket: use a key that does not exist.
+export LINEAR_API_KEY="<your-key>"
+context-sync sync NONEXISTENT-99999
+# Expected: "Issue not found" or "Root ticket not available" on stderr, exit code 1.
+
+# JSON error output: verify structured error payload.
+context-sync sync NONEXISTENT-99999 --json
+# Expected: JSON object with "error" and "message" fields on stdout, exit code 1.
+```
 
 ---
 
