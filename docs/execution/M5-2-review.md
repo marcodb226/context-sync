@@ -1,6 +1,6 @@
 # Review: [M5-2](../implementation-plan.md#m5-2---supported-public-runtime-validation-and-smoke-path)
 
-> **Status**: Phase B complete
+> **Status**: Phase B complete (2 passes)
 > **Plan ticket**:
 > [M5-2](../implementation-plan.md#m5-2---supported-public-runtime-validation-and-smoke-path)
 > **Execution record**:
@@ -115,3 +115,155 @@ README now includes a maintained smoke section. But the ticket is not ready to
 close yet. The missing live-environment evidence is a hard completeness miss
 against the plan, and the documented negative-path smoke step is currently too
 fragile to rely on as operator guidance.
+
+---
+
+## Review Pass 2
+
+> **LLM**: opus-4.6
+> **Effort**: N/A
+> **Time spent**: ~30m
+
+### Scope
+
+Independent strict implementation review of
+[M5-2](../implementation-plan.md#m5-2---supported-public-runtime-validation-and-smoke-path),
+covering the Phase A artifact at [docs/execution/M5-2.md](M5-2.md), the new
+public-surface tests in
+[tests/test_public_surface.py](../../tests/test_public_surface.py), the
+existing production code exercised by those tests
+([src/context_sync/_cli.py](../../src/context_sync/_cli.py),
+[src/context_sync/_sync.py](../../src/context_sync/_sync.py),
+[src/context_sync/_real_gateway.py](../../src/context_sync/_real_gateway.py),
+[src/context_sync/_errors.py](../../src/context_sync/_errors.py)),
+the updated operator documentation in [README.md](../../README.md), and the
+Review Pass 1 findings.
+
+Validation run during review:
+`source .venv/bin/activate && PYTHON_BIN=python3 bash scripts/validate.sh`
+passed cleanly (Ruff lint, Ruff format, Pyright, 559 tests, 92% branch
+coverage). `pytest -q tests/test_public_surface.py` also passed cleanly (42
+tests).
+
+### Dependency-Satisfaction Verification
+
+All three dependencies
+([M5-1](../implementation-plan.md#m5-1---real-linear-gateway-and-runtime-wiring),
+[M4-2](../implementation-plan.md#m4-2---operational-logging-validation-hardening-and-user-docs),
+[M4.2-2](../implementation-plan.md#m4.2-2---coverage-tooling-agent-awareness-artifacts-and-interface-documentation))
+are `Done` in the active plan and recorded as satisfied in the execution
+artifact. Verified.
+
+### Terminology Compliance
+
+Checked all changed files against
+[docs/policies/terminology.md](../policies/terminology.md). No banned-term
+violations found.
+
+### Changelog Review
+
+[src/context_sync/version.py](../../src/context_sync/version.py) is
+`0.1.0.dev0` — pre-stable, so the changelog gate does not apply.
+
+### Linear Boundary Check
+
+No linear-boundary violations. The new tests route through
+`ContextSync(linear=...)` → `RealLinearGateway` on the supported public side
+of the boundary. No new raw-GraphQL call sites are added outside the approved
+gateway helpers.
+
+### Agreement with Review Pass 1 Findings
+
+I independently verified both prior findings and agree with their severity and
+recommendations:
+
+- **[M5-2-R1](M5-2-review.md)**: The plan exit criteria at
+  [docs/implementation-plan.md:1110-1112](../implementation-plan.md#L1110)
+  explicitly require a durable smoke-validation recipe exercised against a real
+  workspace. The execution artifact at
+  [docs/execution/M5-2.md:110](M5-2.md#L110) confirms this was not performed.
+  The automated test suite uses a mock `Linear` transport double, which proves
+  the gateway wiring but does not constitute credentialed live validation.
+  Agree: High.
+
+- **[M5-2-R2](M5-2-review.md)**: Confirmed by reading
+  [README.md:280-282](../../README.md#L280) against the three auth modes
+  documented in [README.md:166-171](../../README.md#L166). The recipe's
+  `unset LINEAR_API_KEY` step does not neutralize OAuth or client-credentials
+  paths. An operator with `LINEAR_CLIENT_ID` and `LINEAR_CLIENT_SECRET` set
+  will get a successful `Linear()` initialization instead of the promised
+  startup failure. Additionally, the v1.1.0 token-file precondition from
+  [docs/implementation-plan.md:1097-1101](../implementation-plan.md#L1097) is
+  not mentioned in the smoke recipe. Agree: Medium.
+
+### Findings
+
+| ID | Severity | Status | Area | Finding | Evidence | Impact | Recommendation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| M5-2-R3 | Medium | Todo | Failure-Contract Completeness | The failure-contract regression suite omits `WriteError`, a leaf `ContextSyncError` subtype actively raised by production code. The execution artifact describes coverage for "9 `ContextSyncError` subtypes + `ValueError`" in both text and JSON mode, but `WriteError` is neither imported nor parametrized in the test. `WriteError` is raised from four sites in [src/context_sync/_io.py](../../src/context_sync/_io.py) (lines 68, 118, 123, 130) and is publicly exported via [src/context_sync/__init__.py](../../src/context_sync/__init__.py). | [tests/test_public_surface.py:29-39](../../tests/test_public_surface.py#L29) (imports — no `WriteError`), [tests/test_public_surface.py:569-582](../../tests/test_public_surface.py#L569) (text parametrization — 9 types, no `WriteError`), [tests/test_public_surface.py:627-639](../../tests/test_public_surface.py#L627) (JSON parametrization — 9 types, no `WriteError`), [src/context_sync/_errors.py:95](../../src/context_sync/_errors.py#L95) (definition), [src/context_sync/_io.py:68](../../src/context_sync/_io.py#L68) (raise site) | The failure-contract proof that M5-2 delivers is incomplete. An operator hitting a `WriteError` through the CLI would see `WriteError` in the JSON `error` field, but the test suite has never verified that path. The gap also means the execution artifact's claim of complete subtype coverage is inaccurate. | Add `WriteError` to both the text-mode and JSON-mode parametrized error lists, and update the execution file test-count claims accordingly. |
+| M5-2-R4 | Low | Todo | Test Mock Fidelity | The GQL paginate-connection mock router uses `"issueRelations" in str(conn_path)` to match forward-link requests, but `RealLinearGateway.get_refresh_relation_metadata` passes `connection_path=["issue", "relations"]` which serializes to `"['issue', 'relations']"` — the substring `"issueRelations"` is not present. The forward-link branch silently falls through to the default `return []` instead of matching the intended conditional. The test produces the correct result by coincidence because both the matched and unmatched branches return empty lists. | [tests/test_public_surface.py:206](../../tests/test_public_surface.py#L206) (`"issueRelations" in str(conn_path)` check), [src/context_sync/_real_gateway.py:696](../../src/context_sync/_real_gateway.py#L696) (`connection_path=["issue", "relations"]`) | No functional impact today since both code paths return `[]`. However, the latent mismatch means any future attempt to return non-empty forward-link data from the mock router will silently fail to route, making the mock unreliable for link-related test extensions. | Fix the routing conditional to match the actual `connection_path` values used by `RealLinearGateway`, for example `conn_path == ["issue", "relations"]` or `"relations" in conn_path`. |
+
+### Reviewer Notes
+
+- The core test design is sound. Routing through `main()` → `build_parser()` →
+  `_create_linear_client` (patched) → `ContextSync(linear=...)` →
+  `RealLinearGateway(mock)` exercises the real dispatch chain without
+  `_gateway_override`. The library-level tests similarly construct
+  `ContextSync(linear=mock_linear)` and exercise the real gateway wiring. This
+  is the public-surface proof that [M4-2-R2](M4-2-review.md) asked for.
+
+- The mock `Linear` transport double in `_make_mock_linear` is well-designed:
+  it supports multiple issues keyed by ID or key, routes GQL queries by
+  operation name, and returns structurally correct payloads. The
+  `_issue_factory` correctly accepts `UpstreamIssueId`/`UpstreamIssueKey`
+  newtypes via `str()` conversion.
+
+- The `TestFailureContractText` and `TestFailureContractJson` classes patch
+  `_HANDLERS` directly to inject error-raising stubs. This is a legitimate
+  approach for testing the error-handling surface of `main()` without
+  exercising the full async pipeline. It correctly tests that `main()` catches
+  `ContextSyncError` and `ValueError`, formats them in the right output mode,
+  and exits with code 1.
+
+- The `TestBootstrapFailuresThroughMain` class patches `_create_linear_client`
+  to raise `ContextSyncError`, which tests the pre-dispatch bootstrap failure
+  path. This is the correct integration point for missing-dependency and
+  auth-failure scenarios.
+
+- The intermediate `LockError` base class is not individually tested. This is
+  acceptable — it is an abstract grouping class that should not be raised
+  directly, and its three leaf subclasses (`ActiveLockError`, `StaleLockError`,
+  `DiffLockError`) are all covered.
+
+- The README pre-release warning removal is appropriate now that
+  [M5-1](../implementation-plan.md#m5-1---real-linear-gateway-and-runtime-wiring)
+  has wired the real gateway. The replacement smoke-validation section covers
+  the happy-path cycle correctly (sync → refresh → diff → remove) with expected
+  exit codes and output behavior.
+
+### Residual Risks and Testing Gaps
+
+- The full automated suite passes, but there is still no checked-in evidence of
+  a credentialed live smoke run (per [M5-2-R1](M5-2-review.md)).
+- `WriteError` is the only leaf `ContextSyncError` subtype without
+  failure-contract regression coverage (per [M5-2-R3](M5-2-review.md)).
+- The smoke recipe remains auth-mode-fragile for the failure-path step (per
+  [M5-2-R2](M5-2-review.md)).
+- The mock transport double does not exercise `None`-assignee or
+  `None`-creator paths through `RealLinearGateway.fetch_issue`. These paths
+  are simple None-checks and carry low risk, but are not proven by the
+  public-surface suite.
+
+### Overall Assessment
+
+The automated public-surface test suite is well-constructed and delivers the
+core value M5-2 promised: a supported-runtime proof through `main()` and
+`ContextSync(linear=...)` that does not rely on `_gateway_override`. Local
+quality gates are clean and the test design is honest about what it exercises.
+
+The ticket is not ready to close. The two pass-1 findings remain open
+([M5-2-R1](M5-2-review.md) live-validation gap,
+[M5-2-R2](M5-2-review.md) auth-mode recipe fragility), and
+[M5-2-R3](M5-2-review.md) adds a failure-contract completeness gap that should
+be resolved before the failure-contract regression suite is treated as the
+authoritative proof.
