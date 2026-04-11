@@ -36,6 +36,7 @@ from context_sync._errors import (
     StaleLockError,
     SystemicRemoteError,
     WorkspaceMismatchError,
+    WriteError,
 )
 from context_sync._types import IssueKey
 
@@ -201,9 +202,9 @@ def _default_gql_paginate_router(*args: Any, **kwargs: Any) -> list[dict[str, An
                 "updatedAt": _ISSUE_UPDATED,
             }
         ]
-    if "comments" in str(conn_path):
+    if conn_path == ["comments"]:
         return []
-    if "issueRelations" in str(conn_path) or "inverseRelations" in str(conn_path):
+    if conn_path in (["issue", "relations"], ["issue", "inverseRelations"]):
         return []
     return []
 
@@ -578,6 +579,7 @@ class TestFailureContractText:
             (RootNotInManifestError, "root not in manifest"),
             (ManifestError, "corrupt manifest"),
             (SystemicRemoteError, "upstream service unavailable"),
+            (WriteError, "failed to write ticket file"),
         ],
     )
     def test_error_exits_1_with_message_on_stderr(
@@ -636,6 +638,7 @@ class TestFailureContractJson:
             (RootNotInManifestError, "RootNotInManifestError", "not a root"),
             (ManifestError, "ManifestError", "corrupt"),
             (SystemicRemoteError, "SystemicRemoteError", "upstream failure"),
+            (WriteError, "WriteError", "write failed"),
         ],
     )
     def test_error_exits_1_with_json_on_stdout(

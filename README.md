@@ -277,13 +277,19 @@ rm -rf /tmp/context-sync-smoke
 **Failure path** — expected error behavior:
 
 ```bash
-# Missing credentials: unset the auth variable and verify the error message.
-unset LINEAR_API_KEY
+# Missing credentials: neutralize all auth modes to verify the startup failure.
+# linear-client defaults to oauth mode when LINEAR_API_KEY is unset, so all
+# three auth paths must be cleared. Also remove any persisted token file so
+# the library cannot fall back to a cached token.
+unset LINEAR_API_KEY LINEAR_CLIENT_ID LINEAR_CLIENT_SECRET LINEAR_OAUTH_SCOPE
+rm -f "${LINEAR_OAUTH_TOKEN_PATH:-$HOME/.linear_client_oauth.json}"
 context-sync sync TEAM-42
 # Expected: "Failed to initialize Linear client" on stderr, exit code 1.
 
-# Invalid ticket: use a key that does not exist.
+# Restore credentials for the remaining failure checks.
 export LINEAR_API_KEY="<your-key>"
+
+# Invalid ticket: use a key that does not exist.
 context-sync sync NONEXISTENT-99999
 # Expected: "Issue not found" or "Root ticket not available" on stderr, exit code 1.
 
