@@ -8,6 +8,8 @@ their underscore-prefixed boundaries.
 
 from __future__ import annotations
 
+import pytest
+
 
 class TestPublicImports:
     """All advertised public names are importable from ``context_sync``."""
@@ -198,6 +200,17 @@ class TestPublicImports:
 
         assert isinstance(__version__, str)
         assert "dev" in __version__  # pre-release marker
+
+    def test_shared_type_aliases_match_upstream_when_installed(self) -> None:
+        upstream_types = pytest.importorskip("linear_client.types")
+
+        from context_sync import AttachmentId, CommentId, IssueId, IssueKey, Timestamp
+
+        assert IssueId is upstream_types.IssueId
+        assert IssueKey is upstream_types.IssueKey
+        assert CommentId is upstream_types.CommentId
+        assert AttachmentId is upstream_types.AttachmentId
+        assert Timestamp is upstream_types.IsoTimestamp
 
 
 class TestAllExports:

@@ -44,10 +44,12 @@ from context_sync._gateway import (
     WorkspaceIdentity,
 )
 from context_sync._types import (
+    AssetUrl,
     AttachmentId,
     CommentId,
     IssueId,
     IssueKey,
+    IssueLinkType,
     Timestamp,
     WorkspaceId,
     WorkspaceSlug,
@@ -69,7 +71,14 @@ logger = logging.getLogger(__name__)
 # while preserving the upstream ``link_type`` in ``RelationData.relation_type``.
 # ---------------------------------------------------------------------------
 
-_INFORMATIONAL_LINK_TYPES: frozenset[str] = frozenset({"related", "duplicate", "similar"})
+_BLOCKS_LINK_TYPE: IssueLinkType = IssueLinkType("blocks")
+_INFORMATIONAL_LINK_TYPES: frozenset[IssueLinkType] = frozenset(
+    {
+        IssueLinkType("related"),
+        IssueLinkType("duplicate"),
+        IssueLinkType("similar"),
+    }
+)
 
 # UUID v4 pattern for distinguishing UUIDs from human-facing issue keys.
 _UUID_PATTERN: re.Pattern[str] = re.compile(
@@ -166,7 +175,7 @@ query RefreshInverseLinks($issueId: String!, $first: Int, $after: String) {
 
 
 def _normalize_link(
-    link_type: str,
+    link_type: IssueLinkType,
     *,
     is_forward: bool,
     target_id: str,
@@ -185,7 +194,7 @@ def _normalize_link(
 
     Parent/child hierarchy is never inferred from IssueLink records.
     """
-    if link_type == "blocks":
+    if link_type == _BLOCKS_LINK_TYPE:
         dimension = "blocks" if is_forward else "is_blocked_by"
     elif link_type in _INFORMATIONAL_LINK_TYPES:
         dimension = "relates_to"
@@ -716,7 +725,12 @@ class RealLinearGateway:
                 tkey = target.get("identifier")
                 if isinstance(tid, str) and isinstance(tkey, str):
                     relations.append(
-                        _normalize_link(link_type, is_forward=True, target_id=tid, target_key=tkey)
+                        _normalize_link(
+                            IssueLinkType(link_type),
+                            is_forward=True,
+                            target_id=tid,
+                            target_key=tkey,
+                        )
                     )
 
             for node in inverse_nodes:
@@ -728,7 +742,12 @@ class RealLinearGateway:
                 skey = source.get("identifier")
                 if isinstance(sid, str) and isinstance(skey, str):
                     relations.append(
-                        _normalize_link(link_type, is_forward=False, target_id=sid, target_key=skey)
+                        _normalize_link(
+                            IssueLinkType(link_type),
+                            is_forward=False,
+                            target_id=sid,
+                            target_key=skey,
+                        )
                     )
 
             return uid, relations
@@ -920,7 +939,7 @@ class RealLinearGateway:
                 AttachmentData(
                     attachment_id=AttachmentId(str(aid)),
                     title=title,
-                    url=str(url) if url else "",
+                    url=url if url is not None else AssetUrl(""),
                     created_at=Timestamp(str(created)) if created else Timestamp(""),
                     creator=creator_name,
                 )
@@ -943,7 +962,6 @@ class RealLinearGateway:
             link_type_val = link.peek_link_type()
             if link_type_val is None:
                 continue
-            link_type = str(link_type_val)
 
             from_issue = link.from_issue
             to_issue = link.to_issue
@@ -966,7 +984,10 @@ class RealLinearGateway:
             target_key = str(target_key_val) if target_key_val else ""
             result.append(
                 _normalize_link(
-                    link_type, is_forward=is_forward, target_id=target_id, target_key=target_key
+                    link_type_val,
+                    is_forward=is_forward,
+                    target_id=target_id,
+                    target_key=target_key,
                 )
             )
         return result

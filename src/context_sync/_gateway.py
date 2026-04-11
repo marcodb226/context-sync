@@ -28,10 +28,12 @@ from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 
 from context_sync._types import (
+    AssetUrl,
     AttachmentId,
     CommentId,
     IssueId,
     IssueKey,
+    IssueLinkType,
     Timestamp,
     WorkspaceId,
     WorkspaceSlug,
@@ -174,7 +176,7 @@ class AttachmentData:
     title:
         Human-readable title, or ``None``.
     url:
-        Attachment URL.
+        Attachment asset URL.
     created_at:
         UTC RFC 3339 creation timestamp.
     creator:
@@ -183,7 +185,7 @@ class AttachmentData:
 
     attachment_id: AttachmentId
     title: str | None
-    url: str
+    url: AssetUrl
     created_at: Timestamp
     creator: str | None
 
@@ -198,7 +200,7 @@ class RelationData:
     dimension:
         Traversal dimension name (maps to :class:`_config.Dimension` values).
     relation_type:
-        Linear relation type string (e.g. ``"blocks"``, ``"is_blocked_by"``).
+        Linear relation type value (e.g. ``"blocks"`` or ``"related"``).
     target_issue_id:
         Stable UUID of the related issue.
     target_issue_key:
@@ -206,7 +208,7 @@ class RelationData:
     """
 
     dimension: str
-    relation_type: str
+    relation_type: IssueLinkType
     target_issue_id: IssueId
     target_issue_key: IssueKey
 

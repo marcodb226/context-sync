@@ -8,6 +8,8 @@ extend this file as they add gateway operations.
 
 from __future__ import annotations
 
+from typing import get_type_hints
+
 import pytest
 
 from context_sync._errors import RootNotFoundError
@@ -96,7 +98,19 @@ class TestCommentData:
         assert c.parent_comment_id is None
 
 
+class TestAttachmentData:
+    def test_url_type_uses_upstream_asset_url(self) -> None:
+        upstream_types = pytest.importorskip("linear_client.types")
+
+        assert get_type_hints(AttachmentData)["url"] is upstream_types.AssetUrl
+
+
 class TestRelationData:
+    def test_relation_type_uses_upstream_issue_link_type(self) -> None:
+        upstream_types = pytest.importorskip("linear_client.types")
+
+        assert get_type_hints(RelationData)["relation_type"] is upstream_types.IssueLinkType
+
     def test_fields(self) -> None:
         r = RelationData(
             dimension="blocks",

@@ -1,21 +1,20 @@
 """
 Semantic type aliases for domain concepts.
 
-Provides ``NewType`` aliases so that Pyright can distinguish between
-identifiers that share the same ``str`` runtime representation but
-represent distinct domain concepts.  Passing an ``IssueKey`` where an
-``IssueId`` is expected (or vice-versa) is caught at static analysis time.
+Provides named aliases for domain concepts that share the same ``str``
+runtime representation but carry different semantics. Passing an
+``IssueKey`` where an ``IssueId`` is expected (or vice-versa) is caught at
+static analysis time.
 
-All aliases are ``NewType`` over ``str``; they impose zero runtime cost.
+When ``linear-client`` is importable, this module re-exports the upstream
+aliases for the shared boundary vocabulary so context-sync and
+``linear-client`` use one runtime/type-checker identity for the same
+concepts. ``Timestamp`` keeps its local public name for ergonomics while
+aliasing upstream ``IsoTimestamp``.
 
-``IssueId``, ``IssueKey``, ``CommentId``, and ``AttachmentId`` are the
-authoritative types from ``linear_client.types``.  Under ``TYPE_CHECKING``
-the real imports are used so Pyright sees shared type identity across the
-gateway boundary.  At runtime, equivalent ``NewType`` aliases are defined
-locally so that ``linear-client`` remains an optional dependency.
-
-``WriterId``, ``Timestamp``, ``WorkspaceId``, and ``WorkspaceSlug`` are
-context-sync-only concepts and are always defined locally.
+When ``linear-client`` is unavailable, local ``NewType`` fallbacks preserve
+package importability. ``WriterId``, ``WorkspaceId``, and ``WorkspaceSlug``
+remain context-sync-only concepts.
 """
 
 from __future__ import annotations
@@ -25,18 +24,33 @@ from typing import TYPE_CHECKING, NewType
 # ---------------------------------------------------------------------------
 # Shared types — authoritative definitions live in linear_client.types.
 #
-# TYPE_CHECKING import gives Pyright shared type identity with the library,
-# eliminating the bridge-import workaround previously needed at the gateway
-# boundary.  The runtime fallback keeps linear-client as an optional
-# dependency.
+# The runtime import path keeps one shared alias identity when the dependency
+# is installed. The fallback keeps context-sync importable in environments
+# that do not bundle linear-client.
 # ---------------------------------------------------------------------------
 
 if TYPE_CHECKING:
-    from linear_client.types import AttachmentId as AttachmentId
-    from linear_client.types import CommentId as CommentId
-    from linear_client.types import IssueId as IssueId
-    from linear_client.types import IssueKey as IssueKey
-else:
+    from linear_client.types import (
+        AssetUrl,
+        AttachmentId,
+        CommentId,
+        IssueId,
+        IssueKey,
+        IssueLinkType,
+    )
+    from linear_client.types import IsoTimestamp as Timestamp
+
+try:
+    from linear_client.types import (
+        AssetUrl,
+        AttachmentId,
+        CommentId,
+        IssueId,
+        IssueKey,
+        IssueLinkType,
+    )
+    from linear_client.types import IsoTimestamp as Timestamp
+except ImportError:
     IssueId = NewType("IssueId", str)
     """Stable Linear issue UUID (e.g. ``"00000000-0000-0000-0000-000000000001"``)."""
 
@@ -48,6 +62,15 @@ else:
 
     AttachmentId = NewType("AttachmentId", str)
     """Stable Linear attachment UUID."""
+
+    AssetUrl = NewType("AssetUrl", str)
+    """Linear attachment asset URL."""
+
+    IssueLinkType = NewType("IssueLinkType", str)
+    """Linear relation type value (e.g. ``"blocks"`` or ``"related"``)."""
+
+    Timestamp = NewType("Timestamp", str)
+    """UTC RFC 3339 timestamp (e.g. ``"2026-01-15T09:30:00Z"``)."""
 
 # ---------------------------------------------------------------------------
 # Context-sync-only types — not shared with linear-client.
@@ -61,6 +84,3 @@ WorkspaceSlug = NewType("WorkspaceSlug", str)
 
 WriterId = NewType("WriterId", str)
 """Unique identifier for a writer-lock invocation."""
-
-Timestamp = NewType("Timestamp", str)
-"""UTC RFC 3339 timestamp (e.g. ``"2026-01-15T09:30:00Z"``)."""
