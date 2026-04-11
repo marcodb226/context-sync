@@ -36,19 +36,20 @@ Use a virtualenv if you prefer isolation.
 
 ### Credential setup
 
-All Linear credentials are read from the environment at runtime. The simplest
-option is a personal API key (new in `linear-client` v1.1.0):
-
-```bash
-export LINEAR_API_KEY="<your-linear-api-key>"
-```
-
-Alternatively, use OAuth client-credentials for machine-actor identity:
+All Linear credentials are read from the environment at runtime. The CLI
+defaults to `client_credentials` mode (machine-actor identity):
 
 ```bash
 export LINEAR_CLIENT_ID="<your-oauth-client-id>"
 export LINEAR_CLIENT_SECRET="<your-oauth-client-secret>"
 export LINEAR_OAUTH_SCOPE="read,write,app:assignable,app:mentionable"
+```
+
+For personal use, pass `--auth-mode api_key` and set a personal API key:
+
+```bash
+export LINEAR_API_KEY="<your-linear-api-key>"
+context-sync --auth-mode api_key sync TEAM-42
 ```
 
 See [Configuration](#configuration) for the complete variable reference and
@@ -105,10 +106,8 @@ context-sync diff
 |------|-------------|
 | `-v`, `--version` | Print tool name and version, then exit. |
 | `-h`, `--help` | Print help text, then exit. |
-| `--auth-mode MODE` | Linear authentication mode. Choices: `oauth`, `client_credentials`, `api_key`. Default: inferred from environment (see below). |
+| `--auth-mode MODE` | Linear authentication mode. Choices: `oauth`, `client_credentials`, `api_key`. Default: `client_credentials`. |
 | `--log-level LEVEL` | Diagnostic log verbosity to stderr. Choices: `DEBUG`, `INFO`, `WARNING` (default), `ERROR`, `OFF`. |
-
-**Auth-mode inference.** When `--auth-mode` is omitted, the CLI infers the mode from the environment: `api_key` if `LINEAR_API_KEY` is set, `client_credentials` if `LINEAR_CLIENT_ID` is set, otherwise `oauth`. An explicit `--auth-mode` value always overrides inference.
 
 ### Per-command options
 
@@ -251,17 +250,18 @@ Use this recipe to verify that the installed CLI works against a real Linear
 workspace.  Replace `TEAM-42` with any issue key visible to your configured
 credentials.
 
-**Happy path (api\_key mode)** — sync, refresh, diff, and remove with a personal API key:
+**Happy path (client\_credentials mode, default)** — sync, refresh, diff, and remove using the default auth mode:
 
 ```bash
-# 1. Set credentials for api_key mode.
-export LINEAR_API_KEY="<your-linear-api-key>"
+# 1. Set credentials for client_credentials mode (the CLI default).
+export LINEAR_CLIENT_ID="<your-oauth-client-id>"
+export LINEAR_CLIENT_SECRET="<your-oauth-client-secret>"
+export LINEAR_OAUTH_SCOPE="read,write,app:assignable,app:mentionable"
 
 # 2. Create a fresh context directory.
 mkdir -p /tmp/context-sync-smoke && cd /tmp/context-sync-smoke
 
-# 3. Sync a root ticket.  --auth-mode is optional here because the CLI
-#    infers api_key when LINEAR_API_KEY is set.
+# 3. Sync a root ticket.  No --auth-mode needed — client_credentials is the default.
 context-sync sync TEAM-42
 # Expected: text output listing the created ticket key(s), exit code 0.
 
@@ -281,28 +281,25 @@ context-sync remove TEAM-42
 rm -rf /tmp/context-sync-smoke
 ```
 
-**Happy path (client\_credentials mode)** — verify a second auth mode works:
+**Happy path (api\_key mode)** — verify a non-default auth mode works:
 
 ```bash
-# 1. Set credentials for client_credentials mode.
-unset LINEAR_API_KEY
-export LINEAR_CLIENT_ID="<your-oauth-client-id>"
-export LINEAR_CLIENT_SECRET="<your-oauth-client-secret>"
-export LINEAR_OAUTH_SCOPE="read,write,app:assignable,app:mentionable"
+# 1. Set credentials for api_key mode.
+export LINEAR_API_KEY="<your-linear-api-key>"
 
 # 2. Create a fresh context directory.
 mkdir -p /tmp/context-sync-smoke && cd /tmp/context-sync-smoke
 
-# 3. Sync with explicit --auth-mode (or let inference detect LINEAR_CLIENT_ID).
-context-sync --auth-mode client_credentials sync TEAM-42
+# 3. Sync with explicit --auth-mode api_key (required — the default is client_credentials).
+context-sync --auth-mode api_key sync TEAM-42
 # Expected: text output listing the created ticket key(s), exit code 0.
 
-# 4. Quick refresh to confirm the mode sticks for the session.
-context-sync --auth-mode client_credentials refresh
+# 4. Quick refresh to confirm the mode works for subsequent commands.
+context-sync --auth-mode api_key refresh
 # Expected: text output with unchanged/updated counts, exit code 0.
 
 # 5. Clean up.
-context-sync --auth-mode client_credentials remove TEAM-42
+context-sync --auth-mode api_key remove TEAM-42
 rm -rf /tmp/context-sync-smoke
 ```
 

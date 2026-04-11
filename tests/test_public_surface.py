@@ -475,13 +475,25 @@ class TestCliMainLogLevel:
 class TestCliMainAuthMode:
     """Verify that ``--auth-mode`` flows through ``main()`` to ``Linear()``."""
 
+    def test_no_flag_defaults_to_client_credentials(
+        self, context_dir: Path, mock_linear: MagicMock, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Omitting ``--auth-mode`` passes ``client_credentials`` to ``Linear()``."""
+        with (
+            patch("linear_client.Linear", return_value=mock_linear) as mock_cls,
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            main(["sync", _ISSUE_KEY, "--context-dir", str(context_dir)])
+
+        assert exc_info.value.code == EXIT_SUCCESS
+        mock_cls.assert_called_once_with(auth_mode="client_credentials")
+
     def test_explicit_api_key_mode(
         self, context_dir: Path, mock_linear: MagicMock, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """``--auth-mode api_key`` passes ``api_key`` to ``Linear()``."""
         with (
             patch("linear_client.Linear", return_value=mock_linear) as mock_cls,
-            patch.dict("os.environ", {"LINEAR_API_KEY": "test-key"}, clear=False),
             pytest.raises(SystemExit) as exc_info,
         ):
             main(
@@ -498,65 +510,12 @@ class TestCliMainAuthMode:
         assert exc_info.value.code == EXIT_SUCCESS
         mock_cls.assert_called_once_with(auth_mode="api_key")
 
-    def test_explicit_client_credentials_mode(
+    def test_explicit_oauth_mode(
         self, context_dir: Path, mock_linear: MagicMock, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """``--auth-mode client_credentials`` passes the mode to ``Linear()``."""
+        """``--auth-mode oauth`` passes ``oauth`` to ``Linear()``."""
         with (
             patch("linear_client.Linear", return_value=mock_linear) as mock_cls,
-            pytest.raises(SystemExit) as exc_info,
-        ):
-            main(
-                [
-                    "--auth-mode",
-                    "client_credentials",
-                    "sync",
-                    _ISSUE_KEY,
-                    "--context-dir",
-                    str(context_dir),
-                ]
-            )
-
-        assert exc_info.value.code == EXIT_SUCCESS
-        mock_cls.assert_called_once_with(auth_mode="client_credentials")
-
-    def test_env_inference_api_key(
-        self, context_dir: Path, mock_linear: MagicMock, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        """Without ``--auth-mode``, ``LINEAR_API_KEY`` in env infers ``api_key``."""
-        env = {"LINEAR_API_KEY": "test-key"}
-        with (
-            patch("linear_client.Linear", return_value=mock_linear) as mock_cls,
-            patch.dict("os.environ", env, clear=True),
-            pytest.raises(SystemExit) as exc_info,
-        ):
-            main(["sync", _ISSUE_KEY, "--context-dir", str(context_dir)])
-
-        assert exc_info.value.code == EXIT_SUCCESS
-        mock_cls.assert_called_once_with(auth_mode="api_key")
-
-    def test_env_inference_client_credentials(
-        self, context_dir: Path, mock_linear: MagicMock, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        """Without ``--auth-mode``, ``LINEAR_CLIENT_ID`` in env infers ``client_credentials``."""
-        env = {"LINEAR_CLIENT_ID": "test-client-id"}
-        with (
-            patch("linear_client.Linear", return_value=mock_linear) as mock_cls,
-            patch.dict("os.environ", env, clear=True),
-            pytest.raises(SystemExit) as exc_info,
-        ):
-            main(["sync", _ISSUE_KEY, "--context-dir", str(context_dir)])
-
-        assert exc_info.value.code == EXIT_SUCCESS
-        mock_cls.assert_called_once_with(auth_mode="client_credentials")
-
-    def test_explicit_mode_overrides_env(
-        self, context_dir: Path, mock_linear: MagicMock, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        """Explicit ``--auth-mode oauth`` overrides ``LINEAR_API_KEY`` in env."""
-        with (
-            patch("linear_client.Linear", return_value=mock_linear) as mock_cls,
-            patch.dict("os.environ", {"LINEAR_API_KEY": "test-key"}, clear=True),
             pytest.raises(SystemExit) as exc_info,
         ):
             main(

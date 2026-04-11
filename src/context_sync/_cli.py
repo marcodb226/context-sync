@@ -30,7 +30,6 @@ import argparse
 import asyncio
 import json
 import logging
-import os
 import sys
 from collections.abc import Callable, Coroutine
 from dataclasses import asdict
@@ -178,6 +177,10 @@ def _build_dimensions(args: argparse.Namespace) -> dict[str, int] | None:
     return overrides if overrides else None
 
 
+_DEFAULT_AUTH_MODE: _AuthMode = "client_credentials"
+"""No-flag auth mode.  ``context-sync`` primarily targets app-actor workflows."""
+
+
 def _create_linear_client(auth_mode: _AuthMode | None = None) -> object:
     """
     Construct an authenticated ``linear_client.Linear`` instance.
@@ -186,10 +189,9 @@ def _create_linear_client(auth_mode: _AuthMode | None = None) -> object:
     ----------
     auth_mode:
         Authentication mode (``oauth``, ``client_credentials``, or
-        ``api_key``).  When ``None``, the mode is inferred from the
-        environment: ``api_key`` if ``LINEAR_API_KEY`` is set,
-        ``client_credentials`` if ``LINEAR_CLIENT_ID`` is set, otherwise
-        ``oauth``.  An explicit value overrides inference.
+        ``api_key``).  When ``None``, defaults to ``client_credentials``
+        because ``context-sync`` primarily targets app-actor workflows.
+        Pass an explicit value to override the default.
 
     Returns
     -------
@@ -209,16 +211,10 @@ def _create_linear_client(auth_mode: _AuthMode | None = None) -> object:
             "environment before running context-sync CLI commands."
         ) from exc
 
-    if auth_mode is None:
-        if os.environ.get("LINEAR_API_KEY"):
-            auth_mode = "api_key"
-        elif os.environ.get("LINEAR_CLIENT_ID"):
-            auth_mode = "client_credentials"
-        else:
-            auth_mode = "oauth"
+    resolved_mode: _AuthMode = auth_mode if auth_mode is not None else _DEFAULT_AUTH_MODE
 
     try:
-        return Linear(auth_mode=auth_mode)
+        return Linear(auth_mode=resolved_mode)
     except Exception as exc:
         raise ContextSyncError(f"Failed to initialize Linear client: {exc}") from exc
 
@@ -411,12 +407,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--auth-mode",
         choices=AUTH_MODE_CHOICES,
-        default=None,
-        help=(
-            "Linear authentication mode (default: inferred from environment — "
-            "api_key if LINEAR_API_KEY is set, client_credentials if "
-            "LINEAR_CLIENT_ID is set, otherwise oauth)."
-        ),
+        default=_DEFAULT_AUTH_MODE,
+        help=(f"Linear authentication mode (default: {_DEFAULT_AUTH_MODE})."),
     )
     parser.add_argument(
         "--log-level",
