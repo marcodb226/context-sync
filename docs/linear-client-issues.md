@@ -12,9 +12,12 @@ in place.
 | [LC-1](#lc-1---attachmentrepolist_for_issue-uses-unsupported-filter-field) | Open | `AttachmentRepo.list_for_issue` uses unsupported `AttachmentFilter.issue` field — blocks all attachment reads |
 | [LC-2](#lc-2---no-environment-variable-control-for-auth_mode) | Won't do | No env-var control for `auth_mode` — callers should select mode explicitly |
 | [LC-3](#lc-3---no-packaged-workspace-identity-surface) | Open | No packaged workspace-identity surface — requires raw GQL |
-| [LC-4](#lc-4---no-packaged-issue-label-read-surface) | Open | No packaged issue-label read surface — requires raw GQL |
+| [LC-4](#lc-4---issue-labels-not-wired-in-fetch-query) | Open | `Issue.get_labels()` exists but always raises — labels not in the fetch GQL query |
 | [LC-5](#lc-5---no-packaged-batch-metadata-reads) | Open | No packaged batch metadata reads — three refresh patterns need raw GQL |
 | [LC-6](#lc-6---newtype-identity-mismatch-across-the-boundary) | Won't do | Duplicate `NewType` aliases in context-sync — context-sync must adopt the library types |
+| [LC-7](#lc-7---issue-priority-not-in-domain-surface) | Open | Issue `priority` field not in the GQL selection set or domain object |
+| [LC-8](#lc-8---issue-parent-not-in-domain-surface) | Open | Issue `parent` (id + key) not in the GQL selection set or domain object |
+| [LC-9](#lc-9---no-batched-multi-issue-relation-metadata-read) | Open | No batched relation metadata read for arbitrary issue sets |
 
 ---
 
@@ -107,24 +110,32 @@ eliminate one of the five raw-GQL helper categories.
 [linear-client FW-13](../../linear-client/docs/future-work.md#fw-13---add-workspace-identity-read-support-for-issue-validation)
 — backlog item that would deliver exactly this surface.
 
-<a id="lc-4---no-packaged-issue-label-read-surface"></a>
+<a id="lc-4---issue-labels-not-wired-in-fetch-query"></a>
 
-### LC-4 - No packaged issue-label read surface
+### LC-4 - Issue labels not wired in fetch query
 
 **Status:** Open
 
 **Severity:** Low (workaround exists)
 
-**Discovered:** M5-D1 domain-coverage audit (2026-04-08)
+**Discovered:** M5-D1 domain-coverage audit (2026-04-08), root cause
+identified M5-2 Phase C (2026-04-11)
 
-**Description:** There is no domain-layer method to read issue labels
-(including parent group names for hierarchical label rendering). Labels
-must be fetched via a supplementary raw GraphQL query.
+**Description:** `Issue.get_labels()` and `Issue.peek_labels()` exist on
+the domain object, and `Label.peek_parent()` / `Label.get_parent()`
+support hierarchical label rendering. However, the issue fetch GQL query
+([issues.py:1419](../../linear-client/src/linear_client/gql/services/issues.py#L1419))
+does not select `labels { nodes { ... } }`, so `get_labels()` always
+raises `LinearConfigurationError("Issue labels are not available from
+the current GraphQL issue payload")`. The domain surface is modeled but
+not wired.
 
-**Impact on context-sync:** `RealLinearGateway` uses the supplementary
-issue query to fetch labels alongside priority and parent issue. A
-packaged surface would simplify the gateway and eliminate label-related
-raw-GQL usage.
+**Impact on context-sync:** `RealLinearGateway` fetches labels (with
+parent group names) via a supplementary raw-GQL query. Once the fetch
+query includes labels, the existing domain surface would work and the
+raw-GQL workaround could be dropped.
+
+**Upstream tracking:** No linear-client FW item exists for this.
 
 <a id="lc-5---no-packaged-batch-metadata-reads"></a>
 
@@ -159,7 +170,8 @@ raw-GQL helper categories, leaving only workspace identity and labels.
 - Batch relation metadata has no dedicated FW item; per-issue relation
   reads were delivered in v1.1.0 via
   [linear-client FW-14](../../linear-client/docs/future-work.md#fw-14---add-read-only-issue-relation-surfaces-beyond-blocker-search-projection),
-  but the batched multi-issue variant is not tracked separately.
+  but the batched multi-issue variant is not tracked separately. See
+  [LC-9](#lc-9---no-batched-multi-issue-relation-metadata-read).
 
 <a id="lc-6---newtype-identity-mismatch-across-the-boundary"></a>
 
@@ -185,3 +197,77 @@ cleanup task, not a linear-client issue. See
 to make `context-sync` re-export the library types and drop the
 duplicates. `WriterId`, `Timestamp`, `WorkspaceId`, and `WorkspaceSlug`
 are context-sync-only concepts and can stay.
+
+<a id="lc-7---issue-priority-not-in-domain-surface"></a>
+
+### LC-7 - Issue priority not in domain surface
+
+**Status:** Open
+
+**Severity:** Low (workaround exists)
+
+**Discovered:** M5-2 Phase C (2026-04-11)
+
+**Description:** The `Issue` domain object has no `priority` field. The
+issue fetch GQL query
+([issues.py:1419](../../linear-client/src/linear_client/gql/services/issues.py#L1419))
+does not select `priority`. Linear's `Issue` type exposes `priority` as
+an integer (0 = no priority, 1 = urgent, 2 = high, 3 = medium,
+4 = low).
+
+**Impact on context-sync:** `RealLinearGateway` fetches priority via a
+supplementary raw-GQL query (`_ISSUE_SUPPLEMENTARY_QUERY`) on every
+issue fetch. A domain-layer accessor would eliminate one field from that
+supplementary query.
+
+**Upstream tracking:** No linear-client FW item exists for this.
+
+<a id="lc-8---issue-parent-not-in-domain-surface"></a>
+
+### LC-8 - Issue parent not in domain surface
+
+**Status:** Open
+
+**Severity:** Low (workaround exists)
+
+**Discovered:** M5-2 Phase C (2026-04-11)
+
+**Description:** The `Issue` domain object has no `parent` field. The
+issue fetch GQL query does not select `parent { id identifier }`.
+Linear's `Issue` type exposes `parent` as a nullable `Issue` reference.
+
+**Impact on context-sync:** `RealLinearGateway` fetches the parent issue
+id and key via the same supplementary raw-GQL query. A domain-layer
+accessor (e.g. `peek_parent()` / `get_parent()` returning an `Issue`
+handle or a lightweight id+key pair) would eliminate another field from
+that query.
+
+**Upstream tracking:** No linear-client FW item exists for this.
+
+<a id="lc-9---no-batched-multi-issue-relation-metadata-read"></a>
+
+### LC-9 - No batched multi-issue relation metadata read
+
+**Status:** Open
+
+**Severity:** Low (workaround exists)
+
+**Discovered:** M5-2 Phase C (2026-04-11)
+
+**Description:** `Issue.get_links()` provides per-issue relation reads
+(delivered in v1.1.0 via
+[linear-client FW-14](../../linear-client/docs/future-work.md#fw-14---add-read-only-issue-relation-surfaces-beyond-blocker-search-projection)).
+There is no batched equivalent for reading relation metadata across an
+arbitrary set of issue IDs in a single operation.
+
+**Impact on context-sync:** `RealLinearGateway.get_refresh_relation_metadata`
+fans out one raw-GQL query per issue (forward links + inverse links).
+For N tracked issues, this produces 2*N upstream queries bounded by the
+gateway semaphore. A batched read would reduce this to O(1) queries.
+[linear-client FW-15](../../linear-client/docs/future-work.md#fw-15---add-batched-issue-metadata-reads-for-tracked-issue-sets)
+covers batched issue metadata and
+[linear-client FW-16](../../linear-client/docs/future-work.md#fw-16---finish-comment-freshness-metadata-support-for-refresh-workflows)
+covers batched comment metadata, but batched relation metadata is not
+tracked.
+
+**Upstream tracking:** No linear-client FW item exists for this.
