@@ -17,6 +17,7 @@ in place.
 | [LC-6](#lc-6---newtype-identity-mismatch-across-the-boundary) | Won't do | Duplicate `NewType` aliases in context-sync — context-sync must adopt the library types |
 | [LC-7](#lc-7---issue-priority-not-in-domain-surface) | Open | Issue `priority` field not in the GQL selection set or domain object |
 | [LC-8](#lc-8---issue-parent-not-in-domain-surface) | Open | Issue `parent` (id + key) not in the GQL selection set or domain object |
+| [LC-9](#lc-9---environment-variable-prefixing-leaks-caller-policy-into-the-library) | Open | Environment-variable prefixing leaks caller policy into the library |
 
 ---
 
@@ -248,3 +249,37 @@ handle or a lightweight id+key pair) would eliminate another field from
 that query.
 
 **Upstream tracking:** No linear-client FW item exists for this.
+
+<a id="lc-9---environment-variable-prefixing-leaks-caller-policy-into-the-library"></a>
+
+### LC-9 - Environment-variable prefixing leaks caller policy into the library
+
+**Status:** Open
+
+**Severity:** Low (design cleanup / downstream coupling)
+
+**Discovered:** M5-3 Phase B review (2026-04-11)
+
+**Description:** `linear-client` lets callers configure an environment
+prefix through constructor `env_prefix` or `LINEAR_ENV_PREFIX`, then
+resolves configuration from `<PREFIX>LINEAR_*` variables. That mixes
+deployment/orchestration policy into a generic client library. A
+downstream tool that wants to inspect auth inputs or define its own
+stable CLI contract must either duplicate the prefix-resolution algorithm
+or intentionally diverge from library behavior. Prefix selection belongs
+in the caller or wrapper that owns the deployment environment, not in the
+generic client.
+
+**Impact on context-sync:** context-sync should not need to know about
+`LINEAR_ENV_PREFIX` just to choose a default auth mode or document its CLI
+contract. The prefix-compatibility concern recorded in
+[M5-3-R2](execution/M5-3-review.md#m5-3-r2) exists only because the
+library exposes prefix resolution as part of its public config behavior.
+
+**Workaround:** Downstream tools can keep environment selection in their
+own wrapper layer and pass explicit constructor arguments or explicit
+`auth_mode` values into `Linear(...)` rather than mirroring the library's
+prefix rules.
+
+**Upstream tracking:** No linear-client future-work item currently tracks
+deprecating or removing environment-prefix support.

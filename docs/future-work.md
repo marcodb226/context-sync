@@ -354,6 +354,41 @@ to `Next release` yet.
   graph when other partitions are cleanly disjoint, with documented semantics
   for the partition-detection and cross-partition merge cases.
 
+<a id="fw-12-keep-context-sync-free-of-library-env-prefix-coupling"></a>
+### FW-12 - Keep Context-Sync Free of Library Env-Prefix Coupling
+
+**Why deferred**
+- The M5-3 review found only one concrete context-sync code path touching
+  auth environment names directly: the CLI auth-mode selection logic and its
+  tests.
+- The immediate priority is to finish M5-3 with a clear auth-mode contract.
+  A broader audit/guardrail about downstream prefix coupling is worth
+  tracking, but it is not part of the current active-plan scope.
+- Context-sync does not want to accrete behavior that mirrors
+  `linear-client`'s `LINEAR_ENV_PREFIX` / `env_prefix` conventions unless a
+  future plan explicitly chooses that coupling.
+
+**Scope**
+- Audit context-sync auth/bootstrap code, docs, and tests for any behavior
+  that mirrors `linear-client` environment-prefix conventions.
+- Keep context-sync's supported auth contract expressed in terms of its own
+  CLI flags and direct `Linear(...)` construction, not library-managed
+  prefix discovery.
+- If future code paths need environment-driven auth selection, document the
+  accepted context-sync contract explicitly in plan/design artifacts rather
+  than inheriting `linear-client` prefix semantics implicitly.
+- Remove any additional prefix-aware behavior that appears later unless a
+  human explicitly approves that dependency boundary.
+
+**Completion signal**
+- No shipped context-sync behavior depends on `LINEAR_ENV_PREFIX` or other
+  mirrored library prefix resolution, and the auth-related docs/tests make
+  clear that prefix policy sits outside the context-sync CLI contract.
+
+**References**
+- [LC-9](linear-client-issues.md#lc-9---environment-variable-prefixing-leaks-caller-policy-into-the-library)
+- [M5-3-R2](execution/M5-3-review.md#m5-3-r2)
+
 ## Historical
 
 No historical items are tracked yet.

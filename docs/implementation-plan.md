@@ -1113,10 +1113,13 @@ entry points rather than only private testing hooks.
 - Add a `--auth-mode` global option (choices: `oauth`,
   `client_credentials`, `api_key`) and pass the selected mode to
   `Linear(auth_mode=...)` in `_create_linear_client()`.
-- Consider environment-driven inference as a convenience default: if
-  `LINEAR_API_KEY` is set, default to `api_key`; if `LINEAR_CLIENT_ID`
-  is set, default to `client_credentials`; otherwise fall back to
-  `oauth`. The explicit `--auth-mode` flag overrides inference.
+- The context-sync CLI's no-flag default is `client_credentials`. This tool
+  primarily targets app-actor workflows. `--auth-mode` exists so operators
+  can opt into `oauth` or `api_key` explicitly when needed.
+- Do not make context-sync responsible for mirroring `linear-client`'s
+  `LINEAR_ENV_PREFIX` / `env_prefix` behavior. Prefixed library variables are
+  not part of the context-sync CLI contract. See
+  [LC-9](linear-client-issues.md#lc-9---environment-variable-prefixing-leaks-caller-policy-into-the-library).
 - Update the README quick-start, configuration table, and smoke-validation
   recipe to document all three modes.
 - This is a context-sync CLI responsibility, not a `linear-client`
