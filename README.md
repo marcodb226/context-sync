@@ -105,7 +105,10 @@ context-sync diff
 |------|-------------|
 | `-v`, `--version` | Print tool name and version, then exit. |
 | `-h`, `--help` | Print help text, then exit. |
+| `--auth-mode MODE` | Linear authentication mode. Choices: `oauth`, `client_credentials`, `api_key`. Default: inferred from environment (see below). |
 | `--log-level LEVEL` | Diagnostic log verbosity to stderr. Choices: `DEBUG`, `INFO`, `WARNING` (default), `ERROR`, `OFF`. |
+
+**Auth-mode inference.** When `--auth-mode` is omitted, the CLI infers the mode from the environment: `api_key` if `LINEAR_API_KEY` is set, `client_credentials` if `LINEAR_CLIENT_ID` is set, otherwise `oauth`. An explicit `--auth-mode` value always overrides inference.
 
 ### Per-command options
 
@@ -248,29 +251,58 @@ Use this recipe to verify that the installed CLI works against a real Linear
 workspace.  Replace `TEAM-42` with any issue key visible to your configured
 credentials.
 
-**Happy path** — one successful sync, refresh, diff, and remove cycle:
+**Happy path (api\_key mode)** — sync, refresh, diff, and remove with a personal API key:
 
 ```bash
-# 1. Create a fresh context directory.
+# 1. Set credentials for api_key mode.
+export LINEAR_API_KEY="<your-linear-api-key>"
+
+# 2. Create a fresh context directory.
 mkdir -p /tmp/context-sync-smoke && cd /tmp/context-sync-smoke
 
-# 2. Sync a root ticket (creates ticket files).
+# 3. Sync a root ticket.  --auth-mode is optional here because the CLI
+#    infers api_key when LINEAR_API_KEY is set.
 context-sync sync TEAM-42
 # Expected: text output listing the created ticket key(s), exit code 0.
 
-# 3. Refresh (re-fetches all tracked tickets).
+# 4. Refresh (re-fetches all tracked tickets).
 context-sync refresh
 # Expected: text output with unchanged/updated counts, exit code 0.
 
-# 4. Diff (compare local snapshot to live state, read-only).
+# 5. Diff (compare local snapshot to live state, read-only).
 context-sync diff
 # Expected: text output with diff entries (likely empty if nothing changed), exit code 0.
 
-# 5. Remove the root and clean up.
+# 6. Remove the root and clean up.
 context-sync remove TEAM-42
 # Expected: text output confirming removal, exit code 0.
 
-# 6. Clean up the smoke directory.
+# 7. Clean up the smoke directory.
+rm -rf /tmp/context-sync-smoke
+```
+
+**Happy path (client\_credentials mode)** — verify a second auth mode works:
+
+```bash
+# 1. Set credentials for client_credentials mode.
+unset LINEAR_API_KEY
+export LINEAR_CLIENT_ID="<your-oauth-client-id>"
+export LINEAR_CLIENT_SECRET="<your-oauth-client-secret>"
+export LINEAR_OAUTH_SCOPE="read,write,app:assignable,app:mentionable"
+
+# 2. Create a fresh context directory.
+mkdir -p /tmp/context-sync-smoke && cd /tmp/context-sync-smoke
+
+# 3. Sync with explicit --auth-mode (or let inference detect LINEAR_CLIENT_ID).
+context-sync --auth-mode client_credentials sync TEAM-42
+# Expected: text output listing the created ticket key(s), exit code 0.
+
+# 4. Quick refresh to confirm the mode sticks for the session.
+context-sync --auth-mode client_credentials refresh
+# Expected: text output with unchanged/updated counts, exit code 0.
+
+# 5. Clean up.
+context-sync --auth-mode client_credentials remove TEAM-42
 rm -rf /tmp/context-sync-smoke
 ```
 

@@ -30,11 +30,12 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 import sys
 from collections.abc import Callable, Coroutine
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any, NoReturn
+from typing import Any, Literal, NoReturn
 
 from context_sync._config import DEFAULT_DIMENSIONS, DEFAULT_MAX_TICKETS_PER_ROOT, Dimension
 from context_sync._errors import ContextSyncError
@@ -50,6 +51,9 @@ logger = logging.getLogger(__name__)
 EXIT_SUCCESS: int = 0
 EXIT_ERROR: int = 1
 
+AUTH_MODE_CHOICES: tuple[str, ...] = ("oauth", "client_credentials", "api_key")
+"""Valid ``--auth-mode`` values matching the ``linear-client`` auth modes."""
+
 LOG_LEVEL_CHOICES: tuple[str, ...] = ("DEBUG", "INFO", "WARNING", "ERROR", "OFF")
 """Valid ``--log-level`` values."""
 
@@ -58,6 +62,9 @@ DEFAULT_LOG_LEVEL: str = "WARNING"
 
 _VERSION_STRING: str = f"{__prog_name__} {__version__}"
 """Pre-formatted version string shared by ``-v``, ``-h``, and error output."""
+
+_AuthMode = Literal["oauth", "client_credentials", "api_key"]
+"""Auth modes accepted by ``linear-client``'s ``Linear()`` constructor."""
 
 _Handler = Callable[..., Coroutine[Any, Any, int]]
 """Type alias for async subcommand handlers (R7)."""
@@ -171,10 +178,23 @@ def _build_dimensions(args: argparse.Namespace) -> dict[str, int] | None:
     return overrides if overrides else None
 
 
-def _create_linear_client() -> object:
+def _create_linear_client(auth_mode: _AuthMode | None = None) -> object:
     """
-    Construct an authenticated ``linear_client.Linear`` instance from the
-    environment.
+    Construct an authenticated ``linear_client.Linear`` instance.
+
+    Parameters
+    ----------
+    auth_mode:
+        Authentication mode (``oauth``, ``client_credentials``, or
+        ``api_key``).  When ``None``, the mode is inferred from the
+        environment: ``api_key`` if ``LINEAR_API_KEY`` is set,
+        ``client_credentials`` if ``LINEAR_CLIENT_ID`` is set, otherwise
+        ``oauth``.  An explicit value overrides inference.
+
+    Returns
+    -------
+    object
+        An initialized ``Linear`` client instance.
 
     Raises
     ------
@@ -189,8 +209,16 @@ def _create_linear_client() -> object:
             "environment before running context-sync CLI commands."
         ) from exc
 
+    if auth_mode is None:
+        if os.environ.get("LINEAR_API_KEY"):
+            auth_mode = "api_key"
+        elif os.environ.get("LINEAR_CLIENT_ID"):
+            auth_mode = "client_credentials"
+        else:
+            auth_mode = "oauth"
+
     try:
-        return Linear()
+        return Linear(auth_mode=auth_mode)
     except Exception as exc:
         raise ContextSyncError(f"Failed to initialize Linear client: {exc}") from exc
 
@@ -209,7 +237,7 @@ async def _run_sync(
             _gateway_override=_gateway_override,
         )
     else:
-        linear = _create_linear_client()
+        linear = _create_linear_client(auth_mode=args.auth_mode)
         ctx = ContextSync(
             linear=linear,
             context_dir=Path(args.context_dir),
@@ -248,7 +276,7 @@ async def _run_refresh(
             _gateway_override=_gateway_override,
         )
     else:
-        linear = _create_linear_client()
+        linear = _create_linear_client(auth_mode=args.auth_mode)
         ctx = ContextSync(
             linear=linear,
             context_dir=Path(args.context_dir),
@@ -273,7 +301,7 @@ async def _run_remove(
             _gateway_override=_gateway_override,
         )
     else:
-        linear = _create_linear_client()
+        linear = _create_linear_client(auth_mode=args.auth_mode)
         ctx = ContextSync(
             linear=linear,
             context_dir=Path(args.context_dir),
@@ -298,7 +326,7 @@ async def _run_diff(
             _gateway_override=_gateway_override,
         )
     else:
-        linear = _create_linear_client()
+        linear = _create_linear_client(auth_mode=args.auth_mode)
         ctx = ContextSync(
             linear=linear,
             context_dir=Path(args.context_dir),
@@ -379,6 +407,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--version",
         action="version",
         version=_VERSION_STRING,
+    )
+    parser.add_argument(
+        "--auth-mode",
+        choices=AUTH_MODE_CHOICES,
+        default=None,
+        help=(
+            "Linear authentication mode (default: inferred from environment — "
+            "api_key if LINEAR_API_KEY is set, client_credentials if "
+            "LINEAR_CLIENT_ID is set, otherwise oauth)."
+        ),
     )
     parser.add_argument(
         "--log-level",

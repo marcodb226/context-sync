@@ -17,6 +17,7 @@ from unittest.mock import patch
 import pytest
 
 from context_sync._cli import (
+    AUTH_MODE_CHOICES,
     DEFAULT_LOG_LEVEL,
     EXIT_ERROR,
     EXIT_SUCCESS,
@@ -197,6 +198,43 @@ class TestParserConstruction:
         parser = build_parser()
         args = parser.parse_args(["refresh"])
         assert args.context_dir == "."
+
+    def test_auth_mode_default_is_none(self) -> None:
+        """``--auth-mode`` defaults to ``None`` (environment inference)."""
+        parser = build_parser()
+        args = parser.parse_args(["refresh"])
+        assert args.auth_mode is None
+
+    def test_auth_mode_oauth(self) -> None:
+        """``--auth-mode oauth`` is accepted."""
+        parser = build_parser()
+        args = parser.parse_args(["--auth-mode", "oauth", "refresh"])
+        assert args.auth_mode == "oauth"
+
+    def test_auth_mode_client_credentials(self) -> None:
+        """``--auth-mode client_credentials`` is accepted."""
+        parser = build_parser()
+        args = parser.parse_args(["--auth-mode", "client_credentials", "diff"])
+        assert args.auth_mode == "client_credentials"
+
+    def test_auth_mode_api_key(self) -> None:
+        """``--auth-mode api_key`` is accepted."""
+        parser = build_parser()
+        args = parser.parse_args(["--auth-mode", "api_key", "sync"])
+        assert args.auth_mode == "api_key"
+
+    def test_auth_mode_invalid_rejected(self) -> None:
+        """An invalid auth mode is rejected."""
+        parser = build_parser()
+        with pytest.raises(SystemExit) as exc_info:
+            parser.parse_args(["--auth-mode", "bearer", "sync"])
+        assert exc_info.value.code == 2
+
+    def test_auth_mode_choices_match_constant(self) -> None:
+        """All three modes are present in ``AUTH_MODE_CHOICES``."""
+        assert "oauth" in AUTH_MODE_CHOICES
+        assert "client_credentials" in AUTH_MODE_CHOICES
+        assert "api_key" in AUTH_MODE_CHOICES
 
 
 # ---------------------------------------------------------------------------
@@ -732,6 +770,127 @@ class TestBootstrapFailures:
         captured = capsys.readouterr()
         payload = json.loads(captured.out)
         assert "Failed to initialize" in payload["message"]
+
+
+# ---------------------------------------------------------------------------
+# Auth-mode environment inference and handler passthrough
+# ---------------------------------------------------------------------------
+
+
+class TestAuthModeEnvInference:
+    """Verify that ``_create_linear_client`` infers the auth mode from env vars."""
+
+    def test_infers_api_key_when_env_set(self) -> None:
+        """``LINEAR_API_KEY`` in env infers ``api_key`` mode."""
+        from context_sync._cli import _create_linear_client
+
+        with (
+            patch.dict("os.environ", {"LINEAR_API_KEY": "key"}, clear=True),
+            patch("linear_client.Linear") as mock_cls,
+        ):
+            mock_cls.return_value = object()
+            _create_linear_client(auth_mode=None)
+            mock_cls.assert_called_once_with(auth_mode="api_key")
+
+    def test_infers_client_credentials_when_client_id_set(self) -> None:
+        """``LINEAR_CLIENT_ID`` in env (no ``LINEAR_API_KEY``) infers ``client_credentials``."""
+        from context_sync._cli import _create_linear_client
+
+        with (
+            patch.dict("os.environ", {"LINEAR_CLIENT_ID": "cid"}, clear=True),
+            patch("linear_client.Linear") as mock_cls,
+        ):
+            mock_cls.return_value = object()
+            _create_linear_client(auth_mode=None)
+            mock_cls.assert_called_once_with(auth_mode="client_credentials")
+
+    def test_infers_oauth_when_no_env_vars(self) -> None:
+        """No auth env vars defaults to ``oauth``."""
+        from context_sync._cli import _create_linear_client
+
+        with (
+            patch.dict("os.environ", {}, clear=True),
+            patch("linear_client.Linear") as mock_cls,
+        ):
+            mock_cls.return_value = object()
+            _create_linear_client(auth_mode=None)
+            mock_cls.assert_called_once_with(auth_mode="oauth")
+
+    def test_infers_api_key_over_client_id(self) -> None:
+        """``LINEAR_API_KEY`` takes precedence over ``LINEAR_CLIENT_ID``."""
+        from context_sync._cli import _create_linear_client
+
+        with (
+            patch.dict(
+                "os.environ",
+                {"LINEAR_API_KEY": "key", "LINEAR_CLIENT_ID": "cid"},
+                clear=True,
+            ),
+            patch("linear_client.Linear") as mock_cls,
+        ):
+            mock_cls.return_value = object()
+            _create_linear_client(auth_mode=None)
+            mock_cls.assert_called_once_with(auth_mode="api_key")
+
+    def test_explicit_mode_overrides_env(self) -> None:
+        """An explicit ``auth_mode`` value bypasses env inference."""
+        from context_sync._cli import _create_linear_client
+
+        with (
+            patch.dict("os.environ", {"LINEAR_API_KEY": "key"}, clear=True),
+            patch("linear_client.Linear") as mock_cls,
+        ):
+            mock_cls.return_value = object()
+            _create_linear_client(auth_mode="oauth")
+            mock_cls.assert_called_once_with(auth_mode="oauth")
+
+
+class TestAuthModeHandlerPassthrough:
+    """Verify that ``--auth-mode`` from the CLI reaches ``_create_linear_client``."""
+
+    def test_explicit_auth_mode_passed_to_create(self) -> None:
+        """``--auth-mode api_key`` passes ``api_key`` to ``_create_linear_client``."""
+        with (
+            patch("context_sync._cli._create_linear_client") as mock_create,
+            pytest.raises(SystemExit),
+        ):
+            mock_create.return_value = None
+            main(["--auth-mode", "api_key", "refresh"])
+
+        mock_create.assert_called_once_with(auth_mode="api_key")
+
+    def test_no_auth_mode_passes_none(self) -> None:
+        """Omitting ``--auth-mode`` passes ``None`` to ``_create_linear_client``."""
+        with (
+            patch("context_sync._cli._create_linear_client") as mock_create,
+            pytest.raises(SystemExit),
+        ):
+            mock_create.return_value = None
+            main(["refresh"])
+
+        mock_create.assert_called_once_with(auth_mode=None)
+
+    def test_auth_mode_reaches_sync_handler(self) -> None:
+        """``--auth-mode client_credentials`` reaches the sync handler's client creation."""
+        with (
+            patch("context_sync._cli._create_linear_client") as mock_create,
+            pytest.raises(SystemExit),
+        ):
+            mock_create.return_value = None
+            main(["--auth-mode", "client_credentials", "sync", "TEST-1"])
+
+        mock_create.assert_called_once_with(auth_mode="client_credentials")
+
+    def test_auth_mode_reaches_diff_handler(self) -> None:
+        """``--auth-mode oauth`` reaches the diff handler's client creation."""
+        with (
+            patch("context_sync._cli._create_linear_client") as mock_create,
+            pytest.raises(SystemExit),
+        ):
+            mock_create.return_value = None
+            main(["--auth-mode", "oauth", "diff"])
+
+        mock_create.assert_called_once_with(auth_mode="oauth")
 
 
 # ---------------------------------------------------------------------------
