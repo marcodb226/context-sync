@@ -46,8 +46,12 @@ HTTP 400: Field "issue" is not defined by type "AttachmentFilter"
 
 **Impact on context-sync:** `RealLinearGateway.fetch_issue()` calls
 `issue.get_attachments()` as part of the concurrent detail fetch. The
-failure is correctly surfaced as `SystemicRemoteError`, but it blocks the
-entire `sync` path for any issue — not just issues with attachments.
+failure currently aborts the entire `asyncio.gather` and surfaces as
+`SystemicRemoteError`. However, the first release only stores attachment
+metadata (URLs and titles) in ticket files and does not download content
+(see [FW-2](future-work.md#fw-2-attachment-content-handling)). The
+context-sync fix is to catch the attachment fetch failure gracefully and
+proceed with an empty attachment list rather than aborting the sync.
 
 **Workaround:** None available without patching the upstream library. The
 query filter needs to use a supported `AttachmentFilter` field (for
