@@ -52,6 +52,11 @@ query filter needs to use a supported `AttachmentFilter` field (for
 example a top-level `issueId` variable with `attachments(issueId:
 $issueId, ...)` if the API supports it, or a different query structure).
 
+**Upstream tracking:**
+[linear-client FW-28](../../linear-client/docs/future-work.md#fw-28---add-missing-attachment-fields-from-linear-schema)
+tracks adding missing attachment fields; this bug is a prerequisite —
+the query must work before additional fields matter.
+
 ---
 
 ## Missing capabilities
@@ -98,6 +103,10 @@ organization`.
 (`_WORKSPACE_IDENTITY_QUERY`) for this. A packaged surface would
 eliminate one of the five raw-GQL helper categories.
 
+**Upstream tracking:**
+[linear-client FW-13](../../linear-client/docs/future-work.md#fw-13---add-workspace-identity-read-support-for-issue-validation)
+— backlog item that would deliver exactly this surface.
+
 <a id="lc-4---no-packaged-issue-label-read-surface"></a>
 
 ### LC-4 - No packaged issue-label read surface
@@ -141,6 +150,16 @@ equivalent:
 **Impact on context-sync:** `RealLinearGateway` implements all three as
 raw-GQL helpers. Packaged equivalents would eliminate three of the five
 raw-GQL helper categories, leaving only workspace identity and labels.
+
+**Upstream tracking:**
+- [linear-client FW-15](../../linear-client/docs/future-work.md#fw-15---add-batched-issue-metadata-reads-for-tracked-issue-sets)
+  — batched issue metadata reads (backlog).
+- [linear-client FW-16](../../linear-client/docs/future-work.md#fw-16---finish-comment-freshness-metadata-support-for-refresh-workflows)
+  — comment freshness metadata for refresh workflows (backlog).
+- Batch relation metadata has no dedicated FW item; per-issue relation
+  reads were delivered in v1.1.0 via
+  [linear-client FW-14](../../linear-client/docs/future-work.md#fw-14---add-read-only-issue-relation-surfaces-beyond-blocker-search-projection),
+  but the batched multi-issue variant is not tracked separately.
 
 <a id="lc-6---newtype-identity-mismatch-across-the-boundary"></a>
 
