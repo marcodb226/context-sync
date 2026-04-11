@@ -113,3 +113,185 @@ auth-selection policy is still underspecified in code and docs. With the
 clarified intent that `context-sync` should default to `client_credentials`,
 the explicit flag support is solid, but the current heuristic fallback is not
 the contract you described.
+
+---
+
+## Review Pass 2
+
+> **LLM**: opus-4.6
+> **Effort**: N/A
+> **Time spent**: ~30m
+
+### Scope
+
+Strict independent review of
+[M5-3](../implementation-plan.md#m5-3---cli-auth-mode-selection),
+covering the Phase A artifact at [docs/execution/M5-3.md](M5-3.md), the CLI
+implementation in [src/context_sync/_cli.py](../../src/context_sync/_cli.py),
+the new tests in [tests/test_cli.py](../../tests/test_cli.py) and
+[tests/test_public_surface.py](../../tests/test_public_surface.py), the
+operator docs in [README.md](../../README.md), the upstream auth contract in
+[linear-client src/linear_client/linear.py](../../../linear-client/src/linear_client/linear.py),
+the governing ticket notes in
+[docs/implementation-plan.md §M5-3](../implementation-plan.md#m5-3---cli-auth-mode-selection),
+the pass 1 review at [docs/execution/M5-3-review.md](M5-3-review.md), and
+the full `git diff a81adbf..b8f7870` (the two M5-3 commits against the
+pre-M5-3 baseline).
+
+Validation run during review:
+`source .venv/bin/activate && PYTHON_BIN=python3 bash scripts/validate.sh`
+passed cleanly (Ruff lint, Ruff format check, Pyright 0 errors, full pytest
+suite: 581 tests, 92% coverage).
+`source .venv/bin/activate && pytest -q tests/test_cli.py -k 'auth_mode' tests/test_public_surface.py -k 'auth_mode'`
+also passed cleanly (10 auth-mode-focused tests).
+
+### Dependency-Satisfaction Verification
+
+[M5-3](../implementation-plan.md#m5-3---cli-auth-mode-selection) depends only
+on [M5-2](../implementation-plan.md#m5-2---supported-public-runtime-validation-and-smoke-path).
+The active plan marks
+[M5-2](../implementation-plan.md#m5-2---supported-public-runtime-validation-and-smoke-path)
+as `Done`, and the execution artifact at [docs/execution/M5-3.md](M5-3.md)
+records that dependency as satisfied. Verified.
+
+### Terminology Compliance
+
+Checked
+[src/context_sync/_cli.py](../../src/context_sync/_cli.py),
+[tests/test_cli.py](../../tests/test_cli.py),
+[tests/test_public_surface.py](../../tests/test_public_surface.py),
+[README.md](../../README.md), and
+[docs/execution/M5-3.md](M5-3.md)
+against [docs/policies/terminology.md](../policies/terminology.md). No
+banned-term violations found.
+
+### Changelog Review
+
+[src/context_sync/version.py](../../src/context_sync/version.py) is
+`0.1.0.dev0` — pre-stable. The changelog gate does not apply.
+
+### Linear Boundary Check
+
+No Linear-boundary violation. The change stays within the CLI construction
+layer; `_create_linear_client()` passes the selected mode to `Linear()` and
+does not add new raw-GraphQL or out-of-boundary usage.
+
+### Findings
+
+No new findings. The dominant issue in this ticket was correctly identified by
+[M5-3-R1](M5-3-review.md#findings) in pass 1. This pass independently
+verified the evidence and agrees with the finding and its severity. See
+[Agreement with pass 1](#agreement-with-pass-1-findings) below for the
+detailed assessment.
+
+### Agreement with Pass 1 Findings
+
+**[M5-3-R1](M5-3-review.md#findings) (High) — Auth-mode default contract:**
+Independently confirmed. The implementation plan at
+[docs/implementation-plan.md:1116](../implementation-plan.md#m5-3---cli-auth-mode-selection)
+is unambiguous:
+
+> The context-sync CLI's no-flag default is `client_credentials`. This tool
+> primarily targets app-actor workflows. `--auth-mode` exists so operators
+> can opt into `oauth` or `api_key` explicitly when needed.
+
+The implementation at
+[src/context_sync/_cli.py:212–219](../../src/context_sync/_cli.py#L212)
+instead introduces an environment-probing heuristic (`LINEAR_API_KEY` →
+`api_key`, `LINEAR_CLIENT_ID` → `client_credentials`, fallback `oauth`).
+This heuristic is then documented as the intended contract in three
+surfaces: the `_create_linear_client()` docstring
+([src/context_sync/_cli.py:186–193](../../src/context_sync/_cli.py#L186)),
+the argparse help text
+([src/context_sync/_cli.py:416–420](../../src/context_sync/_cli.py#L416)),
+and the README global-options table and inference paragraph
+([README.md:108](../../README.md#L108),
+[README.md:111](../../README.md#L111)). The tests also encode the
+inference contract rather than the plan-specified default: for example,
+`test_infers_oauth_when_no_env_vars`
+([tests/test_cli.py:807](../../tests/test_cli.py#L807)) asserts `oauth`
+as the fallback, and `test_auth_mode_default_is_none`
+([tests/test_cli.py:202](../../tests/test_cli.py#L202)) asserts the
+parser default is `None` (triggering inference) rather than
+`client_credentials`.
+
+The mismatch is not a borderline interpretation — the plan states a
+fixed default, and the implementation delivers an inferred one. This is
+the highest-priority item for Phase C.
+
+**[M5-3-R2](M5-3-review.md#findings) (Medium) — Prefix-aware config
+compatibility:** The observation that the inference heuristic ignores
+`LINEAR_ENV_PREFIX` is factually accurate. However, this reviewer
+**disagrees with the recommendation** to add prefix resolution. The
+implementation plan at
+[docs/implementation-plan.md:1119–1122](../implementation-plan.md#m5-3---cli-auth-mode-selection)
+explicitly constrains the scope:
+
+> Do not make context-sync responsible for mirroring `linear-client`'s
+> `LINEAR_ENV_PREFIX` / `env_prefix` behavior. Prefixed library variables
+> are not part of the context-sync CLI contract. See
+> [LC-9](../linear-client-issues.md#lc-9---environment-variable-prefixing-leaks-caller-policy-into-the-library).
+
+Implementing prefix-aware inference would violate this scope constraint.
+Moreover, the correct resolution of
+[M5-3-R1](M5-3-review.md#findings) — replacing the inference heuristic
+with a fixed `client_credentials` default — eliminates the prefix
+compatibility gap entirely: when no env probing occurs, there is no
+mismatch to detect. The Phase C response should evaluate
+[M5-3-R2](M5-3-review.md#findings) in light of this scope constraint
+and the natural resolution via [M5-3-R1](M5-3-review.md#findings).
+
+### Reviewer Notes
+
+- The explicit `--auth-mode` plumbing is mechanically clean. The parser
+  wiring, handler passthrough across all four subcommands, `Linear(auth_mode=...)`
+  forwarding, the `_AuthMode` type alias, and the `AUTH_MODE_CHOICES` constant
+  are all well-structured. The typing is correct (`_AuthMode | None` for the
+  parameter, `Literal[...]` for the alias).
+- The test coverage for the *implemented* behavior is thorough: 6 parser
+  tests, 5 env-inference unit tests, 4 handler-passthrough tests, and 5
+  public-surface integration tests. The tests are well-organized across
+  `TestParserConstruction`, `TestAuthModeEnvInference`,
+  `TestAuthModeHandlerPassthrough`, and `TestCliMainAuthMode`. But the tests
+  validate the inference heuristic, not the plan-specified default, so they
+  will need to be reworked when [M5-3-R1](M5-3-review.md#findings) is
+  addressed.
+- No new typing, lint, formatting, or coding-guidelines violations found in
+  the M5-3 diff. The `_AuthMode` Literal type is appropriate and avoids
+  `Any`. Docstrings include Parameters, Returns, and Raises sections.
+- The README updates are well-written and the smoke recipe correctly covers
+  both `api_key` and `client_credentials` modes. The credential-setup section
+  and environment-variables table are accurate for `linear-client` v1.1.0.
+- I did not identify any security, concurrency, or operational-readiness
+  issues in the M5-3 diff.
+
+### Residual Risks and Testing Gaps
+
+- The residual risks and testing gaps identified in pass 1 remain valid.
+  In particular: no regression test for the plan-specified `client_credentials`
+  default, no test for a clean-env invocation asserting
+  `client_credentials` (not `oauth`), and the inference tests will need to
+  be removed or rewritten when the default is fixed.
+- The smoke recipe's `client_credentials` section
+  ([README.md:297–305](../../README.md#L297)) uses explicit
+  `--auth-mode client_credentials` on every command. Once the default is
+  fixed, this section should also exercise the bare no-flag invocation to
+  validate the default contract.
+
+### Overall Assessment
+
+This review independently confirms the pass 1 assessment. The explicit
+`--auth-mode` flag mechanism is solid — parser construction, handler
+forwarding, constructor passthrough, typing, and explicit-flag tests are all
+well-implemented. The single blocking issue is that the no-flag default
+contract diverges from the implementation plan specification: the plan says
+`client_credentials`, the code delivers env-inference with an `oauth` fallback.
+All downstream documentation and test surfaces encode the implemented behavior
+rather than the specified one.
+
+[M5-3-R1](M5-3-review.md#findings) remains the gating item for Phase C. The
+fix is narrowly scoped: set the argparse default to `client_credentials` (or
+apply the fixed default in `_create_linear_client`), remove the inference
+block, update the docstring/help-text/README, and rework the inference tests
+to assert the fixed default. [M5-3-R2](M5-3-review.md#findings) resolves
+naturally once the inference heuristic is removed.
