@@ -17,7 +17,6 @@ in place.
 | [LC-6](#lc-6---newtype-identity-mismatch-across-the-boundary) | Won't do | Duplicate `NewType` aliases in context-sync — context-sync must adopt the library types |
 | [LC-7](#lc-7---issue-priority-not-in-domain-surface) | Open | Issue `priority` field not in the GQL selection set or domain object |
 | [LC-8](#lc-8---issue-parent-not-in-domain-surface) | Open | Issue `parent` (id + key) not in the GQL selection set or domain object |
-| [LC-9](#lc-9---no-batched-multi-issue-relation-metadata-read) | Open | No batched relation metadata read for arbitrary issue sets |
 
 ---
 
@@ -167,11 +166,13 @@ raw-GQL helper categories, leaving only workspace identity and labels.
   — batched issue metadata reads (backlog).
 - [linear-client FW-16](../../linear-client/docs/future-work.md#fw-16---finish-comment-freshness-metadata-support-for-refresh-workflows)
   — comment freshness metadata for refresh workflows (backlog).
-- Batch relation metadata has no dedicated FW item; per-issue relation
+- Batch relation metadata has no dedicated FW item. Per-issue relation
   reads were delivered in v1.1.0 via
   [linear-client FW-14](../../linear-client/docs/future-work.md#fw-14---add-read-only-issue-relation-surfaces-beyond-blocker-search-projection),
-  but the batched multi-issue variant is not tracked separately. See
-  [LC-9](#lc-9---no-batched-multi-issue-relation-metadata-read).
+  but the batched multi-issue variant is not tracked separately.
+  `RealLinearGateway.get_refresh_relation_metadata` currently fans out
+  one raw-GQL query per issue (forward + inverse links), producing 2*N
+  upstream queries for N tracked issues.
 
 <a id="lc-6---newtype-identity-mismatch-across-the-boundary"></a>
 
@@ -241,33 +242,5 @@ id and key via the same supplementary raw-GQL query. A domain-layer
 accessor (e.g. `peek_parent()` / `get_parent()` returning an `Issue`
 handle or a lightweight id+key pair) would eliminate another field from
 that query.
-
-**Upstream tracking:** No linear-client FW item exists for this.
-
-<a id="lc-9---no-batched-multi-issue-relation-metadata-read"></a>
-
-### LC-9 - No batched multi-issue relation metadata read
-
-**Status:** Open
-
-**Severity:** Low (workaround exists)
-
-**Discovered:** M5-2 Phase C (2026-04-11)
-
-**Description:** `Issue.get_links()` provides per-issue relation reads
-(delivered in v1.1.0 via
-[linear-client FW-14](../../linear-client/docs/future-work.md#fw-14---add-read-only-issue-relation-surfaces-beyond-blocker-search-projection)).
-There is no batched equivalent for reading relation metadata across an
-arbitrary set of issue IDs in a single operation.
-
-**Impact on context-sync:** `RealLinearGateway.get_refresh_relation_metadata`
-fans out one raw-GQL query per issue (forward links + inverse links).
-For N tracked issues, this produces 2*N upstream queries bounded by the
-gateway semaphore. A batched read would reduce this to O(1) queries.
-[linear-client FW-15](../../linear-client/docs/future-work.md#fw-15---add-batched-issue-metadata-reads-for-tracked-issue-sets)
-covers batched issue metadata and
-[linear-client FW-16](../../linear-client/docs/future-work.md#fw-16---finish-comment-freshness-metadata-support-for-refresh-workflows)
-covers batched comment metadata, but batched relation metadata is not
-tracked.
 
 **Upstream tracking:** No linear-client FW item exists for this.
