@@ -309,16 +309,14 @@ class RealLinearGateway:
         """
         try:
             from linear_client.errors import LinearNotFoundError
-            from linear_client.types import IssueId as UpstreamIssueId
-            from linear_client.types import IssueKey as UpstreamIssueKey
         except ImportError as exc:
             raise SystemicRemoteError("linear-client is not installed") from exc
 
         try:
             if _UUID_PATTERN.match(issue_id_or_key):
-                issue = self._linear.issue(id=UpstreamIssueId(issue_id_or_key))
+                issue = self._linear.issue(id=IssueId(issue_id_or_key))
             else:
-                issue = self._linear.issue(key=UpstreamIssueKey(issue_id_or_key))
+                issue = self._linear.issue(key=IssueKey(issue_id_or_key))
             issue = await issue.fetch()
         except LinearNotFoundError as exc:
             raise RootNotFoundError(f"Issue not found: {issue_id_or_key!r}") from exc
@@ -464,7 +462,6 @@ class RealLinearGateway:
             If a systemic upstream failure prevents the batch read.
         """
         from linear_client.errors import LinearNotFoundError
-        from linear_client.types import IssueId as UpstreamIssueId
 
         unique_ids = list(dict.fromkeys(issue_ids))
         if not unique_ids:
@@ -473,7 +470,7 @@ class RealLinearGateway:
         async def fetch_one(uid: IssueId) -> tuple[IssueId, list[RelationData]]:
             async with self._semaphore:
                 try:
-                    issue = self._linear.issue(id=UpstreamIssueId(str(uid)))
+                    issue = self._linear.issue(id=uid)
                     links = await issue.get_links()
                     return uid, self._normalize_links(links, str(uid))
                 except LinearNotFoundError:
