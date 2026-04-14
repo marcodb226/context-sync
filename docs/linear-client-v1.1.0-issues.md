@@ -1,7 +1,7 @@
 # linear-client issues and gaps
 
 Bugs and missing capabilities in
-[linear-client](../../linear-client/) discovered during context-sync
+[linear-client v1.1.0](../../linear-client/) discovered during context-sync
 development. Items are recorded as they surface; fixed items are updated
 in place.
 
